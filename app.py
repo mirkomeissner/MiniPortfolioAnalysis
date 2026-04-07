@@ -3,8 +3,8 @@ from supabase import create_client, Client
 
 # 1. Setup Supabase Connection
 # In a real app, use st.secrets for these!
-url = "YOUR_SUPABASE_URL"
-key = "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+url = st.secrets["SUPABASE_URL"]
+key = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(url, key)
 
 st.title("🏦 Asset Manager")
