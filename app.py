@@ -1,6 +1,6 @@
 ﻿import streamlit as st
 from supabase import create_client, Client
-st.write(f"Verwende URL: {st.secrets['SUPABASE_URL']}")
+
 # 1. Setup Supabase Connection
 # In a real app, use st.secrets for these!
 url = st.secrets["SUPABASE_URL"]
