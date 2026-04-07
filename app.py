@@ -1,86 +1,95 @@
 import streamlit as st
 from supabase import create_client, Client
 
-# 1. Konfiguration der Seite
-st.set_page_config(page_title="Portfolio Manager", page_icon="📈")
-
-# 2. Verbindung zu Supabase herstellen
-# Diese Werte müssen in den Streamlit Cloud Secrets stehen!
+# 1. Setup Supabase Connection (via st.secrets)
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(url, key)
 
-# 3. Passwort-Logik Funktionen
+# 2. Passwort-Schutz Logik
 def check_password():
-    """Gibt True zurück, wenn der Nutzer das korrekte Passwort eingegeben hat."""
     def password_entered():
-        """Prüft das Passwort gegen das Secret."""
         if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Passwort aus dem Speicher löschen
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # Erstmalige Anzeige des Login-Feldes
-        st.text_input(
-            "Bitte Passwort eingeben", type="password", on_change=password_entered, key="password"
-        )
+        st.text_input("Bitte Passwort eingeben", type="password", on_change=password_entered, key="password")
         return False
     elif not st.session_state["password_correct"]:
-        # Passwort war falsch
-        st.text_input(
-            "Bitte Passwort eingeben", type="password", on_change=password_entered, key="password"
-        )
-        st.error("❌ Falsches Passwort")
+        st.text_input("Bitte Passwort eingeben", type="password", on_change=password_entered, key="password")
+        st.error("❌ Passwort falsch")
         return False
-    else:
-        # Passwort korrekt
-        return True
+    return True
 
-# 4. Hauptprogramm (wird nur ausgeführt, wenn Passwort korrekt ist)
+# 3. Hilfsfunktion zum Abrufen der Referenzdaten
+@st.cache_data(ttl=600)  # Speichert die Daten für 10 Min, um API-Calls zu sparen
+def get_ref_data(table_name):
+    try:
+        query = supabase.table(table_name).select("Code, Label").execute()
+        return {item['Label']: item['Code'] for item in query.data}
+    except Exception as e:
+        st.error(f"Fehler beim Laden von {table_name}: {e}")
+        return {}
+
+# 4. Haupt-App (wird nur nach Login angezeigt)
 if check_password():
-    st.title("Asset Manager 🚀")
-    st.write("Erfasse neue Assets für dein Portfolio.")
+    st.title("🏦 Asset Manager")
+    st.subheader("Neuen Datensatz in AssetStaticData anlegen")
 
-    # Eingabeformular
-    with st.form("asset_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            asset_name = st.text_input("Asset Name (z.B. Bitcoin, Apple)")
-            asset_type = st.selectbox("Typ", ["Aktie", "Krypto", "ETF", "Rohstoff"])
-        
-        with col2:
-            ticker = st.text_input("Ticker Symbol (z.B. BTC, AAPL)")
-            sector = st.text_input("Sektor (z.B. Tech, Finance)")
+    # Lade die dynamischen Daten aus den Ref-Tabellen
+    asset_classes = get_ref_data("RefAssetClass")
+    regions = get_ref_data("RefRegion")
+    sectors = get_ref_data("RefSector")
 
-        submit_button = st.form_submit_button("In Datenbank speichern")
-
-    # Logik zum Speichern
-    if submit_button:
-        if asset_name and ticker:
-            data = {
-                "asset_name": asset_name,
-                "ticker": ticker,
-                "asset_type": asset_type,
-                "sector": sector
-            }
+    # Falls Daten geladen wurden, zeige das Formular
+    if asset_classes and regions and sectors:
+        with st.form("asset_form", clear_on_submit=True):
+            col1, col2 = st.columns(2)
             
-            try:
-                # Annahme: Deine Tabelle in Supabase heißt 'AssetStaticData'
-                response = supabase.table("AssetStaticData").insert(data).execute()
-                st.success(f"✅ {asset_name} wurde erfolgreich gespeichert!")
-            except Exception as e:
-                st.error(f"Fehler beim Speichern: {e}")
-        else:
-            st.warning("Bitte fülle mindestens Name und Ticker aus!")
+            with col1:
+                isin = st.text_input("ISIN (Primary Key)", placeholder="z.B. US0378331005")
+                name = st.text_input("Asset Name", placeholder="z.B. Apple Inc.")
+                ticker = st.text_input("Ticker", placeholder="AAPL")
+                currency = st.text_input("Currency", value="USD", max_chars=3)
 
-    # Kleiner Bonus: Logout-Button oben rechts
-    if st.sidebar.button("Log out"):
+            with col2:
+                # Dropdowns nutzen die Labels aus der DB, speichern aber die Codes
+                selected_ac = st.selectbox("Asset Class", options=list(asset_classes.keys()))
+                selected_reg = st.selectbox("Region", options=list(regions.keys()))
+                selected_sec = st.selectbox("Sector", options=list(sectors.keys()))
+                price_source = st.text_input("Price Source", value="Yahoo Finance")
+
+            submitted = st.form_submit_button("Insert Asset")
+
+            if submitted:
+                if isin and name:
+                    # Payload vorbereiten (Großschreibung beachten wie im SQL-Script!)
+                    new_row = {
+                        "ISIN": isin,
+                        "Name": name,
+                        "Ticker": ticker,
+                        "Currency": currency,
+                        "PriceSource": price_source,
+                        "AssetClassCode": asset_classes[selected_ac],
+                        "RegionCode": regions[selected_reg],
+                        "SectorCode": sectors[selected_sec]
+                    }
+
+                    # Insert in Supabase
+                    try:
+                        supabase.table("AssetStaticData").insert(new_row).execute()
+                        st.success(f"✅ Erfogreich hinzugefügt: {name} ({isin})")
+                    except Exception as e:
+                        st.error(f"❌ Fehler beim Speichern: {e}")
+                else:
+                    st.warning("Bitte ISIN und Name ausfüllen!")
+    else:
+        st.error("Konnte Referenzdaten nicht aus der Datenbank laden. Bitte prüfe die Supabase-Verbindung.")
+
+    # Sidebar Logout
+    if st.sidebar.button("Abmelden"):
         st.session_state["password_correct"] = False
         st.rerun()
-
-else:
-    # Text, der angezeigt wird, wenn man nicht eingeloggt ist
-    st.info("Willkommen! Bitte gib das Passwort ein, um Zugriff auf die Portfolio-Verwaltung zu erhalten.")
