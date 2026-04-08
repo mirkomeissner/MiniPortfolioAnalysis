@@ -43,29 +43,30 @@ def get_ref_data(table_name):
         return {}
 
 def get_all_assets_with_labels():
-    """Fetches records with joined labels from reference tables."""
+    """Fetches records with joined labels and exact column ordering."""
     try:
-        # Using Supabase foreign key join syntax: column_name(target_table(target_column))
+        # Define columns to fetch including foreign key relations
         columns = (
             "ISIN, Name, Currency, Ticker, ClosedOn, created_at, created_by, "
             "RefPriceSource(Label), RefAssetClass(Label), RefRegion(Label), RefSector(Label)"
         )
         query = supabase.table("AssetStaticData").select(columns).execute()
         
-        # Flatten the data for a cleaner table display
         flattened_data = []
         for row in query.data:
+            # We build the dictionary in the specific order you requested
             flattened_data.append({
                 "ISIN": row.get("ISIN"),
                 "Name": row.get("Name"),
-                "Ticker": row.get("Ticker"),
                 "Currency": row.get("Currency"),
-                "Price Source": row.get("RefPriceSource", {}).get("Label") if row.get("RefPriceSource") else None,
-                "Asset Class": row.get("RefAssetClass", {}).get("Label") if row.get("RefAssetClass") else None,
+                "Ticker": row.get("Ticker"),
+                "PriceSource": row.get("RefPriceSource", {}).get("Label") if row.get("RefPriceSource") else None,
+                "AssetClass": row.get("RefAssetClass", {}).get("Label") if row.get("RefAssetClass") else None,
                 "Region": row.get("RefRegion", {}).get("Label") if row.get("RefRegion") else None,
                 "Sector": row.get("RefSector", {}).get("Label") if row.get("RefSector") else None,
-                "Closed On": row.get("ClosedOn"),
-                "Created By": row.get("created_by")
+                "ClosedOn": row.get("ClosedOn"),
+                "created_at": row.get("created_at"),
+                "created_by": row.get("created_by")
             })
         return flattened_data
     except Exception as e:
