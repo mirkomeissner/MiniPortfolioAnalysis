@@ -6,8 +6,6 @@ from src.database import get_ref_data, get_all_assets_with_labels, supabase
 
 
 def asset_table_view():
-        # --- VIEW: LIST (Table Display) ---
-        if st.session_state["view"] == "list":
             st.title("AssetStaticData")
             
             if st.button("➕ New ISIN"):
