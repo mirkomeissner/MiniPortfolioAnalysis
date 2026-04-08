@@ -6,32 +6,25 @@ from src.database import get_ref_data, get_all_assets_with_labels, supabase
 
 
 def asset_table_view():
-    """Zeigt die Überschrift, den 'New ISIN' Button und die Datentabelle an."""
-    st.title("AssetStaticData")
-    
-    if st.button("➕ New ISIN"):
-        # Initialisierung für das Formular
-        st.session_state["rows"] = [{
-            "ISIN": "", "Name": "", "Ticker": "", "Currency": "USD", 
-            "PriceSource": "", "AssetClass": "", "Region": "", "Sector": ""
-        }]
-        st.session_state["view"] = "form"
-        st.rerun()
+        # --- VIEW: LIST (Table Display) ---
+        if st.session_state["view"] == "list":
+            st.title("AssetStaticData")
+            
+            if st.button("➕ New ISIN"):
+                # Prepare temporary storage for the bulk form
+                st.session_state["rows"] = [{
+                    "ISIN": "", "Name": "", "Ticker": "", "Currency": "USD", 
+                    "PriceSource": "", "AssetClass": "", "Region": "", "Sector": ""
+                }]
+                st.session_state["view"] = "form"
+                st.rerun()
 
-    # Daten laden und anzeigen
-    data = get_all_assets_with_labels()
-    if data:
-        st.dataframe(data, use_container_width=True)
-    else:
-        st.info("No records found in AssetStaticData.")
-
-def asset_bulk_form():
-    """Renders the bulk input form for new assets (Dein bisheriger Code)."""
-    st.title("Create New Assets")
-    
-    # ... (hier kopierst du deinen kompletten Formular-Code hinein)
-    # ... inklusive der Logik für Submit und Cancel
-
+            # Display the data table
+            data = get_all_assets_with_labels()
+            if data:
+                st.dataframe(data, use_container_width=True)
+            else:
+                st.info("No records found in AssetStaticData.")
 
 
 
