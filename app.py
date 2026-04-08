@@ -17,7 +17,11 @@ if check_password():
     st.sidebar.title(f"User: {st.session_state['user_name']}")
     
     # Navigation Menu
-    menu = st.sidebar.selectbox("Navigation", ["Home", "AssetStaticData"])
+    menu = st.sidebar.radio(
+        "Navigation", 
+        ["Home", "AssetStaticData"],
+        index=0  # 'Home' is default selection
+    )
     
     # Logout Logic
     st.sidebar.markdown("---")
