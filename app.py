@@ -1,6 +1,13 @@
 import streamlit as st
 from supabase import create_client, Client
 
+# THIS MUST BE THE VERY FIRST STREAMLIT COMMAND
+st.set_page_config(
+    page_title="Asset Manager",
+    layout="wide",  # This uses the full screen width
+    initial_sidebar_state="expanded"
+)
+
 # 1. Setup Supabase Connection
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
