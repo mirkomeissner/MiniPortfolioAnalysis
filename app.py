@@ -6,7 +6,7 @@ from src.database import (
     get_all_assets_with_labels, 
     supabase
 )
-from src.components import asset_bulk_form
+from src.components import asset_table_view, asset_bulk_form
 
 # 1. Page Configuration (Must be first)
 st.set_page_config(page_title="Asset Manager", layout="wide")
@@ -40,23 +40,7 @@ if check_password():
 
         # --- VIEW: LIST (Table Display) ---
         if st.session_state["view"] == "list":
-            st.title("AssetStaticData")
-            
-            if st.button("➕ New ISIN"):
-                # Prepare temporary storage for the bulk form
-                st.session_state["rows"] = [{
-                    "ISIN": "", "Name": "", "Ticker": "", "Currency": "USD", 
-                    "PriceSource": "", "AssetClass": "", "Region": "", "Sector": ""
-                }]
-                st.session_state["view"] = "form"
-                st.rerun()
-
-            # Display the data table
-            data = get_all_assets_with_labels()
-            if data:
-                st.dataframe(data, use_container_width=True)
-            else:
-                st.info("No records found in AssetStaticData.")
+            asset_table_view()
 
         # --- VIEW: FORM (Bulk Input) ---
         elif st.session_state["view"] == "form":
