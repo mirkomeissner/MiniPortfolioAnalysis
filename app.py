@@ -1,46 +1,34 @@
 import streamlit as st
 from supabase import create_client, Client
 
-# 1. Setup Supabase Connection (via st.secrets)
+# 1. Setup Supabase Connection
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(url, key)
 
-# 2. Authentication Logic (Multi-User)
+# 2. Authentication Logic
 def check_password():
-    """Returns True if the user has supplied a correct username and password."""
-    
     def login_form():
-        """Form to enter credentials"""
         with st.form("Login"):
             st.subheader("Login required")
             user = st.text_input("Username")
             pwd = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Login")
-            
-            if submit:
-                # Retrieve users from secrets (stored as a dictionary)
-                # Format in secrets.toml:
-                # [credentials]
-                # admin = "password123"
-                # analyst = "finance456"
+            if st.form_submit_button("Login"):
                 credentials = st.secrets["credentials"]
-                
                 if user in credentials and pwd == credentials[user]:
                     st.session_state["logged_in"] = True
                     st.session_state["user_name"] = user
                     st.rerun()
                 else:
-                    st.error("❌ Invalid username or password")
+                    st.error("❌ Invalid credentials")
 
     if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
         login_form()
         return False
-    
     return True
 
-# 3. Helper function to fetch reference data
-@st.cache_data(ttl=600)  # Cache data for 10 minutes to save API calls
+# 3. Data Fetching
+@st.cache_data(ttl=600)
 def get_ref_data(table_name):
     try:
         query = supabase.table(table_name).select("Code, Label").execute()
@@ -49,65 +37,93 @@ def get_ref_data(table_name):
         st.error(f"Error loading {table_name}: {e}")
         return {}
 
-# 4. Main App (displayed only after successful login)
+# 4. Main App
 if check_password():
-    st.sidebar.write(f"Logged in as: **{st.session_state['user_name']}**")
-    
-    st.title("🏦 Asset Manager")
-    st.subheader("Create new record in AssetStaticData")
+    st.title("🏦 Bulk Asset Manager")
 
-    # Load dynamic data from reference tables
+    # Initialize the row list in session state if it doesn't exist
+    if "rows" not in st.session_state:
+        st.session_state["rows"] = [{"ISIN": "", "Name": "", "Ticker": "", "Currency": "USD", "AssetClass": "", "Region": "", "Sector": ""}]
+
+    # Load reference data
     asset_classes = get_ref_data("RefAssetClass")
     regions = get_ref_data("RefRegion")
     sectors = get_ref_data("RefSector")
 
-    # Display form if reference data was loaded successfully
     if asset_classes and regions and sectors:
-        with st.form("asset_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
+        
+        # --- TABLE HEADER ---
+        # We simulate a table using columns
+        header_cols = st.columns([2, 2, 1, 1, 2, 2, 2, 0.5])
+        headers = ["ISIN", "Name", "Ticker", "Curr", "Asset Class", "Region", "Sector", ""]
+        for col, label in zip(header_cols, headers):
+            col.write(f"**{label}**")
+
+        # --- TABLE ROWS ---
+        rows_to_delete = []
+
+        for idx, row in enumerate(st.session_state["rows"]):
+            cols = st.columns([2, 2, 1, 1, 2, 2, 2, 0.5])
             
-            with col1:
-                isin = st.text_input("ISIN (Primary Key)", placeholder="e.g. US0378331005")
-                name = st.text_input("Asset Name", placeholder="e.g. Apple Inc.")
-                ticker = st.text_input("Ticker", placeholder="AAPL")
-                currency = st.text_input("Currency", value="USD", max_chars=3)
+            # Input fields update the session state directly via keys
+            st.session_state["rows"][idx]["ISIN"] = cols[0].text_input("ISIN", value=row["ISIN"], key=f"isin_{idx}", label_visibility="collapsed")
+            st.session_state["rows"][idx]["Name"] = cols[1].text_input("Name", value=row["Name"], key=f"name_{idx}", label_visibility="collapsed")
+            st.session_state["rows"][idx]["Ticker"] = cols[2].text_input("Ticker", value=row["Ticker"], key=f"tick_{idx}", label_visibility="collapsed")
+            st.session_state["rows"][idx]["Currency"] = cols[3].text_input("Curr", value=row["Currency"], key=f"curr_{idx}", label_visibility="collapsed")
+            
+            st.session_state["rows"][idx]["AssetClass"] = cols[4].selectbox("AC", options=list(asset_classes.keys()), key=f"ac_{idx}", label_visibility="collapsed")
+            st.session_state["rows"][idx]["Region"] = cols[5].selectbox("Reg", options=list(regions.keys()), key=f"reg_{idx}", label_visibility="collapsed")
+            st.session_state["rows"][idx]["Sector"] = cols[6].selectbox("Sec", options=list(sectors.keys()), key=f"sec_{idx}", label_visibility="collapsed")
+            
+            # Delete Button (Bin Icon)
+            if cols[7].button("🗑️", key=f"del_{idx}"):
+                rows_to_delete.append(idx)
 
-            with col2:
-                # Dropdowns use Labels, but the logic handles the Codes
-                selected_ac = st.selectbox("Asset Class", options=list(asset_classes.keys()))
-                selected_reg = st.selectbox("Region", options=list(regions.keys()))
-                selected_sec = st.selectbox("Sector", options=list(sectors.keys()))
-                price_source = st.text_input("Price Source", value="Yahoo Finance")
+        # Handle row deletion
+        if rows_to_delete:
+            for i in reversed(rows_to_delete):
+                st.session_state["rows"].pop(i)
+            st.rerun()
 
-            submitted = st.form_submit_button("Insert Asset")
+        # --- ACTIONS ---
+        col_buttons = st.columns([1, 1, 4])
+        
+        if col_buttons[0].button("➕ Add Row"):
+            st.session_state["rows"].append({"ISIN": "", "Name": "", "Ticker": "", "Currency": "USD", "AssetClass": "", "Region": "", "Sector": ""})
+            st.rerun()
 
-            if submitted:
-                if isin and name:
-                    # Prepare payload (case-sensitive mapping to SQL schema)
-                    new_row = {
-                        "ISIN": isin,
-                        "Name": name,
-                        "Ticker": ticker,
-                        "Currency": currency,
-                        "PriceSource": price_source,
-                        "AssetClassCode": asset_classes[selected_ac],
-                        "RegionCode": regions[selected_reg],
-                        "SectorCode": sectors[selected_sec]
-                    }
-
-                    # Execute Insert in Supabase
-                    try:
-                        supabase.table("AssetStaticData").insert(new_row).execute()
-                        st.success(f"✅ Successfully added: {name} ({isin})")
-                    except Exception as e:
-                        st.error(f"❌ Database Error: {e}")
-                else:
-                    st.warning("Please provide both ISIN and Name!")
-    else:
-        st.error("Could not load reference data. Please check Supabase connection.")
+        if col_buttons[1].button("🚀 Submit All", type="primary"):
+            # Prepare the payload
+            payload = []
+            valid = True
+            
+            for r in st.session_state["rows"]:
+                if not r["ISIN"] or not r["Name"]:
+                    st.error("Error: ISIN and Name are required for all rows.")
+                    valid = False
+                    break
+                
+                payload.append({
+                    "ISIN": r["ISIN"],
+                    "Name": r["Name"],
+                    "Ticker": r["Ticker"],
+                    "Currency": r["Currency"],
+                    "PriceSource": "Yahoo Finance", # Default or add to row
+                    "AssetClassCode": asset_classes[r["AssetClass"]],
+                    "RegionCode": regions[r["Region"]],
+                    "SectorCode": sectors[r["Sector"]]
+                })
+            
+            if valid and payload:
+                try:
+                    supabase.table("AssetStaticData").insert(payload).execute()
+                    st.success(f"✅ Successfully inserted {len(payload)} records!")
+                    st.session_state["rows"] = [{"ISIN": "", "Name": "", "Ticker": "", "Currency": "USD", "AssetClass": "", "Region": "", "Sector": ""}] # Reset
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Database Error: {e}")
 
     # Sidebar Logout
     if st.sidebar.button("Logout"):
         st.session_state["logged_in"] = False
-        st.session_state["user_name"] = None
         st.rerun()
