@@ -11,25 +11,7 @@ key = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(url, key)
 
 # 3. Authentication Logic
-def check_password():
-    def login_form():
-        with st.form("Login"):
-            st.subheader("Login required")
-            user = st.text_input("Username")
-            pwd = st.text_input("Password", type="password")
-            if st.form_submit_button("Login"):
-                credentials = st.secrets["credentials"]
-                if user in credentials and pwd == credentials[user]:
-                    st.session_state["logged_in"] = True
-                    st.session_state["user_name"] = user
-                    st.rerun()
-                else:
-                    st.error("❌ Invalid credentials")
-
-    if "logged_in" not in st.session_state or not st.session_state["logged_in"]:
-        login_form()
-        return False
-    return True
+from src.authentication import check_password
 
 # 4. Data Fetching Functions
 @st.cache_data(ttl=600)
