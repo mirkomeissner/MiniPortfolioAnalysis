@@ -12,10 +12,10 @@ supabase = get_supabase_client()
 
 @st.cache_data(ttl=600)
 def get_ref_data(table_name):
-    """Fetches reference data and returns a dictionary of Label: Code."""
+    """Fetches reference data and returns a dictionary of label: code."""
     try:
-        query = supabase.table(table_name).select("Code, Label").execute()
-        return {item['Label']: item['Code'] for item in query.data}
+        query = supabase.table(table_name).select("code, label").execute()
+        return {item['label']: item['code'] for item in query.data}
     except Exception as e:
         st.error(f"Error loading {table_name}: {e}")
         return {}
@@ -28,25 +28,25 @@ def get_all_assets_with_labels():
     try:
         # Define columns with foreign key relations
         columns = (
-            "ISIN, Name, Currency, Ticker, ClosedOn, created_at, created_by, "
-            "RefPriceSource(Label), RefAssetClass(Label), RefRegion(Label), RefSector(Label)"
+            "isin, name, currency, ticker, closed_on, created_at, created_by, "
+            "ref_price_source(label), ref_asset_class(label), ref_region(label), ref_sector(label)"
         )
         
-        query = supabase.table("AssetStaticData").select(columns).execute()
+        query = supabase.table("asset_static_data").select(columns).execute()
         
         if query.data:
             for row in query.data:
                 # 2. Build the ordered dictionary
                 flattened_data.append({
-                    "ISIN": row.get("ISIN"),
-                    "Name": row.get("Name"),
-                    "Currency": row.get("Currency"),
-                    "Ticker": row.get("Ticker"),
-                    "PriceSource": row.get("RefPriceSource", {}).get("Label") if row.get("RefPriceSource") else None,
-                    "AssetClass": row.get("RefAssetClass", {}).get("Label") if row.get("RefAssetClass") else None,
-                    "Region": row.get("RefRegion", {}).get("Label") if row.get("RefRegion") else None,
-                    "Sector": row.get("RefSector", {}).get("Label") if row.get("RefSector") else None,
-                    "ClosedOn": row.get("ClosedOn"),
+                    "isin": row.get("isin"),
+                    "name": row.get("name"),
+                    "currency": row.get("currency"),
+                    "ticker": row.get("ticker"),
+                    "price_source": row.get("ref_price_source", {}).get("label") if row.get("ref_price_source") else None,
+                    "asset_class": row.get("ref_asset_class", {}).get("label") if row.get("ref_asset_class") else None,
+                    "region": row.get("ref_region", {}).get("label") if row.get("ref_region") else None,
+                    "sector": row.get("ref_sector", {}).get("label") if row.get("ref_sector") else None,
+                    "closed_on": row.get("close_on"),
                     "created_at": row.get("created_at"),
                     "created_by": row.get("created_by")
                 })
@@ -64,9 +64,9 @@ def get_all_assets_with_labels():
 def get_all_transactions():
     """Fetch all transactions for the current user from Supabase."""
     user = st.session_state.get('user_name')
-    response = supabase.table("Transactions") \
+    response = supabase.table("transactions") \
         .select("*") \
-        .eq("Username", user) \
+        .eq("username", user) \
         .execute()
     return response.data
 
