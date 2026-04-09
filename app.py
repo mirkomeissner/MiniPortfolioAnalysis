@@ -6,12 +6,17 @@ from src.database import (
     get_all_assets_with_labels, 
     supabase
 )
-from src.components import asset_table_view, asset_bulk_form
+from src.components import (
+    asset_table_view, 
+    asset_bulk_form, 
+    transaction_table_view, 
+    transaction_bulk_form
+)
 
-# 1. Page Configuration (Must be first)
+# Page Configuration (Must be first)
 st.set_page_config(page_title="Asset Manager", layout="wide")
 
-# 2. Authentication Check
+# Authentication Check
 if check_password():
     # --- SIDEBAR ---
     st.sidebar.title(f"User: {st.session_state['user_name']}")
@@ -19,7 +24,7 @@ if check_password():
     # Navigation Menu
     menu = st.sidebar.radio(
         "Navigation", 
-        ["Home", "AssetStaticData"],
+        ["Home", "AssetStaticData", "Transactions"],
         index=0  # 'Home' is default selection
     )
     
@@ -31,6 +36,14 @@ if check_password():
 
     # --- MAIN CONTENT AREA ---
 
+    # Reset view state when switching menu items
+    if "last_menu" not in st.session_state:
+        st.session_state["last_menu"] = menu
+    
+    if st.session_state["last_menu"] != menu:
+        st.session_state["view"] = "list"
+        st.session_state["last_menu"] = menu
+    
     # PAGE: HOME
     if menu == "Home":
         st.title("Welcome")
@@ -49,4 +62,12 @@ if check_password():
         # --- VIEW: FORM (Bulk Input) ---
         elif st.session_state["view"] == "form":
             asset_bulk_form()
-            
+
+    # PAGE: TRANSACTIONS (New Section)
+    elif menu == "Transactions":
+        if "view" not in st.session_state:
+            st.session_state["view"] = "list"
+        if st.session_state["view"] == "list":
+            transaction_table_view()
+        elif st.session_state["view"] == "form":
+            transaction_bulk_form()
