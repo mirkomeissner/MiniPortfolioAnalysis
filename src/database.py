@@ -57,3 +57,19 @@ def get_all_assets_with_labels():
         
     return flattened_data
     
+
+
+
+
+def get_all_transactions():
+    """Fetch all transactions for the current user from Supabase."""
+    user = st.session_state.get('user_name')
+    response = supabase.table("Transactions") \
+        .select("*") \
+        .eq("Username", user) \
+        .execute()
+    return response.data
+
+
+
+
