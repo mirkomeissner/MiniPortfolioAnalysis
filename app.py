@@ -53,7 +53,7 @@ if check_password():
     # PAGE: HOME
     if menu == "Home":
         st.title("Welcome")
-        st.write(f"Hello **{st.session_state['user_name']}**, please select a menu item to get started.")
+        st.write(f"Hello **{st.session_state['user_name']}**, please select a menu item to get started. Made in Merzhausen with Love.")
 
     # PAGE: ASSET STATIC DATA
     elif menu == "AssetStaticData":
