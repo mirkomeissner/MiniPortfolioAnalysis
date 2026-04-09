@@ -46,7 +46,7 @@ def get_all_assets_with_labels():
                     "asset_class": row.get("ref_asset_class", {}).get("label") if row.get("ref_asset_class") else None,
                     "region": row.get("ref_region", {}).get("label") if row.get("ref_region") else None,
                     "sector": row.get("ref_sector", {}).get("label") if row.get("ref_sector") else None,
-                    "closed_on": row.get("close_on"),
+                    "closed_on": row.get("closed_on"),
                     "created_at": row.get("created_at"),
                     "created_by": row.get("created_by")
                 })
