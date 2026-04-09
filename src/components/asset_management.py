@@ -87,4 +87,24 @@ def asset_bulk_form():
                     "name": r["name"],
                     "ticker": r["ticker"],
                     "currency": r["currency"],
-                    "price_source": ps_dict[r["price_
+                    "price_source": ps_dict[r["price_source"]],
+                    "asset_class_code": ac_dict[r["asset_class"]],
+                    "region_code": reg_dict[r["region"]],
+                    "sector_code": sec_dict[r["sector"]],
+                    "created_by": st.session_state["user_name"]
+                })
+            
+            if valid and payload:
+                try:
+                    supabase.table("asset_static_data").insert(payload).execute()
+                    st.success(f"✅ Successfully inserted {len(payload)} records!")
+                    st.session_state["view"] = "list"
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Database Error: {e}")
+        
+        if btn_col3.button("Cancel"):
+            st.session_state["view"] = "list"
+            st.rerun()
+
+
