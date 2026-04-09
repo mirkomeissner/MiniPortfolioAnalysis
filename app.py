@@ -34,7 +34,11 @@ if check_password():
         st.session_state["logged_in"] = False
         st.rerun()
 
-    # --- MAIN CONTENT AREA ---
+
+    # --- GLOBAL VIEW STATE MANAGEMENT ---
+    # Ensure "view" is always initialized
+    if "view" not in st.session_state:
+        st.session_state["view"] = "list"
 
     # Reset view state when switching menu items
     if "last_menu" not in st.session_state:
@@ -44,6 +48,8 @@ if check_password():
         st.session_state["view"] = "list"
         st.session_state["last_menu"] = menu
     
+    # --- MAIN CONTENT AREA ---
+    
     # PAGE: HOME
     if menu == "Home":
         st.title("Welcome")
@@ -51,22 +57,13 @@ if check_password():
 
     # PAGE: ASSET STATIC DATA
     elif menu == "AssetStaticData":
-        # Initialize view state (Table view vs. Form view)
-        if "view" not in st.session_state:
-            st.session_state["view"] = "list"
-
-        # --- VIEW: LIST (Table Display) ---
         if st.session_state["view"] == "list":
             asset_table_view()
-
-        # --- VIEW: FORM (Bulk Input) ---
         elif st.session_state["view"] == "form":
             asset_bulk_form()
-
-    # PAGE: TRANSACTIONS (New Section)
+            
+    # PAGE: Transactions
     elif menu == "Transactions":
-        if "view" not in st.session_state:
-            st.session_state["view"] = "list"
         if st.session_state["view"] == "list":
             transaction_table_view()
         elif st.session_state["view"] == "form":
