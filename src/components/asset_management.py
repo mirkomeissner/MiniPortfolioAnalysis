@@ -32,10 +32,10 @@ def asset_bulk_form():
     st.title("Create New Assets")
     
     # 1. Daten für Dropdowns laden
-    ac_dict = get_ref_data("RefAssetClass")
-    reg_dict = get_ref_data("RefRegion")
-    sec_dict = get_ref_data("RefSector")
-    ps_dict = get_ref_data("RefPriceSource")
+    ac_dict = get_ref_data("ref_asset_class")
+    reg_dict = get_ref_data("ref_region")
+    sec_dict = get_ref_data("ref_sector")
+    ps_dict = get_ref_data("ref_price_source")
 
     if all([ac_dict, reg_dict, sec_dict, ps_dict]):
         # 2. Tabellen-Header Layout
