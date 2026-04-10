@@ -1,17 +1,16 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+# Wir importieren die Speicherfunktion aus deiner database.py
 from src.database import supabase, save_asset_static_data
 
 # --- 1. HILFSFUNKTIONEN ---
 
 def get_ref_options_list(table_name):
-    """Holt eine Liste von 'CODE (Label)' Strings für die Selectbox."""
     try:
         response = supabase.table(table_name).select("code, label").execute()
         if not response.data:
             return []
-        # Wir bauen den String direkt hier zusammen
         return [f"{item['code']} ({item['label']})" for item in response.data]
     except Exception as e:
         st.error(f"Fehler beim Laden von {table_name}: {e}")
@@ -23,7 +22,6 @@ def get_country_mapping():
         return {item['country']: item['region_code'] for item in response.data}
     except:
         return {}
-
 
 def map_yahoo_to_ref(yahoo_sector):
     mapping = {
@@ -49,11 +47,8 @@ def map_yahoo_to_asset_class(quote_type, symbol_name=""):
     if qt_up in ["CRYPTOCURRENCY", "COMMODITY"] or any(word in name_up for word in ["GOLD", "REIT"]): return "ALT"
     return "EQU"
 
-
-
-
+# Diese Funktion bereitet die Daten vor und ruft die Datenbank-Funktion auf
 def handle_save_request(row, isin):
-    # Mapping und Cleanup (wie wir es vorhin besprochen haben)
     def clean_code(val):
         return val.split(" (")[0] if val and " (" in str(val) else val
 
@@ -74,25 +69,19 @@ def handle_save_request(row, isin):
 
     try:
         save_asset_static_data(asset_entry)
-        st.success(f"✅ {row['Ticker']} gespeichert!")
+        st.success(f"✅ {row['Ticker']} wurde erfolgreich als Stammdatum gespeichert!")
+        st.balloons()
     except Exception as e:
-        st.error(f"Fehler: {e}")
-
-
-
-
-
+        st.error(f"Fehler beim Speichern: {e}")
 
 # --- 2. HAUPTFUNKTION ---
 
 def ticker_search_view():
     st.title("🔍 Ticker Search & Edit")
 
-    # Initialisierung der REF-Listen (CODE + LABEL kombiniert)
     if 'ref_data_loaded' not in st.session_state:
         with st.spinner("Lade Referenzdaten..."):
             st.session_state['db_region_map'] = get_country_mapping()
-            # Wir speichern jetzt direkt die fertigen Listen für die Dropdowns
             st.session_state['opt_asset'] = get_ref_options_list("ref_asset_class")
             st.session_state['opt_gics'] = get_ref_options_list("ref_sector")
             st.session_state['opt_region'] = get_ref_options_list("ref_region")
@@ -117,8 +106,6 @@ def ticker_search_view():
                         name = info.get("longName") or res.get("longname") or "Unbekannt"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
                         
-                        # Wir suchen den passenden Startwert aus unseren Listen
-                        # Damit der Editor den Wert erkennt, muss er exakt einem Eintrag in der Liste entsprechen
                         a_code = map_yahoo_to_asset_class(raw_type, name)
                         asset_val = next((s for s in st.session_state['opt_asset'] if s.startswith(a_code)), a_code)
                         
@@ -143,16 +130,14 @@ def ticker_search_view():
                             "Region": reg_val,
                             "InstrumentType_Raw": raw_type,
                             "InstrumentType": type_val,
-                            "AssetClass": asset_val,  # <--- Jetzt hier (vorletzte Stelle)
+                            "AssetClass": asset_val,
                             "Vol (7d Avg)": int(t.history(period="7d")['Volume'].mean()) if not t.history(period="7d").empty else 0
                         })
                     st.session_state["search_results_df"] = pd.DataFrame(raw_data)
             except Exception as e:
                 st.error(f"Suche fehlgeschlagen: {e}")
 
-    # --- TABELLE ---
     if "search_results_df" in st.session_state:
-        # Hier nutzen wir nun die vorbereiteten Listen ohne Lambda-Formatierung
         column_config = {
             "Ticker": st.column_config.TextColumn(disabled=True),
             "Name": st.column_config.TextColumn(disabled=True),
@@ -163,13 +148,9 @@ def ticker_search_view():
             "Sector_GICS": st.column_config.SelectboxColumn("GICS", options=st.session_state['opt_gics'], required=True),
             "Country": st.column_config.TextColumn("Country"),
             "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
-            "InstrumentType_Raw": st.column_config.TextColumn("Yahoo Type", disabled=True),
+            "InstrumentType_Raw": None,
             "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type'], required=True),
-            "AssetClass": st.column_config.SelectboxColumn(
-                "Asset Class", 
-                options=st.session_state['opt_asset'], 
-                required=True
-            ),
+            "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'], required=True),
             "Vol (7d Avg)": st.column_config.NumberColumn(disabled=True, format="%d")
         }
 
@@ -180,11 +161,9 @@ def ticker_search_view():
             hide_index=True,
             key="final_asset_editor",
             num_rows="fixed",
-            selection_mode="single_row" # Erlaubt die Auswahl einer Zeile
+            selection_mode="single_row"
         )
 
-        # Auswahl abfragen
-        # Hinweis: .get("selection") liefert die Indizes der gewählten Zeilen
         selection = st.session_state["final_asset_editor"].get("selection", {}).get("rows", [])
 
         if selection:
@@ -194,9 +173,10 @@ def ticker_search_view():
             st.write("---")
             st.write(f"Ausgewählt für Import: **{selected_data['Ticker']}** ({selected_data['Name']})")
             
+            # Hier war der Name falsch (save_asset_to_db -> handle_save_request)
             if st.button("Jetzt in Datenbank speichern", type="primary", use_container_width=True):
-                save_asset_to_db(selected_data, isin_input)
+                handle_save_request(selected_data, isin_input)
         else:
-            st.info("💡 Bitte wählen Sie links in der Tabelle eine Zeile aus, um den Import zu starten.")
+            st.info("💡 Bitte wählen Sie links in der Tabelle eine Zeile aus (Häkchen), um den Import zu starten.")
 
 
