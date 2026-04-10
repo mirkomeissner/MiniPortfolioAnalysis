@@ -1,0 +1,87 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+from datetime import datetime, timedelta
+from src.database import supabase
+
+def get_country_mapping():
+    """Fetch the mapping from Supabase and return as a dictionary."""
+    try:
+        response = supabase.table("country_region_mapping").select("country, region_code").execute()
+        return {item['country']: item['region_code'] for item in response.data}
+    except Exception as e:
+        st.error(f"Error loading region mapping: {e}")
+        return {}
+
+def ticker_search_view():
+    """Main view for the Ticker Search feature."""
+    st.title("🔍 Ticker Search via ISIN")
+    st.write("Search for trading venues and master data using the ISIN.")
+
+    # Load mapping into session state to avoid constant DB calls
+    if 'db_region_map' not in st.session_state:
+        st.session_state['db_region_map'] = get_country_mapping()
+    
+    region_map = st.session_state['db_region_map']
+
+    # Input Area
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        isin_input = st.text_input("Enter ISIN", placeholder="e.g. US0378331005")
+    with col2:
+        st.write("##") # Spacer
+        search_button = st.button("Search Ticker", use_container_width=True)
+
+    if search_button and isin_input:
+        with st.spinner(f"Searching for {isin_input}..."):
+            try:
+                # 1. Search via yfinance
+                search_results = yf.Search(isin_input).quotes
+                
+                if not search_results:
+                    st.warning("No tickers found for this ISIN.")
+                else:
+                    data_list = []
+                    
+                    for res in search_results:
+                        symbol = res.get("symbol")
+                        ticker_obj = yf.Ticker(symbol)
+                        info = ticker_obj.info
+                        
+                        # Region Mapping Logic
+                        country = info.get("country", "Unknown")
+                        name = info.get("longName") or res.get("longname") or ""
+                        
+                        # Heuristic for ETFs/Global funds
+                        if any(word in name.upper() for word in ["WORLD", "GLOBAL", "ALL COUNTRY"]):
+                            mapped_region = "GLO"
+                        elif "DEVELOPED" in name.upper():
+                            mapped_region = "DEV"
+                        else:
+                            mapped_region = region_map.get(country, "GLO")
+
+                        # Volume calculation (last 7 days)
+                        end_date = datetime.now()
+                        start_date = end_date - timedelta(days=7)
+                        hist = ticker_obj.history(start=start_date, end=end_date)
+                        avg_volume = hist['Volume'].mean() if not hist.empty else 0
+                        
+                        # Collect data
+                        data_list.append({
+                            "Ticker": symbol,
+                            "Name": name,
+                            "Region": mapped_region,
+                            "Country": country,
+                            "Exchange": info.get("exchange"),
+                            "Currency": info.get("currency"),
+                            "Industry": info.get("industry"),
+                            "Vol (7d Avg)": f"{avg_volume:,.0f}"
+                        })
+                    
+                    # Display table
+                    df = pd.DataFrame(data_list)
+                    st.subheader("Results")
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+
+            except Exception as e:
+                st.error(f"Search failed: {e}")
