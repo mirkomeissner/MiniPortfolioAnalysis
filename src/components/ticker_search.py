@@ -49,6 +49,40 @@ def map_yahoo_to_asset_class(quote_type, symbol_name=""):
     if qt_up in ["CRYPTOCURRENCY", "COMMODITY"] or any(word in name_up for word in ["GOLD", "REIT"]): return "ALT"
     return "EQU"
 
+
+
+
+def handle_save_request(row, isin):
+    # Mapping und Cleanup (wie wir es vorhin besprochen haben)
+    def clean_code(val):
+        return val.split(" (")[0] if val and " (" in str(val) else val
+
+    asset_entry = {
+        "isin": isin,
+        "name": row["Name"],
+        "currency": row["Currency"],
+        "ticker": row["Ticker"],
+        "price_source": "YFN",
+        "instrument_type": clean_code(row["InstrumentType"]),
+        "asset_class_code": clean_code(row["AssetClass"]),
+        "region_code": clean_code(row["Region"]),
+        "sector_code": clean_code(row["Sector_GICS"]),
+        "industry": row["Industry"],
+        "country": row["Country"],
+        "created_by": st.session_state.get('user_name', 'System')
+    }
+
+    try:
+        save_asset_static_data(asset_entry)
+        st.success(f"✅ {row['Ticker']} gespeichert!")
+    except Exception as e:
+        st.error(f"Fehler: {e}")
+
+
+
+
+
+
 # --- 2. HAUPTFUNKTION ---
 
 def ticker_search_view():
@@ -144,16 +178,25 @@ def ticker_search_view():
             column_config=column_config,
             use_container_width=True,
             hide_index=True,
-            key="v5_editor"
+            key="final_asset_editor",
+            num_rows="fixed",
+            selection_mode="single_row" # Erlaubt die Auswahl einer Zeile
         )
 
-        if st.button("Daten übernehmen"):
-            # Beim Übernehmen bereinigen wir die Strings wieder auf die reinen Codes
-            final_df = edited_df.copy()
-            for col in ["AssetClass", "Sector_GICS", "Region", "InstrumentType"]:
-                final_df[col] = final_df[col].apply(lambda x: x.split(" (")[0] if x else x)
+        # Auswahl abfragen
+        # Hinweis: .get("selection") liefert die Indizes der gewählten Zeilen
+        selection = st.session_state["final_asset_editor"].get("selection", {}).get("rows", [])
+
+        if selection:
+            selected_row_index = selection[0]
+            selected_data = edited_df.iloc[selected_row_index]
+
+            st.write("---")
+            st.write(f"Ausgewählt für Import: **{selected_data['Ticker']}** ({selected_data['Name']})")
             
-            st.success("Daten bereinigt und bereit zum Speichern!")
-            st.dataframe(final_df)
+            if st.button("Jetzt in Datenbank speichern", type="primary", use_container_width=True):
+                save_asset_to_db(selected_data, isin_input)
+        else:
+            st.info("💡 Bitte wählen Sie links in der Tabelle eine Zeile aus, um den Import zu starten.")
 
 
