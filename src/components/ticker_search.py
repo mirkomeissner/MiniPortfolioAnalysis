@@ -1,7 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-from src.database import supabase
+from src.database import supabase, save_asset_static_data
 
 # --- 1. HILFSFUNKTIONEN ---
 
