@@ -102,7 +102,6 @@ def ticker_search_view():
                             "Name": name,
                             "Exchange": info.get("exchange"),
                             "Currency": info.get("currency"),
-                            "AssetClass": asset_val,
                             "Industry": info.get("industry"),
                             "Sector": info.get("sector"),
                             "Sector_GICS": gics_val,
@@ -110,6 +109,7 @@ def ticker_search_view():
                             "Region": reg_val,
                             "InstrumentType_Raw": raw_type,
                             "InstrumentType": type_val,
+                            "AssetClass": asset_val,  # <--- Jetzt hier (vorletzte Stelle)
                             "Vol (7d Avg)": int(t.history(period="7d")['Volume'].mean()) if not t.history(period="7d").empty else 0
                         })
                     st.session_state["search_results_df"] = pd.DataFrame(raw_data)
@@ -122,16 +122,20 @@ def ticker_search_view():
         column_config = {
             "Ticker": st.column_config.TextColumn(disabled=True),
             "Name": st.column_config.TextColumn(disabled=True),
-            "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'], required=True),
-            "Sector_GICS": st.column_config.SelectboxColumn("GICS", options=st.session_state['opt_gics'], required=True),
-            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
-            "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type'], required=True),
             "Exchange": st.column_config.TextColumn(disabled=True),
             "Currency": st.column_config.TextColumn(disabled=True),
             "Industry": st.column_config.TextColumn("Industry"),
             "Sector": st.column_config.TextColumn("Yahoo Sector", disabled=True),
+            "Sector_GICS": st.column_config.SelectboxColumn("GICS", options=st.session_state['opt_gics'], required=True),
             "Country": st.column_config.TextColumn("Country"),
+            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
             "InstrumentType_Raw": st.column_config.TextColumn("Yahoo Type", disabled=True),
+            "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type'], required=True),
+            "AssetClass": st.column_config.SelectboxColumn(
+                "Asset Class", 
+                options=st.session_state['opt_asset'], 
+                required=True
+            ),
             "Vol (7d Avg)": st.column_config.NumberColumn(disabled=True, format="%d")
         }
 
