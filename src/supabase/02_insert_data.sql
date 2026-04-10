@@ -45,7 +45,7 @@ VALUES
   ('BON', 'Bond'),
   ('FUN', 'Fund'),
   ('ETF', 'ETF'),
-  ('CER', 'Certificate'),
+  ('CER', 'Certificate')
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 
