@@ -31,6 +31,29 @@ def map_yahoo_to_ref(yahoo_sector):
     return mapping.get(yahoo_sector, None)
 
 
+def map_yahoo_to_instrument_type(quote_type, symbol_name=""):
+    """
+    Maps Yahoo's quoteType to your custom instrument types.
+    """
+    # Standard-Mapping
+    mapping = {
+        "EQUITY": "STO",       # Aktien
+        "ETF": "ETF",          # ETFs
+        "MUTUALFUND": "FUN",   # Klassische Investmentfonds
+        "BOND": "BON",         # Anleihen
+        "CURRENCY": "FX",      # (Falls du Währungen hast)
+        "CRYPTOCURRENCY": "CRY" # (Falls du Krypto hast)
+    }
+    
+    # Ergebnis von Yahoo holen
+    res = mapping.get(quote_type.upper(), "STO") # STO als Fallback
+    
+    # Sonderlogik für Zertifikate (Yahoo führt diese oft als EQUITY)
+    # Hier hilft oft ein Blick in den Namen
+    if any(word in symbol_name.upper() for word in ["ZERTIFIKAT", "CERTIFICATE", "KNOCK-OUT", "WARRANT"]):
+        return "CER"
+        
+    return res
 
 def ticker_search_view():
     """Main view for the Ticker Search feature."""
@@ -84,7 +107,15 @@ def ticker_search_view():
                         # GICS Code über deine Funktion ermitteln
                         gics_code = map_yahoo_to_ref(yahoo_sector)
 
+
+                        # Typ von Yahoo abrufen (z.B. 'EQUITY' oder 'ETF')
+                        # Entweder aus der Suche oder aus den Ticker-Infos
+                        raw_type = res.get("quoteType") or info.get("quoteType")
         
+                        # Auf deine Kürzel mappen
+                        instrument_type_code = map_yahoo_to_instrument_type(raw_type, info.get("longName", ""))
+
+                        
                         # Volume calculation (last 7 days)
                         end_date = datetime.now()
                         start_date = end_date - timedelta(days=7)
@@ -102,6 +133,8 @@ def ticker_search_view():
                             "Sector_GICS": gics_code,
                             "Country": country,
                             "Region": mapped_region,
+                            "InstrumentType_Raw": raw_type,
+                            "InstrumentType": instrument_type_code,
                             "Vol (7d Avg)": f"{avg_volume:,.0f}"
                         })
                     
