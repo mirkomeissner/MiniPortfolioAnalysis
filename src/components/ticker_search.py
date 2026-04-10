@@ -79,6 +79,12 @@ def ticker_search_view():
                         else:
                             mapped_region = region_map.get(country, "GLO")
 
+                        # Yahoo Sektor abrufen
+                        yahoo_sector = info.get("sector")
+                        # GICS Code über deine Funktion ermitteln
+                        gics_code = map_yahoo_to_ref(yahoo_sector)
+
+        
                         # Volume calculation (last 7 days)
                         end_date = datetime.now()
                         start_date = end_date - timedelta(days=7)
@@ -95,6 +101,7 @@ def ticker_search_view():
                             "Currency": info.get("currency"),
                             "Industry": info.get("industry"),
                             "Sector": info.get("sector"),
+                            "Sector_GICS": gics_code,
                             "Vol (7d Avg)": f"{avg_volume:,.0f}"
                         })
                     
