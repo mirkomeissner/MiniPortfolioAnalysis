@@ -73,3 +73,9 @@ def get_all_transactions():
 
 
 
+def get_country_mapping():
+    response = supabase.table("country_region_mapping").select("country, region_code").execute()
+    # Wandelt die Liste in ein handliches Dictionary um: {'Germany': 'EUR', ...}
+    return {item['country']: item['region_code'] for item in response.data}
+
+
