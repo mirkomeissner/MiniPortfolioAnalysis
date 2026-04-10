@@ -134,31 +134,33 @@ def ticker_search_view():
     if "search_results_df" in st.session_state:
         st.subheader("Stammdaten verfeinern")
         
+        # Sicherstellen, dass wir Listen für die Optionen haben
+        # Falls der Dictionary-Key nicht existiert, wird eine leere Liste [] als Fallback genutzt
         column_config = {
             "Ticker": st.column_config.TextColumn(disabled=True),
             "Name": st.column_config.TextColumn(disabled=True),
             "AssetClass": st.column_config.SelectboxColumn(
                 "Asset Class", 
-                options=list(st.session_state['ref_asset_classes_dict'].keys()),
-                format=lambda x: st.session_state['ref_asset_classes_dict'].get(x, x),
+                options=list(st.session_state.get('ref_asset_classes_dict', {}).keys()),
+                format=lambda x: st.session_state.get('ref_asset_classes_dict', {}).get(x, x),
                 required=True
             ),
             "Sector_GICS": st.column_config.SelectboxColumn(
                 "GICS Code", 
-                options=list(st.session_state['ref_sectors_dict'].keys()),
-                format=lambda x: st.session_state['ref_sectors_dict'].get(x, x),
+                options=list(st.session_state.get('ref_sectors_dict', {}).keys()),
+                format=lambda x: st.session_state.get('ref_sectors_dict', {}).get(x, x),
                 required=True
             ),
             "Region": st.column_config.SelectboxColumn(
                 "Region", 
-                options=list(st.session_state['ref_regions_dict'].keys()),
-                format=lambda x: st.session_state['ref_regions_dict'].get(x, x),
+                options=list(st.session_state.get('ref_regions_dict', {}).keys()),
+                format=lambda x: st.session_state.get('ref_regions_dict', {}).get(x, x),
                 required=True
             ),
             "InstrumentType": st.column_config.SelectboxColumn(
                 "Instrument Type", 
-                options=list(st.session_state['ref_instr_types_dict'].keys()),
-                format=lambda x: st.session_state['ref_instr_types_dict'].get(x, x),
+                options=list(st.session_state.get('ref_instr_types_dict', {}).keys()),
+                format=lambda x: st.session_state.get('ref_instr_types_dict', {}).get(x, x),
                 required=True
             ),
             "Exchange": st.column_config.TextColumn(disabled=True),
