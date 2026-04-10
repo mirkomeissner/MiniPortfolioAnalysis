@@ -189,7 +189,7 @@ def ticker_search_view():
             hide_index=True,
             key="final_asset_editor",
             num_rows="fixed",
-            selection_mode="single_row"
+            selection_mode="selectable"
         )
 
         # 4. Auswahl verarbeiten
