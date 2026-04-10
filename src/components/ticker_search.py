@@ -137,16 +137,13 @@ def ticker_search_view():
             except Exception as e:
                 st.error(f"Suche fehlgeschlagen: {e}")
 
-    # --- TABELLE ---
+# --- TABELLE & AUSWAHL ---
     if "search_results_df" in st.session_state:
-        # 1. Optionen lokal zwischenspeichern, um Stabilität zu garantieren
-        # Wir nutzen .get() mit leeren Listen als Fallback, um TypeErrors zu vermeiden
-        asset_options = st.session_state.get('opt_asset', [])
-        gics_options = st.session_state.get('opt_gics', [])
-        region_options = st.session_state.get('opt_region', [])
-        type_options = st.session_state.get('opt_type', [])
-
-        # 2. Spaltenkonfiguration definieren
+        df = st.session_state["search_results_df"]
+        
+        st.subheader("1. Daten prüfen & editieren")
+        
+        # Wir nutzen den Editor ohne selection_mode, um maximale Stabilität zu garantieren
         column_config = {
             "Ticker": st.column_config.TextColumn(disabled=True),
             "Name": st.column_config.TextColumn(disabled=True),
@@ -154,60 +151,45 @@ def ticker_search_view():
             "Currency": st.column_config.TextColumn(disabled=True),
             "Industry": st.column_config.TextColumn("Industry"),
             "Sector": st.column_config.TextColumn("Yahoo Sector", disabled=True),
-            "Sector_GICS": st.column_config.SelectboxColumn(
-                "GICS", 
-                options=gics_options, 
-                required=True
-            ),
+            "Sector_GICS": st.column_config.SelectboxColumn("GICS", options=st.session_state.get('opt_gics', []), required=True),
             "Country": st.column_config.TextColumn("Country"),
-            "Region": st.column_config.SelectboxColumn(
-                "Region", 
-                options=region_options, 
-                required=True
-            ),
-            "InstrumentType_Raw": None, # Versteckt das interne Feld
-            "InstrumentType": st.column_config.SelectboxColumn(
-                "Type", 
-                options=type_options, 
-                required=True
-            ),
-            "AssetClass": st.column_config.SelectboxColumn(
-                "Asset Class", 
-                options=asset_options, 
-                required=True
-            ),
+            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state.get('opt_region', []), required=True),
+            "InstrumentType_Raw": None,
+            "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state.get('opt_type', []), required=True),
+            "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state.get('opt_asset', []), required=True),
             "Vol (7d Avg)": st.column_config.NumberColumn("Vol (7d)", disabled=True, format="%d")
         }
 
-        # 3. Der Editor
-        # Falls der Fehler bestehen bleibt, ändere selection_mode="single_row" 
-        # zu selection_mode=["selectable"] (je nach Streamlit Version)
         edited_df = st.data_editor(
-            st.session_state["search_results_df"],
+            df,
             column_config=column_config,
             use_container_width=True,
             hide_index=True,
-            key="final_asset_editor",
-            num_rows="fixed",
-            selection_mode="selectable"
+            key="stable_editor_v6"
         )
 
-        # 4. Auswahl verarbeiten
-        # WICHTIG: Prüfen ob der Key im Session State existiert
-        editor_state = st.session_state.get("final_asset_editor")
-        selection = editor_state.get("selection", {}).get("rows", []) if editor_state else []
+        st.markdown("---")
+        st.subheader("2. Ticker für Import wählen")
+        
+        # Der User wählt den Ticker aus einer Liste der gefundenen Symbole
+        ticker_options = edited_df["Ticker"].tolist()
+        selected_ticker = st.selectbox(
+            "Welchen Ticker möchten Sie als Stammdatum speichern?",
+            options=ticker_options,
+            index=0 if len(ticker_options) > 0 else None
+        )
 
-        if selection:
-            selected_row_index = selection[0]
-            selected_data = edited_df.iloc[selected_row_index]
-
-            st.markdown("---")
-            st.write(f"🎯 **Ausgewählt:** {selected_data['Ticker']} | {selected_data['Name']}")
+        if selected_ticker:
+            # Die entsprechende Zeile aus dem editierten DataFrame ziehen
+            selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
+            
+            st.write(f"Ausgewählt: **{selected_row['Name']}** ({selected_ticker})")
             
             if st.button("Jetzt in Datenbank speichern", type="primary", use_container_width=True):
-                handle_save_request(selected_data, isin_input)
-        else:
-            st.info("💡 Bitte wähle eine Zeile in der Tabelle aus (Klick ganz links), um sie zu speichern.")
+                handle_save_request(selected_row, isin_input)
+
+
+
 
 
 
