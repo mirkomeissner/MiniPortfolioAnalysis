@@ -79,3 +79,14 @@ def get_country_mapping():
     return {item['country']: item['region_code'] for item in response.data}
 
 
+def save_asset_static_data(asset_data):
+    """
+    Schreibt ein Asset-Dictionary in die Tabelle asset_static_data.
+    asset_data muss die Spaltennamen der DB als Keys enthalten.
+    """
+    try:
+        response = supabase.table("asset_static_data").upsert(asset_data).execute()
+        return response
+    except Exception as e:
+        raise e # Fehler nach oben weiterreichen, damit die UI darauf reagieren kann
+
