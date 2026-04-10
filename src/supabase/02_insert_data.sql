@@ -33,15 +33,23 @@ ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 INSERT INTO ref_price_source (code, label)
 VALUES 
+  ('YFN', 'YFINANCE'),
   ('GFN', 'GOOGLEFINANCE'),
   ('ARV', 'ARIVA')
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 
+INSERT INTO ref_instrument_type (code, label)
+VALUES 
+  ('STO', 'Stock'),
+  ('BON', 'Bond'),
+  ('FUN', 'Fund'),
+  ('ETF', 'ETF'),
+  ('CER', 'Certificate'),
+ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 
-
-INSERT INTO ref_type (code, label)
+INSERT INTO ref_transaction_type (code, label)
 VALUES ('B', 'Buy'), ('S', 'Sell')
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
