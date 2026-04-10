@@ -1,0 +1,81 @@
+
+CREATE TABLE IF NOT EXISTS ref_asset_class (
+  code TEXT PRIMARY KEY,
+  label TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ref_region (
+  code TEXT PRIMARY KEY,
+  label TEXT NOT NULL
+);
+
+
+CREATE TABLE IF NOT EXISTS ref_sector (
+  code TEXT PRIMARY KEY,
+  label TEXT NOT NULL
+);
+
+
+CREATE TABLE IF NOT EXISTS ref_price_source (
+  code TEXT PRIMARY KEY,
+  label TEXT NOT NULL
+);
+
+
+
+CREATE TABLE IF NOT EXISTS asset_static_data (
+  isin VARCHAR(12) PRIMARY KEY,
+  name TEXT NOT NULL,
+  currency VARCHAR(3),
+  ticker TEXT,
+
+  -- Foreign Key References  
+  price_source TEXT REFERENCES ref_price_source(code),
+  asset_class_code TEXT REFERENCES ref_asset_class(code),
+  region_code TEXT REFERENCES ref_region(code),
+  sector_code TEXT REFERENCES ref_sector(code),
+
+  closed_on DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by TEXT
+);
+
+
+
+
+
+
+CREATE TABLE IF NOT EXISTS ref_type (
+    code TEXT PRIMARY KEY,
+    label TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS accounts (
+    username TEXT NOT NULL,
+    account_code TEXT NOT NULL,
+    description TEXT,
+    PRIMARY KEY (username, account_code)
+);
+
+
+CREATE TABLE IF NOT EXISTS transactions (
+    username TEXT NOT NULL,
+    id TEXT NOT NULL,
+    account_code TEXT NOT NULL,
+    isin TEXT,
+    date DATE DEFAULT CURRENT_DATE,
+    type_code TEXT,
+    quantity NUMERIC,
+    total_amount_eur NUMERIC,
+    
+    PRIMARY KEY (username, id),
+    
+    CONSTRAINT fk_ref_type
+        FOREIGN KEY (type_code) REFERENCES ref_type(code)
+        ON DELETE SET NULL,
+        
+    CONSTRAINT fk_accounts
+        FOREIGN KEY (username, account_code) REFERENCES accounts(username, account_code)
+        ON DELETE CASCADE
+);
+
