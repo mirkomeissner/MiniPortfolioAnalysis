@@ -21,7 +21,10 @@ CREATE TABLE IF NOT EXISTS ref_price_source (
   label TEXT NOT NULL
 );
 
-
+CREATE TABLE IF NOT EXISTS ref_instrument_type (
+  code TEXT PRIMARY KEY,
+  label TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS asset_static_data (
   isin VARCHAR(12) PRIMARY KEY,
@@ -29,12 +32,15 @@ CREATE TABLE IF NOT EXISTS asset_static_data (
   currency VARCHAR(3),
   ticker TEXT,
 
-  -- Foreign Key References  
   price_source TEXT REFERENCES ref_price_source(code),
+  instrument_type TEXT REFERENCES ref_instrument_type(code),
   asset_class_code TEXT REFERENCES ref_asset_class(code),
   region_code TEXT REFERENCES ref_region(code),
   sector_code TEXT REFERENCES ref_sector(code),
 
+  industry TEXT,
+  country TEXT,
+  
   closed_on DATE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   created_by TEXT
@@ -45,7 +51,7 @@ CREATE TABLE IF NOT EXISTS asset_static_data (
 
 
 
-CREATE TABLE IF NOT EXISTS ref_type (
+CREATE TABLE IF NOT EXISTS ref_transaction_type (
     code TEXT PRIMARY KEY,
     label TEXT NOT NULL
 );
@@ -71,7 +77,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     PRIMARY KEY (username, id),
     
     CONSTRAINT fk_ref_type
-        FOREIGN KEY (type_code) REFERENCES ref_type(code)
+        FOREIGN KEY (type_code) REFERENCES ref_transaction_type(code)
         ON DELETE SET NULL,
         
     CONSTRAINT fk_accounts
