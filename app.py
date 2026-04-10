@@ -112,6 +112,8 @@ if check_password():
                             data_list.append({
                                 "Ticker": symbol,
                                 "Name": info.get("longName") or res.get("longname"),
+                                "Country": info.get("country", "N/A"),     
+                                "Exchange": info.get("exchange", "N/A"),
                                 "Currency": info.get("currency"),
                                 "Industry": info.get("industry"),
                                 "Sector": info.get("sector"),
