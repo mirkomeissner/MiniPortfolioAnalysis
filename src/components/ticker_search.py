@@ -75,6 +75,7 @@ def ticker_search_view():
                             "Exchange": info.get("exchange"),
                             "Currency": info.get("currency"),
                             "Industry": info.get("industry"),
+                            "Sector": info.get("sector"),
                             "Vol (7d Avg)": f"{avg_volume:,.0f}"
                         })
                     
