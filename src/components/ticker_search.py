@@ -13,6 +13,25 @@ def get_country_mapping():
         st.error(f"Error loading region mapping: {e}")
         return {}
 
+# mapping from yahoo sectors to GICS sectors
+def map_yahoo_to_ref(yahoo_sector):
+    mapping = {
+        "Technology": "45",
+        "Financial Services": "40",
+        "Healthcare": "35",
+        "Consumer Cyclical": "25",
+        "Consumer Defensive": "30",
+        "Basic Materials": "15",
+        "Energy": "10",
+        "Industrials": "20",
+        "Communication Services": "50",
+        "Utilities": "55",
+        "Real Estate": "60"
+    }
+    return mapping.get(yahoo_sector, None)
+
+
+
 def ticker_search_view():
     """Main view for the Ticker Search feature."""
     st.title("🔍 Ticker Search via ISIN")
