@@ -95,13 +95,13 @@ def ticker_search_view():
                         data_list.append({
                             "Ticker": symbol,
                             "Name": name,
-                            "Region": mapped_region,
-                            "Country": country,
                             "Exchange": info.get("exchange"),
                             "Currency": info.get("currency"),
                             "Industry": info.get("industry"),
                             "Sector": info.get("sector"),
                             "Sector_GICS": gics_code,
+                            "Country": country,
+                            "Region": mapped_region,
                             "Vol (7d Avg)": f"{avg_volume:,.0f}"
                         })
                     
