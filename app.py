@@ -28,8 +28,8 @@ if check_password():
     # Navigation Menu
     menu = st.sidebar.radio(
         "Navigation", 
-        ["Home", "AssetStaticData", "Transactions", "SearchTicker"], # 'SearchTicker' hinzugefügt
-        index=0
+        ["Home", "AssetStaticData", "Transactions", "SearchTicker"], 
+        index=0 
     )
     
     # Logout Logic
@@ -37,7 +37,6 @@ if check_password():
     if st.sidebar.button("Logout"):
         st.session_state["logged_in"] = False
         st.rerun()
-
 
     # --- GLOBAL VIEW STATE MANAGEMENT ---
     # Ensure "view" is always initialized
@@ -57,7 +56,7 @@ if check_password():
     # PAGE: HOME
     if menu == "Home":
         st.title("Welcome")
-        st.write(f"Hello **{st.session_state['user_name']}**, please select a menu item to get started.")
+        st.write(f"Hello **{st.session_state['user_name']}**, please select a menu item to get started. Made in Merzhausen with Love.")
 
     # PAGE: ASSET STATIC DATA
     elif menu == "AssetStaticData":
@@ -73,58 +72,58 @@ if check_password():
         elif st.session_state["view"] == "form":
             transaction_bulk_form()
 
-# --- PAGE: SEARCH TICKER ---
-if menu == "SearchTicker":
-    st.title("🔍 Ticker Suche via ISIN")
-    st.write("Suche nach Handelsplätzen und Stammdaten mithilfe der ISIN.")
+    # PAGE: SEARCH TICKER
+    elif menu == "SearchTicker":
+        st.title("🔍 Search Ticker via ISIN")
+        st.write("Search for Exchange Places and static data via ISIN.")
 
-    # Eingabebereich
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        isin_input = st.text_input("ISIN eingeben", placeholder="z.B. US0378331005")
-    with col2:
-        st.write("##") # Abstandshalter
-        search_button = st.button("SearchTicker")
+        # Input Area
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            isin_input = st.text_input("ISIN eingeben", placeholder="z.B. US0378331005")
+        with col2:
+            st.write("##") # Spacer
+            search_button = st.button("SearchTicker")
 
-    if search_button and isin_input:
-        with st.spinner(f"Suche Ticker für {isin_input}..."):
-            try:
-                # 1. Suche über yfinance (liefert oft Ticker-Vorschläge)
-                search_results = yf.Search(isin_input).quotes
-                
-                if not search_results:
-                    st.warning("Keine Ticker zu dieser ISIN gefunden.")
-                else:
-                    data_list = []
+        if search_button and isin_input:
+            with st.spinner(f"Suche Ticker für {isin_input}..."):
+                try:
+                    # 1. Search via yfinance
+                    search_results = yf.Search(isin_input).quotes
                     
-                    for res in search_results:
-                        symbol = res.get("symbol")
-                        ticker_obj = yf.Ticker(symbol)
-                        info = ticker_obj.info
+                    if not search_results:
+                        st.warning("Keine Ticker zu dieser ISIN gefunden.")
+                    else:
+                        data_list = []
                         
-                        # 2. Handelsvolumen der letzten 7 Tage berechnen
-                        end_date = datetime.now()
-                        start_date = end_date - timedelta(days=7)
-                        hist = ticker_obj.history(start=start_date, end=end_date)
+                        for res in search_results:
+                            symbol = res.get("symbol")
+                            ticker_obj = yf.Ticker(symbol)
+                            info = ticker_obj.info
+                            
+                            # 2. Calculate volume for the last 7 days
+                            end_date = datetime.now()
+                            start_date = end_date - timedelta(days=7)
+                            hist = ticker_obj.history(start=start_date, end=end_date)
+                            
+                            avg_volume = hist['Volume'].mean() if not hist.empty else 0
+                            
+                            # Collect data
+                            data_list.append({
+                                "Ticker": symbol,
+                                "Name": info.get("longName") or res.get("longname"),
+                                "Currency": info.get("currency"),
+                                "Industry": info.get("industry"),
+                                "Sector": info.get("sector"),
+                                "Trading Volume (7d Avg)": f"{avg_volume:,.0f}"
+                            })
                         
-                        avg_volume = hist['Volume'].mean() if not hist.empty else 0
-                        
-                        # Daten sammeln
-                        data_list.append({
-                            "Ticker": symbol,
-                            "Name": info.get("longName") or res.get("longname"),
-                            "Currency": info.get("currency"),
-                            "Industry": info.get("industry"),
-                            "Sector": info.get("sector"),
-                            "Trading Volume (7d Avg)": f"{avg_volume:,.0f}"
-                        })
-                    
-                    # 3. Tabelle anzeigen
-                    df = pd.DataFrame(data_list)
-                    st.subheader("Gefundene Ticker / Handelsplätze")
-                    st.dataframe(df, use_container_width=True, hide_index=True)
+                        # 3. Display table
+                        df = pd.DataFrame(data_list)
+                        st.subheader("Found Ticker / Exchange Places")
+                        st.dataframe(df, use_container_width=True, hide_index=True)
 
-            except Exception as e:
-                st.error(f"Fehler bei der Abfrage: {e}")
+                except Exception as e:
+                    st.error(f"Error with request: {e}")
 
 
