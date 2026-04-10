@@ -48,11 +48,12 @@ def map_yahoo_to_instrument_type(quote_type, symbol_name=""):
         return "CER"
     return res
 
+
 def ticker_search_view():
     st.title("🔍 Ticker Search & Edit")
     st.write("Search via ISIN and refine the metadata before saving.")
 
-    # 1. Load all required mappings and REF-data into session state
+    # 1. Load REF-data into session state
     if 'ref_data_loaded' not in st.session_state:
         st.session_state['db_region_map'] = get_country_mapping()
         st.session_state['ref_sectors'] = get_ref_options("ref_sector")
@@ -101,16 +102,19 @@ def ticker_search_view():
                         hist = ticker_obj.history(period="7d")
                         avg_volume = hist['Volume'].mean() if not hist.empty else 0
                         
+                        # BUILD DATA IN YOUR SPECIFIC ORDER
                         raw_data.append({
                             "Ticker": symbol,
                             "Name": name,
-                            "InstrumentType": instr_type,
-                            "Sector_GICS": gics_code,
+                            "Exchange": info.get("exchange"),
+                            "Currency": info.get("currency"),
                             "Industry": info.get("industry"),
+                            "Sector": yahoo_sector,
+                            "Sector_GICS": gics_code,
                             "Country": country,
                             "Region": mapped_region,
-                            "Currency": info.get("currency"),
-                            "Exchange": info.get("exchange"),
+                            "InstrumentType_Raw": raw_type,
+                            "InstrumentType": instr_type,
                             "Vol (7d Avg)": int(avg_volume)
                         })
                     
@@ -122,28 +126,36 @@ def ticker_search_view():
     # --- EDITABLE TABLE AREA ---
     if "search_results_df" in st.session_state:
         st.subheader("Refine Metadata")
-        st.info("The fields below are pre-filled based on our logic. You can edit them using the dropdowns.")
         
-        # Configure the columns for editing
+        # Configure columns to match your sequence and logic
         column_config = {
             "Ticker": st.column_config.TextColumn(disabled=True),
             "Name": st.column_config.TextColumn(disabled=True),
-            "InstrumentType": st.column_config.SelectboxColumn(
-                "Type", options=st.session_state['ref_instr_types'], required=True
-            ),
-            "Sector_GICS": st.column_config.SelectboxColumn(
-                "GICS Code", options=st.session_state['ref_sectors'], required=True
-            ),
-            "Industry": st.column_config.TextColumn("Industry"),
-            "Country": st.column_config.TextColumn("Country"),
-            "Region": st.column_config.SelectboxColumn(
-                "Region", options=st.session_state['ref_regions'], required=True
-            ),
             "Exchange": st.column_config.TextColumn(disabled=True),
             "Currency": st.column_config.TextColumn(disabled=True),
+            "Industry": st.column_config.TextColumn("Industry (Editable)"),
+            "Sector": st.column_config.TextColumn("Sector (Yahoo)", disabled=True),
+            "Sector_GICS": st.column_config.SelectboxColumn(
+                "Sector GICS", 
+                options=st.session_state['ref_sectors'], 
+                required=True
+            ),
+            "Country": st.column_config.TextColumn("Country (Editable)"),
+            "Region": st.column_config.SelectboxColumn(
+                "Region", 
+                options=st.session_state['ref_regions'], 
+                required=True
+            ),
+            "InstrumentType_Raw": st.column_config.TextColumn("Type (Yahoo)", disabled=True),
+            "InstrumentType": st.column_config.SelectboxColumn(
+                "Type", 
+                options=st.session_state['ref_instr_types'], 
+                required=True
+            ),
             "Vol (7d Avg)": st.column_config.NumberColumn(disabled=True, format="%d")
         }
 
+        # The order in the DataFrame determines the display order
         edited_df = st.data_editor(
             st.session_state["search_results_df"],
             column_config=column_config,
@@ -152,8 +164,9 @@ def ticker_search_view():
             key="ticker_editor"
         )
         
-        # Action Button (Placeholder for saving)
         if st.button("Accept Data"):
-            st.success("Data refined! Ready to be saved to the database.")
-            st.write(edited_df) # Hier könntest du den Insert in Assets machen
+            st.success("Metadata refined!")
+            st.dataframe(edited_df)
+
+
 
