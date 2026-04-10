@@ -71,61 +71,92 @@ if check_password():
             transaction_table_view()
         elif st.session_state["view"] == "form":
             transaction_bulk_form()
-
     # PAGE: SEARCH TICKER
     elif menu == "SearchTicker":
-        st.title("🔍 Search Ticker via ISIN")
-        st.write("Search for Exchange Places and static data via ISIN.")
+        st.title("🔍 Ticker Suche via ISIN")
+        
+        # Extended Mapping based on your categories
+        region_map = {
+            # USA
+            'United States': 'USA',
+            
+            # NAM (North America Ex-USA)
+            'Canada': 'NAM', 'Bermuda': 'NAM',
+            
+            # UK
+            'United Kingdom': 'UK', 'Jersey': 'UK', 'Guernsey': 'UK', 'Isle of Man': 'UK',
+            
+            # EUR (Europe Ex-UK)
+            'Germany': 'EUR', 'France': 'EUR', 'Italy': 'EUR', 'Spain': 'EUR', 
+            'Netherlands': 'EUR', 'Switzerland': 'EUR', 'Belgium': 'EUR', 
+            'Austria': 'EUR', 'Ireland': 'EUR', 'Sweden': 'EUR', 'Norway': 'EUR', 
+            'Denmark': 'EUR', 'Finland': 'EUR', 'Portugal': 'EUR', 'Luxembourg': 'EUR',
+            
+            # APAC (Asia Pacific Developed)
+            'Japan': 'APAC', 'Australia': 'APAC', 'Singapore': 'APAC', 
+            'New Zealand': 'APAC', 'Hong Kong': 'APAC',
+            
+            # EM (Emerging Markets - Asia/East Europe)
+            'China': 'EM', 'India': 'EM', 'Taiwan': 'EM', 'South Korea': 'EM', 
+            'Indonesia': 'EM', 'Thailand': 'EM', 'Malaysia': 'EM', 'Philippines': 'EM', 
+            'Vietnam': 'EM', 'Russia': 'EM', 'Poland': 'EM', 'Turkey': 'EM', 
+            'Czech Republic': 'EM', 'Hungary': 'EM', 'Greece': 'EM',
+            
+            # LATM (Latin America)
+            'Brazil': 'LATM', 'Mexico': 'LATM', 'Chile': 'LATM', 'Colombia': 'LATM', 
+            'Peru': 'LATM', 'Argentina': 'LATM',
+            
+            # MEAF (Middle East & Africa)
+            'South Africa': 'MEAF', 'Israel': 'MEAF', 'Saudi Arabia': 'MEAF', 
+            'United Arab Emirates': 'MEAF', 'Qatar': 'MEAF', 'Kuwait': 'MEAF', 
+            'Egypt': 'MEAF', 'Nigeria': 'MEAF'
+        }
 
-        # Input Area
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            isin_input = st.text_input("ISIN eingeben", placeholder="z.B. US0378331005")
-        with col2:
-            st.write("##") # Spacer
-            search_button = st.button("SearchTicker")
+        isin_input = st.text_input("ISIN eingeben", placeholder="z.B. US0378331005")
+        search_button = st.button("SearchTicker")
 
         if search_button and isin_input:
-            with st.spinner(f"Suche Ticker für {isin_input}..."):
+            with st.spinner(f"Suche nach {isin_input}..."):
                 try:
-                    # 1. Search via yfinance
                     search_results = yf.Search(isin_input).quotes
-                    
                     if not search_results:
-                        st.warning("Keine Ticker zu dieser ISIN gefunden.")
+                        st.warning("Keine Ergebnisse gefunden.")
                     else:
                         data_list = []
-                        
                         for res in search_results:
                             symbol = res.get("symbol")
                             ticker_obj = yf.Ticker(symbol)
                             info = ticker_obj.info
                             
-                            # 2. Calculate volume for the last 7 days
-                            end_date = datetime.now()
-                            start_date = end_date - timedelta(days=7)
-                            hist = ticker_obj.history(start=start_date, end=end_date)
+                            # Logic for Region Mapping
+                            country = info.get("country", "Unknown")
+                            name = info.get("longName") or res.get("longname") or ""
                             
-                            avg_volume = hist['Volume'].mean() if not hist.empty else 0
+                            # Heuristic for Global/Developed (especially for ETFs)
+                            if any(word in name.upper() for word in ["WORLD", "GLOBAL", "ALL COUNTRY"]):
+                                mapped_region = "GLO"
+                            elif "DEVELOPED" in name.upper():
+                                mapped_region = "DEV"
+                            else:
+                                # Standard country mapping, fallback to GLO if unknown
+                                mapped_region = region_map.get(country, "GLO")
+
+                            # Volume 7d
+                            hist = ticker_obj.history(period="7d")
+                            avg_vol = hist['Volume'].mean() if not hist.empty else 0
                             
-                            # Collect data
                             data_list.append({
                                 "Ticker": symbol,
-                                "Name": info.get("longName") or res.get("longname"),
-                                "Country": info.get("country", "N/A"),     
-                                "Exchange": info.get("exchange", "N/A"),
+                                "Name": name,
+                                "Region": mapped_region,
+                                "Country": country,
+                                "Exchange": info.get("exchange"),
                                 "Currency": info.get("currency"),
                                 "Industry": info.get("industry"),
-                                "Sector": info.get("sector"),
-                                "Trading Volume (7d Avg)": f"{avg_volume:,.0f}"
+                                "Vol (7d Avg)": f"{avg_vol:,.0f}"
                             })
                         
-                        # 3. Display table
-                        df = pd.DataFrame(data_list)
-                        st.subheader("Found Ticker / Exchange Places")
-                        st.dataframe(df, use_container_width=True, hide_index=True)
-
+                        st.dataframe(pd.DataFrame(data_list), use_container_width=True, hide_index=True)
                 except Exception as e:
-                    st.error(f"Error with request: {e}")
-
+                    st.error(f"Fehler: {e}")
 
