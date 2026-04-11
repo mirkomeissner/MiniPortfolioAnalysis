@@ -95,6 +95,20 @@ CREATE TABLE IF NOT EXISTS transactions (
         ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS user_import_settings (
+    username TEXT NOT NULL,
+    account_code TEXT NOT NULL,
+    mapping_config JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (username, account_code),
+    
+    -- Der Foreign Key sorgt für Ordnung:
+    CONSTRAINT fk_user_account
+        FOREIGN KEY (username, account_code) 
+        REFERENCES accounts(username, account_code)
+        ON DELETE CASCADE
+);
 
 
 
