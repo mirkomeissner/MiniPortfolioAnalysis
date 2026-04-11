@@ -28,13 +28,4 @@ def transaction_table_view():
     else:
         st.info("No records found in transactions.")
 
-def transaction_bulk_form():
-    st.title("Add New Transactions")
-    st.write("Form logic for bulk insert goes here...")
-    
-    # Hier wirst du später die gleiche Logik wie bei den Assets einbauen,
-    # nur eben mit den Feldern für die transactions-Tabelle.
-    
-    if st.button("Back to List"):
-        st.session_state["view"] = "list"
-        st.rerun()
+
