@@ -81,38 +81,23 @@ def show_validation_modal(error_count):
 def render_import_preview_screen():
     # --- 1. ROBUST AUTO-SCROLL TO TOP ---
     if "scroll_done" not in st.session_state:
-        # We use a slightly more aggressive JS and a small timeout to 
-        # override the browser's attempt to stay at the button position
         components.html(
-            """
-            <script>
-                window.parent.window.scrollTo(0,0);
-                var mainContent = window.parent.document.querySelector('section.main');
-                if (mainContent) {
-                    mainContent.scrollTo(0,0);
-                }
-            </script>
-            """,
+            "<script>window.parent.window.scrollTo(0,0); var m = window.parent.document.querySelector('section.main'); if(m) m.scrollTo(0,0);</script>",
             height=0
         )
         st.session_state["scroll_done"] = True
 
-    # Check for data
     if "imported_df" not in st.session_state:
         st.session_state["view"] = "list"
-        if "scroll_done" in st.session_state: del st.session_state["scroll_done"]
         st.rerun()
         return
 
-    # --- 2. STATE INITIALIZATION ---
-    if "val_error_indices" not in st.session_state:
-        st.session_state["val_error_indices"] = []
-    if "import_confirmed" not in st.session_state:
-        st.session_state["import_confirmed"] = False
-    if "import_filter_rules" not in st.session_state:
-        st.session_state["import_filter_rules"] = []
+    # --- STATE INITIALIZATION ---
+    if "val_error_indices" not in st.session_state: st.session_state["val_error_indices"] = []
+    if "import_confirmed" not in st.session_state: st.session_state["import_confirmed"] = False
+    if "import_filter_rules" not in st.session_state: st.session_state["import_filter_rules"] = []
 
-    # --- 3. VALIDATION GUARD (MODAL TRIGGER) ---
+    # --- VALIDATION GUARD ---
     if st.session_state["val_error_indices"]:
         err_indices = st.session_state["val_error_indices"]
         st.session_state["imported_df"].loc[err_indices, "import_row"] = False
@@ -124,9 +109,14 @@ def render_import_preview_screen():
     csv_columns = [c for c in df_raw.columns if c != "import_row"]
     user = st.session_state.get("user_name", "System")
 
+    # --- NAVIGATION AT TOP ---
+    if st.button("⬅ Back to Upload"):
+        st.session_state["view"] = "import_upload"
+        st.rerun()
+
     st.title("Finalize Import: Filter & Map")
 
-    # --- 4. SECTION 1: GLOBAL SETTINGS ---
+    # --- SECTION 1: GLOBAL SETTINGS ---
     st.subheader("1. Global Settings")
     col_g1, col_g2 = st.columns(2)
     with col_g1:
@@ -134,9 +124,14 @@ def render_import_preview_screen():
         selected_account_full = st.selectbox("Target Account", accounts, key="active_account")
         acc_code = selected_account_full.split(" (")[0]
     
-    # SAFE CONFIG LOADING: Ensure it's a dict even if get_import_settings returns None
+    # --- INFO DISPLAY FOR LOADED SETTINGS ---
     raw_config = get_import_settings(user, acc_code)
-    saved_config = raw_config if raw_config is not None else {}
+    if raw_config:
+        st.info(f"💡 Import settings loaded for account **{acc_code}**.")
+        saved_config = raw_config
+    else:
+        st.warning(f"No previous settings found for **{acc_code}**. Please map fields manually.")
+        saved_config = {}
     
     def get_map_idx(keyword, config_key):
         if config_key in saved_config:
@@ -147,6 +142,7 @@ def render_import_preview_screen():
         return 0
 
     st.divider()
+    
 
     # --- 5. SECTION 2: ADVANCED FILTERING ---
     st.subheader("2. Filter Rows")
@@ -231,6 +227,7 @@ def render_import_preview_screen():
         map_eur = st.selectbox("Amount in EUR (Optional)", eur_opts, index=eur_opts.index(s_eur) if s_eur in eur_opts else 0)
 
     st.divider()
+
 
     # --- 8. SECTION 5: DRY-RUN & EXECUTION ---
     if st.button("🚀 Start Import", type="primary", use_container_width=True):
