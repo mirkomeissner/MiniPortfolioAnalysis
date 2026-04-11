@@ -120,3 +120,26 @@ def save_transaction(transaction_data):
 
 
 
+
+def get_import_settings(username, account_code):
+    """Fetches saved mapping for a specific user and account."""
+    response = supabase.table("user_import_settings")\
+        .select("mapping_config")\
+        .eq("username", username)\
+        .eq("account_code", account_code)\
+        .execute()
+    return response.data[0]["mapping_config"] if response.data else None
+
+def save_import_settings(username, account_code, config):
+    """Saves or updates the mapping configuration."""
+    payload = {
+        "username": username,
+        "account_code": account_code,
+        "mapping_config": config
+    }
+    # upsert handles both insert and update based on primary key
+    supabase.table("user_import_settings").upsert(payload).execute()
+
+
+
+
