@@ -224,6 +224,7 @@ def render_import_preview_screen():
     with col_m2:
         map_s_amt = st.selectbox("Settlement Amount", csv_columns, index=get_map_idx("amount", "map_settle_amt"))
         map_s_cur = st.selectbox("Settlement Currency", csv_columns, index=get_map_idx("curr", "map_settle_curr"))
+        map_fx    = st.selectbox("FX Rate (Optional)", ["<Not in CSV>"] + csv_columns, index=0)
         eur_opts = ["<Not in CSV>"] + csv_columns
         s_eur = saved_config.get("map_amt_eur", "<Not in CSV>")
         map_eur = st.selectbox("Amount in EUR (Optional)", eur_opts, index=eur_opts.index(s_eur) if s_eur in eur_opts else 0)
@@ -314,23 +315,50 @@ def render_import_preview_screen():
                 raw_date = pd.to_datetime(row[map_date])
                 db_date = raw_date.date().isoformat()
                 isin_val = str(row[map_isin]).strip()
-                
+
+                # 1. Determine Amount in EUR
+                amt_eur = None
+                if s_curr == "EUR":
+                    amt_eur = s_amount
+                elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]):
+                    amt_eur = float(row[map_eur])
+                elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]) and float(row[map_fx]) != 0:
+                    amt_eur = s_amount / float(row[map_fx])
+                else:
+                    amt_eur = None
+
+                # 2. Determine FX Rate
+                settle_fx = None
+                if s_curr == "EUR":
+                    settle_fx = 1.0
+                elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]) and float(row[map_eur]) != 0:
+                    settle_fx = s_amount / float(row[map_eur])
+                elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]):
+                    settle_fx = float(row[map_fx])
+                else:
+                    settle_fx = None
+
+                # 3. Create Payload
                 payload = {
-                    "username": user, 
+                    "username": user,
                     "id": f"{isin_val}_{raw_date.strftime('%Y%m%d')}_{get_next_transaction_count(user, isin_val, db_date):03d}",
-                    "account_code": acc_code, 
-                    "isin": isin_val, 
+                    "account_code": acc_code,
+                    "isin": isin_val,
                     "date": db_date,
                     "type_code": type_mapping[row[type_column]].split(" (")[0],
-                    "quantity": float(row[map_qty]), 
-                    "settle_amount": s_amount, 
+                    "quantity": float(row[map_qty]),
+                    "settle_amount": s_amount,
                     "settle_currency": s_curr,
-                    "amount_eur": s_amount if s_curr == "EUR" else (float(row[map_eur]) if map_eur != "<Not in CSV>" else None)
+                    "settle_fxrate": settle_fx,
+                    "amount_eur": amt_eur
                 }
+        
                 save_transaction(payload)
                 success_count += 1
+
             except Exception as e:
                 st.error(f"Row {idx} Error: {e}")
+    
             progress_bar.progress((i + 1) / len(final_sel))
 
         # 4. FINALIZE
