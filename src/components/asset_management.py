@@ -13,45 +13,76 @@ def asset_table_view():
     else:
         st.title("Asset Static Data")
         
-        # Action Bar
-        col_btn, _ = st.columns([1, 4])
-        if col_btn.button("➕ New ISIN", use_container_width=True):
+        # New ISIN Button
+        if st.button("➕ New ISIN"):
             st.session_state["view"] = "search"
             st.rerun()
 
         # Fetch Data
         data = get_all_assets_with_labels()
         if not data:
-            st.info("No records found in asset_static_data.")
+            st.info("No records found.")
             return
 
         df = pd.DataFrame(data)
 
-        # --- FILTER SECTION ---
+        # --- ADVANCED DYNAMIC FILTER SECTION ---
         st.write("---")
-        exp = st.expander("Filter Assets", expanded=False)
-        with exp:
-            f_col1, f_col2, f_col3 = st.columns(3)
+        with st.expander("🛠 Advanced Query Builder", expanded=True):
             
-            # Dynamic Filters based on data content
-            asset_classes = ["All"] + sorted(df["Asset Class"].dropna().unique().tolist())
-            regions = ["All"] + sorted(df["Region"].dropna().unique().tolist())
-            currencies = ["All"] + sorted(df["Currency"].dropna().unique().tolist())
+            # Global Logic Switch
+            logic_mode = st.radio("Combination Logic", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True)
+            
+            # Initialize filter state if not exists
+            if "filter_rules" not in st.session_state:
+                st.session_state["filter_rules"] = []
 
-            selected_class = f_col1.selectbox("Asset Class", asset_classes)
-            selected_region = f_col2.selectbox("Region", regions)
-            selected_curr = f_col3.selectbox("Currency", currencies)
+            # Buttons to add/clear rules
+            c1, c2 = st.columns([1, 4])
+            if c1.button("➕ Add Rule"):
+                st.session_state["filter_rules"].append({"column": df.columns[0], "value": ""})
+            if c2.button("🗑 Clear All"):
+                st.session_state["filter_rules"] = []
+                st.rerun()
 
-        # Apply Filters to DataFrame
+            # Render rules
+            active_filters = []
+            for i, rule in enumerate(st.session_state["filter_rules"]):
+                r_col1, r_col2, r_col3 = st.columns([2, 3, 0.5])
+                
+                # Select column to filter
+                col_name = r_col1.selectbox(f"Column {i+1}", df.columns, key=f"col_{i}")
+                
+                # Select unique values for that column
+                options = sorted(df[col_name].dropna().unique().astype(str).tolist())
+                val = r_col2.multiselect(f"Values {i+1}", options, key=f"val_{i}")
+                
+                # Remove rule button
+                if r_col3.button("❌", key=f"rem_{i}"):
+                    st.session_state["filter_rules"].pop(i)
+                    st.rerun()
+                
+                if val:
+                    active_filters.append(df[col_name].astype(str).isin(val))
+
+        # --- APPLY FILTER LOGIC ---
         filtered_df = df.copy()
-        if selected_class != "All":
-            filtered_df = filtered_df[filtered_df["Asset Class"] == selected_class]
-        if selected_region != "All":
-            filtered_df = filtered_df[filtered_df["Region"] == selected_region]
-        if selected_curr != "All":
-            filtered_df = filtered_df[filtered_df["Currency"] == selected_curr]
+        if active_filters:
+            if logic_mode == "Match ALL (AND)":
+                # Combine using bitwise AND (&)
+                final_mask = active_filters[0]
+                for mask in active_filters[1:]:
+                    final_mask &= mask
+            else:
+                # Combine using bitwise OR (|)
+                final_mask = active_filters[0]
+                for mask in active_filters[1:]:
+                    final_mask |= mask
+            
+            filtered_df = df[final_mask]
 
-        # Display Stats & Table
-        st.info(f"Showing {len(filtered_df)} of {len(df)} assets")
+        # Display result info and table
+        st.info(f"Filtered Results: {len(filtered_df)} items found.")
         st.dataframe(filtered_df, use_container_width=True, hide_index=True)
+
 
