@@ -237,11 +237,18 @@ def render_import_preview_screen():
     st.write("") # Spacer
 
     # --- Optional Fields Group ---
-    st.markdown("Optional Fields", 
-                help="1. IF Settlement Currency = EUR THEN Amount in EUR := Settlement Amount and FX rate := 1. \n  
-                      2. IF mapping for Amoun in EUR is configured THEN FX rate := Settlement Amount / Amount in EUR.  \n  
-                      3. IF mapping for FX rate is configures THEN Amount in EUR := Settlement Amount / FX rate.  \n  
-                      4. ELSE Amount in EUR := NULL and FX rate := NULL.")
+    st.markdown(
+        "### 🟢 Optional Fields", 
+        help="""
+    1. **IF** Settlement Currency = EUR **THEN** Amount in EUR := Settlement Amount and FX rate := 1.
+
+    2. **IF** mapping for Amount in EUR is configured **THEN** FX rate := Settlement Amount / Amount in EUR.
+
+    3. **IF** mapping for FX rate is configured **THEN** Amount in EUR := Settlement Amount / FX rate.
+
+    4. **ELSE** Amount in EUR := NULL and FX rate := NULL.
+        """
+    )
     with st.container(border=True):
         opt_col1, opt_col2 = st.columns(2)
     
