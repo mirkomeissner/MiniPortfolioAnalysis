@@ -240,6 +240,8 @@ def render_import_preview_screen():
     st.markdown(
         "Optional Fields", 
         help="""
+    Priorities for currency conversion to EUR: 
+        
     1. **IF** Settlement Currency = EUR 
        **THEN** Amount in EUR := Settlement Amount and FX rate := 1.
 
