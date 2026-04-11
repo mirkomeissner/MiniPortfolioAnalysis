@@ -21,18 +21,28 @@ def transaction_table_view():
         render_list_view()
 
 def render_list_view():
-    """Renders the table and the 'New' button."""
+    """Displays the transaction table and navigation buttons."""
     st.title("Transactions")
     
-    if st.button("➕ New Transaction"):
-        st.session_state["view"] = "form"
-        st.rerun()
+    # Create two columns for the buttons
+    col_btn1, col_btn2, _ = st.columns([1, 1, 4])
+    
+    with col_btn1:
+        if st.button("➕ New Transaction", use_container_width=True):
+            st.session_state["view"] = "form"
+            st.rerun()
+            
+    with col_btn2:
+        if st.button("📥 Import CSV", use_container_width=True):
+            show_import_dialog()
 
     data = get_all_transactions()
     if data:
         st.dataframe(data, use_container_width=True, hide_index=True)
     else:
         st.info("No records found in transactions.")
+
+
 
 def render_transaction_form():
     """Renders the input form to create a new transaction with a custom ID logic."""
