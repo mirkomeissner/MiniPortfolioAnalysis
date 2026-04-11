@@ -30,6 +30,29 @@ def update_asset_static_data(isin, updated_data):
     """Updates an existing asset record by ISIN."""
     return supabase.table("asset_static_data").update(updated_data).eq("isin", isin).execute()
 
+def get_missing_isins(isins: list) -> list:
+    """
+    Checks which ISINs from the provided list are NOT yet in the database.
+    Returns a list of missing ISIN strings.
+    """
+    if not isins:
+        return []
+    
+    try:
+        # Query existing ISINs from the unique set of input ISINs
+        res = supabase.table("asset_static_data") \
+            .select("isin") \
+            .in_("isin", isins) \
+            .execute()
+        
+        existing_isins = {item['isin'] for item in res.data}
+        return [i for i in isins if i not in existing_isins]
+    except Exception as e:
+        st.error(f"Error checking for missing ISINs: {e}")
+        return []
+
+
+
 def get_all_assets_with_labels():
     """Fetches full asset records including joined reference labels."""
     flattened_data = []
