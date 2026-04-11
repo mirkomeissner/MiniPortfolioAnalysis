@@ -80,7 +80,9 @@ CREATE TABLE IF NOT EXISTS transactions (
     date DATE DEFAULT CURRENT_DATE,
     type_code TEXT,
     quantity NUMERIC,
-    total_amount_eur NUMERIC,
+    trade_amount NUMERIC,
+    trade_currency VARCHAR(3),
+    amount_eur NUMERIC,
     
     PRIMARY KEY (username, id),
     
