@@ -165,6 +165,58 @@ def show_import_dialog():
             
             st.info(f"Detected {len(df)} rows. All numbers have been converted to dot-decimal format.")
 
+
+
+def render_import_preview_screen():
+    """Screen for selecting which rows to import from the CSV."""
+    st.title("Review Import Data")
+    st.write("Deselect rows that you do not want to import.")
+
+    if "imported_df" not in st.session_state:
+        st.error("No data found to import.")
+        if st.button("Back to List"):
+            st.session_state["view"] = "list"
+            st.rerun()
+        return
+
+    # Use data_editor to allow checkbox interaction
+    edited_df = st.data_editor(
+        st.session_state["imported_df"],
+        column_config={
+            "import_row": st.column_config.CheckboxColumn(
+                "Import?",
+                help="Select to include in database",
+                default=True,
+            )
+        },
+        disabled=[col for col in st.session_state["imported_df"].columns if col != "import_row"],
+        hide_index=True,
+        use_container_width=True,
+        key="import_editor"
+    )
+
+    col_nav1, col_nav2, _ = st.columns([1, 1, 4])
+    
+    with col_nav1:
+        if st.button("⬅ Back / Cancel"):
+            st.session_state["view"] = "list"
+            if "imported_df" in st.session_state:
+                del st.session_state["imported_df"]
+            st.rerun()
+
+    with col_nav2:
+        if st.button("🚀 Confirm Selection", type="primary"):
+            # Filter only selected rows
+            final_selection = edited_df[edited_df["import_row"] == True]
+            st.session_state["final_import_data"] = final_selection
+            
+            # For now, we just show a success message as you said "everything else comes later"
+            st.success(f"Ready to import {len(final_selection)} rows!")
+            # Logic for mapping and saving to DB will follow in the next step
+
+
+            
+            
             if st.button("Proceed with Import", type="primary"):
                 # Initialize the 'import_row' column (all checked by default)
                 df.insert(0, "import_row", True)
