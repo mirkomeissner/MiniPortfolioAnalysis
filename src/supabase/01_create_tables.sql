@@ -1,3 +1,9 @@
+CREATE TABLE IF NOT EXISTS user_profiles (
+    username TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 
 CREATE TABLE IF NOT EXISTS ref_asset_class (
   code TEXT PRIMARY KEY,
