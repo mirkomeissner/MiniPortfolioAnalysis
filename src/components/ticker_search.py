@@ -61,17 +61,20 @@ def handle_save_request(row, isin):
 
     try:
         save_asset_static_data(asset_entry)
-        st.success(f"✅ {row['Ticker']} wurde erfolgreich gespeichert!")
-        st.balloons()
-        # Cache leeren, damit die Tabelle in AssetStaticData aktualisiert wird
-        st.cache_data.clear() 
+        st.success(f"✅ {row['Ticker']} saved successfully!")
+        
+        # WICHTIG: Cache leeren und Ansicht zurücksetzen
+        st.cache_data.clear()
+        st.session_state["view"] = "list" 
+        st.rerun() # Automatischer Redirect zur Tabelle
+        
     except Exception as e:
-        st.error(f"Fehler beim Speichern: {e}")
+        st.error(f"Error saving data: {e}")
 
 # --- 3. HAUPTFUNKTION (UI) ---
 
 def ticker_search_view():
-    st.title("🔍 Ticker Search & Edit")
+    st.subheader("🔍 Search New Asset via ISIN")
 
     # Referenzdaten einmalig pro Session laden
     if 'ref_data_loaded' not in st.session_state:
@@ -166,6 +169,6 @@ def ticker_search_view():
 
         if selected_ticker:
             selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
-            if st.button("Jetzt in Datenbank speichern", type="primary"):
+            if st.button("Save to Database", type="primary"):
                 handle_save_request(selected_row, isin_input)
 
