@@ -74,45 +74,156 @@ def render_import_upload_screen():
             st.error(f"Error parsing CSV: {e}")
 
 def render_import_preview_screen():
-    """Screen for selecting which rows to import from the CSV."""
-    st.title("Review Import Data")
-    st.write("Deselect rows that you do not want to import.")
+    """
+    Screen for mapping CSV columns to the new database structure 
+    and selecting rows for import.
+    """
+    st.title("Finalize Import: Mapping & Selection")
 
     if "imported_df" not in st.session_state:
         st.session_state["view"] = "list"
         st.rerun()
         return
 
-    # Use data_editor for interactive checkboxes
+    df = st.session_state["imported_df"]
+    csv_columns = df.columns.tolist()
+    user = st.session_state.get("user_name", "System")
+
+    # --- SECTION 1: GLOBAL SETTINGS ---
+    st.subheader("1. Global Settings")
+    col_g1, col_g2 = st.columns(2)
+    
+    with col_g1:
+        # Fetch accounts for the specific user
+        accounts = get_account_ref_options(user)
+        selected_account = st.selectbox("Target Account", accounts, 
+                                        help="All transactions will be assigned to this account.")
+    
+    with col_g2:
+        # Fetch transaction types from ref table
+        trans_types = get_ref_options("ref_transaction_type")
+        default_type = st.selectbox("Default Transaction Type", trans_types,
+                                    help="This type will be used for all imported rows.")
+
+    st.divider()
+
+    # --- SECTION 2: COLUMN MAPPING ---
+    st.subheader("2. Column Mapping")
+    st.info("Assign your CSV headers to the database fields. Numbers are already cleaned.")
+    
+    # Helper to find column indices by keyword
+    def find_idx(search_term):
+        for i, col in enumerate(csv_columns):
+            if search_term.lower() in col.lower(): return i
+        return 0
+
+    col_m1, col_m2 = st.columns(2)
+    
+    with col_m1:
+        map_isin = st.selectbox("ISIN Column", csv_columns, index=find_idx("isin"))
+        map_date = st.selectbox("Date Column", csv_columns, index=find_idx("date"))
+        map_qty  = st.selectbox("Quantity Column", csv_columns, index=find_idx("qty"))
+
+    with col_m2:
+        map_trade_amt = st.selectbox("Trade Amount Column", csv_columns, index=find_idx("amount"))
+        map_trade_curr = st.selectbox("Trade Currency Column", csv_columns, index=find_idx("curr"))
+        # EUR amount is optional during import
+        map_amt_eur = st.selectbox("Amount in EUR (Optional)", ["<Not in CSV>"] + csv_columns, 
+                                   index=0 if "<Not in CSV>" in ["<Not in CSV>"] else 0)
+
+    st.divider()
+
+    # --- SECTION 3: ROW SELECTION & PREVIEW ---
+    st.subheader("3. Select Rows to Import")
     edited_df = st.data_editor(
-        st.session_state["imported_df"],
+        df,
         column_config={
-            "import_row": st.column_config.CheckboxColumn(
-                "Import?",
-                help="Select to include in database",
-                default=True,
-            )
+            "import_row": st.column_config.CheckboxColumn("Import?", default=True)
         },
-        disabled=[col for col in st.session_state["imported_df"].columns if col != "import_row"],
+        disabled=[col for col in df.columns if col != "import_row"],
         hide_index=True,
         use_container_width=True,
-        key="import_editor"
+        key="import_editor_final"
     )
 
+    # --- SECTION 4: ACTIONS ---
     col_nav1, col_nav2, _ = st.columns([1, 1, 4])
     
     with col_nav1:
         if st.button("⬅ Back / Cancel"):
-            st.session_state["view"] = "list"
-            if "imported_df" in st.session_state:
-                del st.session_state["imported_df"]
+            st.session_state["view"] = "import_upload"
             st.rerun()
 
     with col_nav2:
-        if st.button("🚀 Confirm Selection", type="primary"):
+        if st.button("🚀 Start Import", type="primary"):
             final_selection = edited_df[edited_df["import_row"] == True]
-            st.session_state["final_import_data"] = final_selection
-            st.success(f"Ready to import {len(final_selection)} rows!")
+            
+            if final_selection.empty:
+                st.error("Please select at least one row.")
+                return
+
+            success_count = 0
+            error_count = 0
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            for i, (idx, row) in enumerate(final_selection.iterrows()):
+                try:
+                    # 1. Prepare data from mapping
+                    clean_isin = str(row[map_isin]).strip()
+                    # Pandas to_datetime is very robust for various formats
+                    raw_date = pd.to_datetime(row[map_date])
+                    db_date_str = raw_date.date().isoformat()
+                    id_date_str = raw_date.strftime("%Y%m%d")
+                    
+                    # 2. Generate the ID according to your logic: ISIN_YYYYMMDD_001
+                    count = get_next_transaction_count(user, clean_isin, db_date_str)
+                    generated_id = f"{clean_isin}_{id_date_str}_{count:03d}"
+
+                    # 3. Handle optional EUR amount
+                    val_amt_eur = None
+                    if map_amt_eur != "<Not in CSV>":
+                        val_amt_eur = float(row[map_amt_eur])
+
+                    # 4. Create Payload for Database
+                    payload = {
+                        "username": user,
+                        "id": generated_id,
+                        "account_code": selected_account.split(" (")[0],
+                        "isin": clean_isin,
+                        "date": db_date_str,
+                        "type_code": default_type.split(" (")[0],
+                        "quantity": float(row[map_qty]),
+                        "trade_amount": float(row[map_trade_amt]),
+                        "trade_currency": str(row[map_trade_curr]).upper().strip()[:3],
+                        "amount_eur": val_amt_eur
+                    }
+                    
+                    save_transaction(payload)
+                    success_count += 1
+                    
+                except Exception as e:
+                    error_count += 1
+                    st.error(f"Error in row {i+1}: {e}")
+                
+                # Update progress
+                progress_bar.progress((i + 1) / len(final_selection))
+                status_text.text(f"Processing row {i+1} of {len(final_selection)}...")
+
+            status_text.empty()
+            st.success(f"Import complete: {success_count} successful, {error_count} failed.")
+            
+            # Clear cache and offer return to list
+            st.cache_data.clear()
+            if st.button("Return to Transactions"):
+                # Clean up session state
+                if "imported_df" in st.session_state: del st.session_state["imported_df"]
+                st.session_state["view"] = "list"
+                st.rerun()
+
+
+
 
 def render_list_view():
     """Displays the transaction table and navigation buttons."""
