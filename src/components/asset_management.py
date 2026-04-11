@@ -38,13 +38,16 @@ def render_list_view():
 
     df = pd.DataFrame(data)
 
-    # --- FILTER SECTION (Now collapsed by default) ---
+
+    # --- ADVANCED DYNAMIC FILTER SECTION ---
     with st.expander("🛠 Advanced Query Builder", expanded=False):
         logic_mode = st.radio("Combination Logic", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True)
-        if "filter_rules" not in st.session_state: st.session_state["filter_rules"] = []
+        if "filter_rules" not in st.session_state: 
+            st.session_state["filter_rules"] = []
         
         c1, c2 = st.columns([1, 4])
-        if c1.button("➕ Add Rule"): st.session_state["filter_rules"].append({"column": df.columns[0], "value": []})
+        if c1.button("➕ Add Rule"): 
+            st.session_state["filter_rules"].append({"column": df.columns[0], "value": None})
         if c2.button("🗑 Clear All"):
             st.session_state["filter_rules"] = []
             st.rerun()
@@ -52,21 +55,41 @@ def render_list_view():
         active_filters = []
         for i, rule in enumerate(st.session_state["filter_rules"]):
             r_col1, r_col2, r_col3 = st.columns([2, 3, 0.5])
+            
             col_name = r_col1.selectbox(f"Column {i}", df.columns, key=f"fcol_{i}")
-            options = sorted(df[col_name].dropna().unique().astype(str).tolist())
-            val = r_col2.multiselect(f"Values {i}", options, key=f"fval_{i}")
+            
+            # --- CUSTOM LOGIC FOR CLOSED ON ---
+            if col_name == "Closed On":
+                val = r_col2.selectbox(
+                    f"Criteria {i}", 
+                    ["Is Null (Active Assets)", "Is Not Null (Closed Assets)"], 
+                    key=f"fval_{i}"
+                )
+                
+                if val == "Is Null (Active Assets)":
+                    active_filters.append(df[col_name].isna())
+                else:
+                    active_filters.append(df[col_name].notna())
+            
+            # --- STANDARD LOGIC FOR ALL OTHER COLUMNS ---
+            else:
+                options = sorted(df[col_name].dropna().unique().astype(str).tolist())
+                val = r_col2.multiselect(f"Values {i}", options, key=f"fval_{i}")
+                if val: 
+                    active_filters.append(df[col_name].astype(str).isin(val))
+
             if r_col3.button("❌", key=f"frem_{i}"):
                 st.session_state["filter_rules"].pop(i)
                 st.rerun()
-            if val: active_filters.append(df[col_name].astype(str).isin(val))
 
-    # Apply Filters
+    # --- APPLY FILTER LOGIC ---
     filtered_df = df.copy()
     if active_filters:
         mask = active_filters[0]
         for m in active_filters[1:]:
             mask = (mask & m) if logic_mode == "Match ALL (AND)" else (mask | m)
         filtered_df = df[mask]
+
 
     st.info(f"Displaying {len(filtered_df)} assets.")
 
