@@ -225,16 +225,29 @@ def render_import_preview_screen():
             
             for i, (idx, row) in enumerate(final_selection.iterrows()):
                 try:
-                    # Logic same as before
+                    # 1. Mapping & Date logic
                     clean_type = type_mapping[row[type_column]].split(" (")[0]
                     raw_date = pd.to_datetime(row[map_date])
                     db_date_str = raw_date.date().isoformat()
                     id_date_str = raw_date.strftime("%Y%m%d")
                     clean_isin = str(row[map_isin]).strip()
 
+                    # 2. ID Generation
                     count = get_next_transaction_count(user, clean_isin, db_date_str)
                     generated_id = f"{clean_isin}_{id_date_str}_{count:03d}"
 
+                    # 3. Currency & Amount Logic
+                    t_curr = str(row[map_trade_curr]).upper().strip()[:3]
+                    t_amount = float(row[map_trade_amt])
+                    
+                    # Logik: Wenn EUR, dann kopieren. Sonst aus Mapping nehmen (falls vorhanden).
+                    val_amt_eur = None
+                    if t_curr == "EUR":
+                        val_amt_eur = t_amount
+                    elif map_amt_eur != "<Not in CSV>":
+                        val_amt_eur = float(row[map_amt_eur])
+
+                    # 4. Construct Payload
                     payload = {
                         "username": user,
                         "id": generated_id,
@@ -243,9 +256,9 @@ def render_import_preview_screen():
                         "date": db_date_str,
                         "type_code": clean_type,
                         "quantity": float(row[map_qty]),
-                        "trade_amount": float(row[map_trade_amt]),
-                        "trade_currency": str(row[map_trade_curr]).upper().strip()[:3],
-                        "amount_eur": float(row[map_amt_eur]) if map_amt_eur != "<Not in CSV>" else None
+                        "trade_amount": t_amount,
+                        "trade_currency": t_curr,
+                        "amount_eur": val_amt_eur
                     }
                     
                     save_transaction(payload)
@@ -256,13 +269,22 @@ def render_import_preview_screen():
                 
                 progress_bar.progress((i + 1) / len(final_selection))
 
-            st.success(f"Done! {success_count} imported, {error_count} failed.")
+            # Erfolg melden, kurz warten und automatisch zurück zur Liste
+            st.success(f"Successfully imported {success_count} transactions!")
             st.cache_data.clear()
-            if st.button("Finish"):
-                if "imported_df" in st.session_state: del st.session_state["imported_df"]
-                st.session_state["view"] = "list"
-                st.rerun()
+            
+            # Cleanup session state
+            if "imported_df" in st.session_state: 
+                del st.session_state["imported_df"]
+            if "import_filter_rules" in st.session_state:
+                del st.session_state["import_filter_rules"]
+            
+            # Fokus zurück auf die Liste setzen
+            st.session_state["view"] = "list"
+            st.rerun()
 
+
+    
 
 
 
