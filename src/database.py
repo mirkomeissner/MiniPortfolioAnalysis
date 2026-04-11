@@ -1,24 +1,31 @@
 import streamlit as st
 from supabase import create_client, Client
 
+@st.cache_resource
 def get_supabase_client() -> Client:
-    """Initializes the Supabase client using secrets."""
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-# Create a single instance to be used across the app
 supabase = get_supabase_client()
 
 @st.cache_data(ttl=600)
-def get_ref_data(table_name):
-    """Fetches reference data and returns a dictionary of label: code."""
+def get_ref_options(table_name):
+    """Zentrale Funktion für Select-Boxen (Code + Label)."""
     try:
-        query = supabase.table(table_name).select("code, label").execute()
-        return {item['label']: item['code'] for item in query.data}
+        res = supabase.table(table_name).select("code, label").execute()
+        return [f"{item['code']} ({item['label']})" for item in res.data] if res.data else []
     except Exception as e:
-        st.error(f"Error loading {table_name}: {e}")
-        return {}
+        st.error(f"Fehler bei Referenzdaten {table_name}: {e}")
+        return []
+
+@st.cache_data(ttl=3600)
+def get_country_region_map():
+    """Lädt das Mapping von Land zu Region."""
+    res = supabase.table("country_region_mapping").select("country, region_code").execute()
+    return {item['country']: item['region_code'] for item in res.data}
+
+def save_asset_static_data(asset_data):
+    return supabase.table("asset_static_data").insert(asset_data).execute()
+
 
 def get_all_assets_with_labels():
     """Fetches records with joined labels and returns a flat list of dicts."""
@@ -71,22 +78,4 @@ def get_all_transactions():
     return response.data
 
 
-
-
-def get_country_mapping():
-    response = supabase.table("country_region_mapping").select("country, region_code").execute()
-    # Wandelt die Liste in ein handliches Dictionary um: {'Germany': 'EUR', ...}
-    return {item['country']: item['region_code'] for item in response.data}
-
-
-def save_asset_static_data(asset_data):
-    """
-    Schreibt ein Asset-Dictionary in die Tabelle asset_static_data.
-    asset_data muss die Spaltennamen der DB als Keys enthalten.
-    """
-    try:
-        response = supabase.table("asset_static_data").insert(asset_data).execute()
-        return response
-    except Exception as e:
-        raise e # Fehler nach oben weiterreichen, damit die UI darauf reagieren kann
 
