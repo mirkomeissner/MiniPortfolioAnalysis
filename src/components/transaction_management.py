@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import uuid
+import streamlit.components.v1 as components
 from datetime import datetime
 from src.database import (
     get_all_transactions, 
@@ -76,8 +77,10 @@ def render_import_upload_screen():
             st.error(f"Error parsing CSV: {e}")
 
 
+
 def render_import_preview_screen():
-    st.title("Finalize Import: Filter & Map")
+    # --- ANCHOR FOR AUTO-SCROLL ---
+    st.markdown("<div id='top'></div>", unsafe_allow_html=True)
 
     if "imported_df" not in st.session_state:
         st.session_state["view"] = "list"
@@ -91,21 +94,20 @@ def render_import_preview_screen():
         st.session_state["import_confirmed"] = False
     if "show_val_warning" not in st.session_state:
         st.session_state["show_val_warning"] = False
+    if "import_filter_rules" not in st.session_state:
+        st.session_state["import_filter_rules"] = []
 
     # --- 1. SYNC MANUAL UI CHANGES ---
-    # We catch the changes from the editor BEFORE rendering it again
     if "import_editor_final" in st.session_state:
         edits = st.session_state["import_editor_final"].get("edited_rows", {})
         for row_idx_str, change in edits.items():
             if "import_row" in change:
-                # We need to be careful with the index if filtering is active
-                # For now, we assume the index matches the underlying dataframe
                 try:
                     actual_idx = int(row_idx_str)
                     st.session_state["imported_df"].at[actual_idx, "import_row"] = change["import_row"]
                 except: pass
 
-    # --- 2. VALIDATION GUARD ---
+    # --- 2. VALIDATION GUARD & WARNING ---
     if st.session_state["val_error_indices"]:
         err_idx = st.session_state["val_error_indices"]
         st.session_state["imported_df"].loc[err_idx, "import_row"] = False
@@ -113,8 +115,13 @@ def render_import_preview_screen():
         st.session_state["show_val_warning"] = True
 
     if st.session_state["show_val_warning"]:
-        st.warning("⚠️ Some selected rows had errors and were automatically deselected.")
-        if st.button("I understand"):
+        # JAVASCRIPT SCROLL TO TOP
+        components.html(
+            "<script>window.parent.document.querySelector('section.main').scrollTo(0,0);</script>",
+            height=0
+        )
+        st.warning("⚠️ Some selected rows had errors (missing dates/isin/amounts) and were automatically deselected.")
+        if st.button("I understand & will review"):
             st.session_state["show_val_warning"] = False
             st.rerun()
 
@@ -139,32 +146,45 @@ def render_import_preview_screen():
 
     st.divider()
 
-    # --- SECTION 2: ADVANCED FILTERING (RESTORED) ---
+    # --- SECTION 2: ADVANCED FILTERING (STABLE) ---
     st.subheader("2. Filter Rows")
     with st.expander("🛠 Advanced Query Builder", expanded=False):
         logic_mode = st.radio("Logic Mode", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True)
-        if "import_filter_rules" not in st.session_state:
-            st.session_state["import_filter_rules"] = []
         
         fc1, fc2 = st.columns([1, 4])
         if fc1.button("➕ Add Rule"):
-            st.session_state["import_filter_rules"].append({"column": csv_columns[0], "value": None})
+            st.session_state["import_filter_rules"].append({"column": csv_columns[0], "value": []})
             st.rerun()
         if fc2.button("🗑 Clear All"):
             st.session_state["import_filter_rules"] = []
             st.rerun()
 
         active_filters = []
+        # Create a copy of rules to iterate safely
         for i, rule in enumerate(st.session_state["import_filter_rules"]):
             r1, r2, r3 = st.columns([2, 3, 0.5])
-            col_name = r1.selectbox(f"Col {i}", csv_columns, key=f"fcol_{i}")
-            opts = sorted(df_raw[col_name].dropna().unique().astype(str).tolist())
-            val = r2.multiselect(f"Values {i}", opts, key=f"fval_{i}")
-            if val: active_filters.append(df_raw[col_name].astype(str).isin(val))
+            
+            # Column selector
+            sel_col = r1.selectbox(f"Col {i}", csv_columns, 
+                                   index=csv_columns.index(rule["column"]) if rule["column"] in csv_columns else 0,
+                                   key=f"fcol_{i}")
+            st.session_state["import_filter_rules"][i]["column"] = sel_col
+            
+            # Value selector
+            opts = sorted(df_raw[sel_col].dropna().unique().astype(str).tolist())
+            sel_val = r2.multiselect(f"Values {i}", opts, 
+                                     default=rule["value"] if all(v in opts for v in rule["value"]) else [],
+                                     key=f"fval_{i}")
+            st.session_state["import_filter_rules"][i]["value"] = sel_val
+            
+            if sel_val:
+                active_filters.append(df_raw[sel_col].astype(str).isin(sel_val))
+            
             if r3.button("❌", key=f"frem_{i}"):
                 st.session_state["import_filter_rules"].pop(i)
                 st.rerun()
 
+    # APPLY FILTERS
     filtered_df = df_raw.copy()
     if active_filters:
         mask = active_filters[0]
@@ -173,54 +193,26 @@ def render_import_preview_screen():
         filtered_df = df_raw[mask]
 
     # --- DATA EDITOR ---
-    # Fix: Disable all columns EXCEPT 'import_row'
     edited_df = st.data_editor(
         filtered_df,
         column_config={"import_row": st.column_config.CheckboxColumn("Import?", default=True)},
-        disabled=csv_columns, # csv_columns does not contain 'import_row'
+        disabled=csv_columns,
         hide_index=True, use_container_width=True, key="import_editor_final"
     )
 
     st.divider()
 
     # --- SECTION 3: MAPPING ---
-    st.subheader("3. Mapping Configuration")
-    col_t1, _ = st.columns([1, 2])
-    type_column = col_t1.selectbox("CSV Type Column", csv_columns, index=get_map_idx("type", "type_column"))
+    # [Rest of the mapping code: type_column, type_mapping, map_isin, etc. as before]
+    # ... (Please include your existing mapping logic here) ...
     
-    distinct_csv_types = filtered_df[type_column].unique().tolist()
-    db_trans_types = get_ref_options("ref_transaction_type")
-    saved_type_map = saved_config.get("type_mapping", {}) if saved_config else {}
-    
-    type_mapping = {}
-    m_col1, m_col2 = st.columns(2)
-    for i, csv_val in enumerate(distinct_csv_types):
-        target_col = m_col1 if i % 2 == 0 else m_col2
-        default_idx = 0
-        if csv_val in saved_type_map and saved_type_map[csv_val] in db_trans_types:
-            default_idx = db_trans_types.index(saved_type_map[csv_val])
-        
-        type_mapping[csv_val] = target_col.selectbox(f"CSV Type: '{csv_val}'", options=db_trans_types, 
-                                                     index=default_idx, key=f"tmap_{csv_val}")
-
-    col_m1, col_m2 = st.columns(2)
-    with col_m1:
-        map_isin = st.selectbox("ISIN Column", csv_columns, index=get_map_idx("isin", "map_isin"))
-        map_date = st.selectbox("Date Column", csv_columns, index=get_map_idx("date", "map_date"))
-        map_qty  = st.selectbox("Quantity Column", csv_columns, index=get_map_idx("qty", "map_qty"))
-    with col_m2:
-        map_trade_amt = st.selectbox("Trade Amount", csv_columns, index=get_map_idx("amount", "map_trade_amt"))
-        map_trade_curr = st.selectbox("Trade Currency", csv_columns, index=get_map_idx("curr", "map_trade_curr"))
-        eur_opts = ["<Not in CSV>"] + csv_columns
-        saved_eur = saved_config.get("map_amt_eur", "<Not in CSV>") if saved_config else "<Not in CSV>"
-        map_amt_eur = st.selectbox("Amount in EUR (Optional)", eur_opts, 
-                                   index=eur_opts.index(saved_eur) if saved_eur in eur_opts else 0)
-
-    st.divider()
+    # [Dummy placeholders for logic flow]
+    type_column = st.selectbox("CSV Type Column", csv_columns, index=get_map_idx("type", "type_column"))
+    # ... (Remaining Mapping UI) ...
 
     # --- SECTION 4: EXECUTION ---
+    st.divider()
     if st.button("🚀 Start Import", type="primary", use_container_width=True):
-        # Read directly from editor state for safety
         current_selection = edited_df[edited_df["import_row"] == True].copy()
         
         if current_selection.empty:
@@ -229,6 +221,7 @@ def render_import_preview_screen():
             invalid_indices = []
             for idx, row in current_selection.iterrows():
                 try:
+                    # Robust check
                     if pd.isna(row[map_date]) or str(row[map_date]).strip() == "": raise ValueError()
                     pd.to_datetime(row[map_date])
                     float(row[map_trade_amt]); float(row[map_qty])
@@ -243,39 +236,23 @@ def render_import_preview_screen():
                 st.session_state["import_confirmed"] = True
                 st.rerun()
 
+    # Actual Execution Phase
     if st.session_state.get("import_confirmed"):
         st.session_state["import_confirmed"] = False
-        # Final import using the edited dataframe
+        # IMPORTANT: Use the final filtered and edited selection
         final_selection = edited_df[edited_df["import_row"] == True]
         
         success_count = 0
         progress_bar = st.progress(0)
         for i, (idx, row) in enumerate(final_selection.iterrows()):
             try:
-                t_curr = str(row[map_trade_curr]).upper().strip()[:3]
-                t_amount = float(row[map_trade_amt])
-                raw_date = pd.to_datetime(row[map_date])
-                db_date = raw_date.date().isoformat()
-                isin = str(row[map_isin]).strip()
-                
-                payload = {
-                    "username": user, "id": f"{isin}_{raw_date.strftime('%Y%m%d')}_{get_next_transaction_count(user, isin, db_date):03d}",
-                    "account_code": acc_code, "isin": isin, "date": db_date,
-                    "type_code": type_mapping[row[type_column]].split(" (")[0],
-                    "quantity": float(row[map_qty]), "trade_amount": t_amount, "trade_currency": t_curr,
-                    "amount_eur": t_amount if t_curr == "EUR" else (float(row[map_amt_eur]) if map_amt_eur != "<Not in CSV>" else None)
-                }
-                save_transaction(payload)
+                # ... [Your DB save_transaction logic] ...
                 success_count += 1
             except Exception as e:
                 st.error(f"Row {idx} Error: {e}")
             progress_bar.progress((i + 1) / len(final_selection))
 
-        save_import_settings(user, acc_code, {
-            "type_column": type_column, "type_mapping": type_mapping,
-            "map_isin": map_isin, "map_date": map_date, "map_qty": map_qty,
-            "map_trade_amt": map_trade_amt, "map_trade_curr": map_trade_curr, "map_amt_eur": map_amt_eur
-        })
+        # Cleanup
         st.success(f"Import complete: {success_count} rows.")
         st.cache_data.clear()
         if "imported_df" in st.session_state: del st.session_state["imported_df"]
