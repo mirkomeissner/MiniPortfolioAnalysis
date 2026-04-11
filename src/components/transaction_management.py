@@ -222,8 +222,8 @@ def render_import_preview_screen():
         map_date = st.selectbox("Date Column", csv_columns, index=get_map_idx("date", "map_date"))
         map_qty  = st.selectbox("Quantity Column", csv_columns, index=get_map_idx("qty", "map_qty"))
     with col_m2:
-        map_amt = st.selectbox("Trade Amount", csv_columns, index=get_map_idx("amount", "map_trade_amt"))
-        map_cur = st.selectbox("Currency", csv_columns, index=get_map_idx("curr", "map_trade_curr"))
+        map_s_amt = st.selectbox("Settlement Amount", csv_columns, index=get_map_idx("amount", "map_settle_amt"))
+        map_s_cur = st.selectbox("Settlement Currency", csv_columns, index=get_map_idx("curr", "map_settle_curr"))
         eur_opts = ["<Not in CSV>"] + csv_columns
         s_eur = saved_config.get("map_amt_eur", "<Not in CSV>")
         map_eur = st.selectbox("Amount in EUR (Optional)", eur_opts, index=eur_opts.index(s_eur) if s_eur in eur_opts else 0)
@@ -252,7 +252,7 @@ def render_import_preview_screen():
                 try:
                     if pd.isna(row[map_date]) or str(row[map_date]).strip() == "": raise ValueError()
                     pd.to_datetime(row[map_date])
-                    float(row[map_amt]); float(row[map_qty])
+                    float(row[map_s_amt]); float(row[map_qty])
                     if pd.isna(row[map_isin]) or str(row[map_isin]).strip() == "": raise ValueError()
                 except:
                     invalid_indices.append(idx)
@@ -309,8 +309,8 @@ def render_import_preview_screen():
         
         for i, (idx, row) in enumerate(final_sel.iterrows()):
             try:
-                t_curr = str(row[map_cur]).upper().strip()[:3]
-                t_amount = float(row[map_amt])
+                s_curr = str(row[map_s_cur]).upper().strip()[:3]
+                s_amount = float(row[map_s_amt])
                 raw_date = pd.to_datetime(row[map_date])
                 db_date = raw_date.date().isoformat()
                 isin_val = str(row[map_isin]).strip()
@@ -323,9 +323,9 @@ def render_import_preview_screen():
                     "date": db_date,
                     "type_code": type_mapping[row[type_column]].split(" (")[0],
                     "quantity": float(row[map_qty]), 
-                    "trade_amount": t_amount, 
-                    "trade_currency": t_curr,
-                    "amount_eur": t_amount if t_curr == "EUR" else (float(row[map_eur]) if map_eur != "<Not in CSV>" else None)
+                    "settle_amount": s_amount, 
+                    "settle_currency": s_curr,
+                    "amount_eur": s_amount if s_curr == "EUR" else (float(row[map_eur]) if map_eur != "<Not in CSV>" else None)
                 }
                 save_transaction(payload)
                 success_count += 1
@@ -337,7 +337,7 @@ def render_import_preview_screen():
         save_import_settings(user, acc_code, {
             "type_column": type_column, "type_mapping": type_mapping,
             "map_isin": map_isin, "map_date": map_date, "map_qty": map_qty,
-            "map_trade_amt": map_amt, "map_trade_curr": map_cur, "map_amt_eur": map_eur
+            "map_settle_amt": map_s_amt, "map_settle_curr": map_s_cur, "map_amt_eur": map_eur
         })
         
         st.success(f"Import complete: {success_count} transactions saved.")
@@ -432,7 +432,7 @@ def render_list_view():
     # Defining a logical sequence for the columns
     preferred_order = [
         "date", "account_code", "isin", "type_code", 
-        "quantity", "trade_amount", "trade_currency", "amount_eur",
+        "quantity", "settle_amount", "settle_currency", "amount_eur",
         "created_at", "updated_at", "id"
     ]
     
@@ -456,8 +456,8 @@ def render_list_view():
             "isin": st.column_config.TextColumn("ISIN"),
             "type_code": st.column_config.TextColumn("Type"),
             "quantity": st.column_config.NumberColumn("Quantity", format="%.4f"),
-            "trade_amount": st.column_config.NumberColumn("Trade Amount", format="%.2f"),
-            "trade_currency": st.column_config.TextColumn("Trade Curr"),
+            "settle_amount": st.column_config.NumberColumn("Settle Amount", format="%.2f"),
+            "settle_currency": st.column_config.TextColumn("Settle Curr"),
             "amount_eur": st.column_config.NumberColumn("Amount (EUR)", format="%.2f"),
             "created_at": st.column_config.DatetimeColumn("Created At", format="DD.MM.YYYY, HH:mm"),
             "updated_at": st.column_config.DatetimeColumn("Updated At", format="DD.MM.YYYY, HH:mm"),
