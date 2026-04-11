@@ -33,8 +33,6 @@ if check_password():
         asset_table_view()  
  
     elif menu == "Transactions": 
-        if st.session_state["view"] == "list": 
-            transaction_table_view() 
-        else: 
-            st.warning("Bulk Form not yet implemented.")
+        # The routing between 'list' and 'form' is handled inside this component
+        transaction_table_view()
 
