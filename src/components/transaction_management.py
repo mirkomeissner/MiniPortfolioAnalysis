@@ -75,11 +75,14 @@ def render_import_upload_screen():
         except Exception as e:
             st.error(f"Error parsing CSV: {e}")
 
-
 def render_import_preview_screen():
     """
-    Finalized Import Screen (English)
-    Features: Ultra-Robust 2-Phase Validation & Safe State Management.
+    Complete Import Screen (English)
+    Features: 
+    - Advanced Filtering (Restored)
+    - Persistent Mapping
+    - Stable Validation Warning
+    - Dry-Run with Auto-Deselection
     """
     st.title("Finalize Import: Filter & Map")
 
@@ -93,16 +96,25 @@ def render_import_preview_screen():
         st.session_state["val_error_indices"] = []
     if "import_confirmed" not in st.session_state:
         st.session_state["import_confirmed"] = False
+    if "show_val_warning" not in st.session_state:
+        st.session_state["show_val_warning"] = False
 
-    # --- VALIDATION GUARD ---
+    # --- VALIDATION GUARD & WARNING ---
+    # This block handles the de-selection and prepares the warning message
     if st.session_state["val_error_indices"]:
         err_idx = st.session_state["val_error_indices"]
-        # Ensure indices still exist in the dataframe
         valid_err_idx = [i for i in err_idx if i in st.session_state["imported_df"].index]
         if valid_err_idx:
             st.session_state["imported_df"].loc[valid_err_idx, "import_row"] = False
-            st.warning(f"⚠️ {len(valid_err_idx)} invalid rows detected (e.g. missing dates or amounts) and deselected for your review.")
-        st.session_state["val_error_indices"] = [] 
+            st.session_state["show_val_warning"] = True # Set flag to keep warning visible
+        st.session_state["val_error_indices"] = [] # Reset indices
+
+    # Display the warning if the flag is set
+    if st.session_state["show_val_warning"]:
+        st.warning("⚠️ Some transactions contained data errors (e.g., missing dates or invalid numbers). These rows have been automatically deselected for your review.")
+        if st.button("Dismiss Warning"):
+            st.session_state["show_val_warning"] = False
+            st.rerun()
 
     df_raw = st.session_state["imported_df"]
     csv_columns = df_raw.columns.tolist()
@@ -128,11 +140,41 @@ def render_import_preview_screen():
 
     st.divider()
 
-    # --- SECTION 2: FILTER & PREVIEW ---
-    # [Filtering logic stays here as before]
-    filtered_df = df_raw.copy() 
-    # (Note: Apply your Logic Mode filtering here if active)
+    # --- SECTION 2: ADVANCED FILTERING (RESTORED) ---
+    st.subheader("2. Filter Rows")
+    with st.expander("🛠 Advanced Query Builder", expanded=False):
+        logic_mode = st.radio("Logic Mode", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True)
+        if "import_filter_rules" not in st.session_state:
+            st.session_state["import_filter_rules"] = []
+        
+        fc1, fc2 = st.columns([1, 4])
+        if fc1.button("➕ Add Rule"):
+            st.session_state["import_filter_rules"].append({"column": csv_columns[0], "value": None})
+            st.rerun()
+        if fc2.button("🗑 Clear All"):
+            st.session_state["import_filter_rules"] = []
+            st.rerun()
 
+        active_filters = []
+        for i, rule in enumerate(st.session_state["import_filter_rules"]):
+            r1, r2, r3 = st.columns([2, 3, 0.5])
+            col_name = r1.selectbox(f"Col {i}", csv_columns, key=f"fcol_{i}")
+            opts = sorted(df_raw[col_name].dropna().unique().astype(str).tolist())
+            val = r2.multiselect(f"Values {i}", opts, key=f"fval_{i}")
+            if val: active_filters.append(df_raw[col_name].astype(str).isin(val))
+            if r3.button("❌", key=f"frem_{i}"):
+                st.session_state["import_filter_rules"].pop(i)
+                st.rerun()
+
+    # Apply filters to the base dataframe
+    filtered_df = df_raw.copy()
+    if active_filters:
+        mask = active_filters[0]
+        for m in active_filters[1:]:
+            mask = (mask & m) if logic_mode == "Match ALL (AND)" else (mask | m)
+        filtered_df = df_raw[mask]
+
+    # Data Editor
     edited_df = st.data_editor(
         filtered_df,
         column_config={"import_row": st.column_config.CheckboxColumn("Import?", default=True)},
@@ -144,7 +186,7 @@ def render_import_preview_screen():
 
     # --- SECTION 3: MAPPING ---
     st.subheader("3. Mapping Configuration")
-    col_t1, col_t2 = st.columns([1, 2])
+    col_t1, _ = st.columns([1, 2])
     type_column = col_t1.selectbox("CSV Type Column", csv_columns, index=get_map_idx("type", "type_column"))
     
     distinct_csv_types = filtered_df[type_column].unique().tolist()
@@ -178,9 +220,10 @@ def render_import_preview_screen():
     st.divider()
 
     # --- SECTION 4: PHASED EXECUTION ---
-    
-    # PHASE 1: Dry-Run Validation
     if st.button("🚀 Start Import", type="primary", use_container_width=True):
+        # We reset the warning flag on every new attempt
+        st.session_state["show_val_warning"] = False
+        
         current_selection = edited_df[edited_df["import_row"] == True].copy()
         
         if current_selection.empty:
@@ -189,36 +232,24 @@ def render_import_preview_screen():
             invalid_indices = []
             for idx, row in current_selection.iterrows():
                 try:
-                    # ROBUST VALIDATION: Catch any type conversion error
-                    # Check Date
-                    if pd.isna(row[map_date]) or str(row[map_date]).strip() == "":
-                        raise ValueError("Date is empty")
-                    _ = pd.to_datetime(row[map_date])
-                    
-                    # Check Numbers
-                    _ = float(row[map_trade_amt])
-                    _ = float(row[map_qty])
-                    
-                    # Check ISIN
-                    if pd.isna(row[map_isin]) or str(row[map_isin]).strip() == "":
-                        raise ValueError("ISIN is empty")
-                except Exception:
-                    # If ANY error occurs, collect the index
+                    if pd.isna(row[map_date]) or str(row[map_date]).strip() == "": raise ValueError()
+                    pd.to_datetime(row[map_date])
+                    float(row[map_trade_amt])
+                    float(row[map_qty])
+                    if pd.isna(row[map_isin]) or str(row[map_isin]).strip() == "": raise ValueError()
+                except:
                     invalid_indices.append(idx)
 
             if invalid_indices:
                 st.session_state["val_error_indices"] = invalid_indices
-                st.session_state["import_confirmed"] = False
                 st.rerun()
             else:
-                # ALL CLEAR - No errors found
                 st.session_state["import_confirmed"] = True
                 st.rerun()
 
-    # PHASE 2: Actual Import
+    # Actual Execution Phase
     if st.session_state.get("import_confirmed"):
-        st.session_state["import_confirmed"] = False # Reset immediately
-        
+        st.session_state["import_confirmed"] = False
         final_selection = edited_df[edited_df["import_row"] == True]
         success_count = 0
         progress_bar = st.progress(0)
@@ -242,10 +273,10 @@ def render_import_preview_screen():
                 save_transaction(payload)
                 success_count += 1
             except Exception as e:
-                st.error(f"Row {idx} Database Error: {e}")
+                st.error(f"Row {idx} Error: {e}")
             progress_bar.progress((i + 1) / len(final_selection))
 
-        # Save mapping and clean up
+        # Save mapping settings
         save_import_settings(user, acc_code, {
             "type_column": type_column, "type_mapping": type_mapping,
             "map_isin": map_isin, "map_date": map_date, "map_qty": map_qty,
