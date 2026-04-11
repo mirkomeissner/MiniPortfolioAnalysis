@@ -3,10 +3,10 @@ import yfinance as yf
 import pandas as pd
 from src.database import save_asset_static_data, get_ref_options, get_country_region_map
 
-# --- 1. MAPPING-LOGIK (Yahoo Finance -> DB-Standard) ---
+# --- 1. MAPPING (Yahoo Finance -> DB-Standard) ---
 
 def map_yahoo_to_ref(yahoo_sector):
-    """Mappt Yahoo Sektoren auf GICS Codes."""
+    """Mapping Yahoo Sectors to GICS Codes."""
     mapping = {
         "Technology": "45", "Financial Services": "40", "Healthcare": "35",
         "Consumer Cyclical": "25", "Consumer Defensive": "30", "Basic Materials": "15",
@@ -16,7 +16,7 @@ def map_yahoo_to_ref(yahoo_sector):
     return mapping.get(yahoo_sector)
 
 def map_yahoo_to_instrument_type(quote_type, symbol_name=""):
-    """Bestimmt den Instrumententyp basierend auf Yahoo Meta-Daten."""
+    """Determine Instrumententype based on Yahoo Meta-Data."""
     mapping = {
         "EQUITY": "STO", "ETF": "ETF", "MUTUALFUND": "FUN", 
         "BOND": "BON", "CURRENCY": "FX", "CRYPTOCURRENCY": "CRY"
@@ -28,7 +28,7 @@ def map_yahoo_to_instrument_type(quote_type, symbol_name=""):
     return res
 
 def map_yahoo_to_asset_class(quote_type, symbol_name=""):
-    """Mappt Yahoo Typen auf grobe Asset Klassen."""
+    """Mapping Yahoo Types to Asset Classes."""
     name_up = str(symbol_name).upper()
     qt_up = str(quote_type).upper()
     if qt_up == "CURRENCY" or "MONEY MARKET" in name_up: return "LIQ"
@@ -36,12 +36,10 @@ def map_yahoo_to_asset_class(quote_type, symbol_name=""):
     if qt_up in ["CRYPTOCURRENCY", "COMMODITY"] or any(word in name_up for word in ["GOLD", "REIT"]): return "ALT"
     return "EQU"
 
-# --- 2. HILFSFUNKTIONEN FÜR DIE UI ---
+# --- 2. helper functions for UI ---
 
 def handle_save_request(row, isin):
-    """Bereitet die editierten Daten auf und sendet sie an die Datenbank."""
     def clean_code(val):
-        # Extrahiert 'EQU' aus 'EQU (Equities & Equity Funds)'
         return val.split(" (")[0] if val and " (" in str(val) else val
 
     asset_entry = {
@@ -62,23 +60,17 @@ def handle_save_request(row, isin):
     try:
         save_asset_static_data(asset_entry)
         st.success(f"✅ {row['Ticker']} saved successfully!")
-        
-        # WICHTIG: Cache leeren und Ansicht zurücksetzen
         st.cache_data.clear()
         st.session_state["view"] = "list" 
-        st.rerun() # Automatischer Redirect zur Tabelle
-        
+        st.rerun() 
     except Exception as e:
         st.error(f"Error saving data: {e}")
-
-# --- 3. HAUPTFUNKTION (UI) ---
 
 def ticker_search_view():
     st.subheader("🔍 Search New Asset via ISIN")
 
-    # Referenzdaten einmalig pro Session laden
     if 'ref_data_loaded' not in st.session_state:
-        with st.spinner("Lade Referenzdaten..."):
+        with st.spinner("Loading reference data..."):
             st.session_state['db_region_map'] = get_country_region_map()
             st.session_state['opt_asset'] = get_ref_options("ref_asset_class")
             st.session_state['opt_gics'] = get_ref_options("ref_sector")
@@ -86,24 +78,23 @@ def ticker_search_view():
             st.session_state['opt_type'] = get_ref_options("ref_instrument_type")
             st.session_state['ref_data_loaded'] = True
 
-    isin_input = st.text_input("ISIN eingeben", placeholder="z.B. US0378331005")
+    isin_input = st.text_input("Enter ISIN", placeholder="e.g. US0378331005")
     
-    if st.button("Ticker suchen") and isin_input:
-        with st.spinner("Suche auf Yahoo Finance läuft..."):
+    if st.button("Search Ticker") and isin_input:
+        with st.spinner("Fetching data from Yahoo Finance..."):
             try:
                 search_results = yf.Search(isin_input).quotes
                 if not search_results:
-                    st.warning("Keine Ergebnisse für diese ISIN gefunden.")
+                    st.warning("No results found for this ISIN.")
                 else:
                     raw_data = []
                     for res in search_results:
                         symbol = res.get("symbol")
                         t = yf.Ticker(symbol)
                         info = t.info
-                        name = info.get("longName") or res.get("longname") or "Unbekannt"
+                        name = info.get("longName") or res.get("longname") or "Unknown"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
                         
-                        # Mappings anwenden
                         a_code = map_yahoo_to_asset_class(raw_type, name)
                         asset_val = next((s for s in st.session_state['opt_asset'] if s.startswith(a_code)), a_code)
                         
@@ -122,7 +113,6 @@ def ticker_search_view():
                             "Exchange": info.get("exchange"),
                             "Currency": info.get("currency"),
                             "Industry": info.get("industry"),
-                            "Sector": info.get("sector"),
                             "Sector_GICS": gics_val,
                             "Country": info.get("country", "Unknown"),
                             "Region": reg_val,
@@ -131,44 +121,30 @@ def ticker_search_view():
                         })
                     st.session_state["search_results_df"] = pd.DataFrame(raw_data)
             except Exception as e:
-                st.error(f"Suche fehlgeschlagen: {e}")
+                st.error(f"Search failed: {e}")
 
-    # Darstellung der Ergebnisse & Editierung
     if "search_results_df" in st.session_state:
         df = st.session_state["search_results_df"]
-        
-        st.subheader("1. Daten prüfen & editieren")
+        st.subheader("1. Review & Edit Data")
         
         column_config = {
             "Ticker": st.column_config.TextColumn(disabled=True),
             "Name": st.column_config.TextColumn(disabled=True),
-            "Exchange": st.column_config.TextColumn(disabled=True),
-            "Currency": st.column_config.TextColumn(disabled=True),
             "Sector_GICS": st.column_config.SelectboxColumn("GICS", options=st.session_state['opt_gics'], required=True),
             "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
             "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type'], required=True),
             "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'], required=True)
         }
 
-        edited_df = st.data_editor(
-            df,
-            column_config=column_config,
-            use_container_width=True,
-            hide_index=True,
-            key="ticker_editor"
-        )
+        edited_df = st.data_editor(df, column_config=column_config, use_container_width=True, hide_index=True, key="ticker_editor")
 
         st.markdown("---")
-        st.subheader("2. Ticker für Import wählen")
-        
+        st.subheader("2. Select Ticker for Import")
         ticker_options = edited_df["Ticker"].tolist()
-        selected_ticker = st.selectbox(
-            "Welchen Ticker als Stammdatum speichern?",
-            options=ticker_options
-        )
+        selected_ticker = st.selectbox("Which ticker would you like to save?", options=ticker_options)
 
         if selected_ticker:
             selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
-            if st.button("Save to Database", type="primary"):
+            if st.button("Save to Database", type="primary", use_container_width=True):
                 handle_save_request(selected_row, isin_input)
 
