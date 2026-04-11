@@ -92,13 +92,16 @@ def ticker_search_view():
                         symbol = res.get("symbol")
                         t = yf.Ticker(symbol)
                         info = t.info
+                        
                         name = info.get("longName") or res.get("longname") or "Unknown"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
+                        raw_sector = info.get("sector", "Unknown")
                         
+                        # Mapping to Internal Codes
                         a_code = map_yahoo_to_asset_class(raw_type, name)
                         asset_val = next((s for s in st.session_state['opt_asset'] if s.startswith(a_code)), a_code)
                         
-                        g_code = map_yahoo_to_ref(info.get("sector"))
+                        g_code = map_yahoo_to_ref(raw_sector)
                         gics_val = next((s for s in st.session_state['opt_gics'] if s.startswith(str(g_code))), str(g_code))
                         
                         r_code = st.session_state['db_region_map'].get(info.get("country"), "GLO")
@@ -110,12 +113,14 @@ def ticker_search_view():
                         raw_data.append({
                             "Ticker": symbol,
                             "Name": name,
-                            "Exchange": info.get("exchange"),
-                            "Currency": info.get("currency"),
-                            "Industry": info.get("industry"),
+                            "Exchange": info.get("exchange", "Unknown"),
+                            "Currency": info.get("currency", "Unknown"),
+                            "Industry": info.get("industry", "Unknown"),
+                            "Sector Raw": raw_sector,
                             "Sector_GICS": gics_val,
                             "Country": info.get("country", "Unknown"),
                             "Region": reg_val,
+                            "Type Raw": raw_type,
                             "InstrumentType": type_val,
                             "AssetClass": asset_val
                         })
@@ -127,24 +132,42 @@ def ticker_search_view():
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
         
+        # --- COLUMN CONFIGURATION ---
         column_config = {
-            "Ticker": st.column_config.TextColumn(disabled=True),
-            "Name": st.column_config.TextColumn(disabled=True),
-            "Sector_GICS": st.column_config.SelectboxColumn("GICS", options=st.session_state['opt_gics'], required=True),
+            "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
+            "Name": st.column_config.TextColumn("Name"),
+            "Exchange": st.column_config.TextColumn("Exchange"),
+            "Currency": st.column_config.TextColumn("Currency"),
+            "Industry": st.column_config.TextColumn("Industry"),
+            "Sector Raw": st.column_config.TextColumn("Sector Raw", disabled=True),
+            "Sector_GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics'], required=True),
+            "Country": st.column_config.TextColumn("Country"),
             "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
-            "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type'], required=True),
+            "Type Raw": st.column_config.TextColumn("Type Raw", disabled=True),
+            "InstrumentType": st.column_config.SelectboxColumn("Instrument Type", options=st.session_state['opt_type'], required=True),
             "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'], required=True)
         }
 
-        edited_df = st.data_editor(df, column_config=column_config, use_container_width=True, hide_index=True, key="ticker_editor")
+        # Display the data editor
+        edited_df = st.data_editor(
+            df, 
+            column_config=column_config, 
+            use_container_width=True, 
+            hide_index=True, 
+            key="ticker_editor"
+        )
 
         st.markdown("---")
         st.subheader("2. Select Ticker for Import")
+        
+        # User selection based on edited data
         ticker_options = edited_df["Ticker"].tolist()
         selected_ticker = st.selectbox("Which ticker would you like to save?", options=ticker_options)
 
         if selected_ticker:
+            # We pull the row from the EDITED dataframe so manual changes are preserved
             selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
+            
             if st.button("Save to Database", type="primary", use_container_width=True):
                 handle_save_request(selected_row, isin_input)
 
