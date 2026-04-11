@@ -346,11 +346,11 @@ def render_import_preview_screen():
         })
         
         st.success(f"Import complete: {success_count} transactions saved.")
-        st.cache_data.clear()
-        if "imported_df" in st.session_state: del st.session_state["imported_df"]
-        if "scroll_done" in st.session_state: del st.session_state["scroll_done"]
-        st.session_state["view"] = "list"
-        st.rerun()
+        #st.cache_data.clear()
+        #if "imported_df" in st.session_state: del st.session_state["imported_df"]
+        #if "scroll_done" in st.session_state: del st.session_state["scroll_done"]
+        #st.session_state["view"] = "list"
+        #st.rerun()
 
 
 def render_list_view():
