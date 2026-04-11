@@ -218,31 +218,31 @@ def render_import_preview_screen():
     st.subheader("4. Data Field Mapping")
 
     # --- Required Fields Group ---
-    st.markdown("### 🔴 Required Fields")
+    st.markdown("### Required Fields")
     with st.container(border=True):
         req_col1, req_col2 = st.columns(2)
         with req_col1:
-            map_isin = st.selectbox("ISIN Column ⚠️", csv_columns, 
+            map_isin = st.selectbox("ISIN Column", csv_columns, 
                                     index=get_map_idx("isin", "map_isin"),
                                     help="Unique identifier for the asset (required)")
-            map_date = st.selectbox("Date Column ⚠️", csv_columns, 
+            map_date = st.selectbox("Date Column", csv_columns, 
                                     index=get_map_idx("date", "map_date"),
                                     help="Transaction date (required)")
-            map_qty  = st.selectbox("Quantity Column ⚠️", csv_columns, 
+            map_qty  = st.selectbox("Quantity Column", csv_columns, 
                                     index=get_map_idx("qty", "map_qty"),
                                     help="Number of units (required)")
         with req_col2:
-            map_s_amt = st.selectbox("Settlement Amount ⚠️", csv_columns, 
+            map_s_amt = st.selectbox("Settlement Amount", csv_columns, 
                                      index=get_map_idx("amount", "map_settle_amt"),
                                      help="The total amount paid or received (required)")
-            map_s_cur = st.selectbox("Settlement Currency ⚠️", csv_columns, 
+            map_s_cur = st.selectbox("Settlement Currency", csv_columns, 
                                      index=get_map_idx("curr", "map_settle_curr"),
                                      help="The currency of the settlement amount (required)")
 
     st.write("") # Spacer
 
     # --- Optional Fields Group ---
-    st.markdown("### 🟢 Optional Fields")
+    st.markdown("Optional Fields")
     with st.container(border=True):
         opt_col1, opt_col2 = st.columns(2)
     
