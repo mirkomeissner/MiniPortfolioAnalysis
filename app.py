@@ -63,8 +63,6 @@ if check_password():
     elif menu == "AssetStaticData":
         if st.session_state["view"] == "list":
             asset_table_view()
-        elif st.session_state["view"] == "form":
-            asset_bulk_form()
             
     # PAGE: Transactions
     elif menu == "Transactions":
