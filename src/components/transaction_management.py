@@ -307,13 +307,11 @@ def render_import_preview_screen():
 
 
 
-
-
-
 def render_list_view():
-    """Displays the transaction table and navigation buttons."""
+    """Displays the transaction table with advanced filtering and new timestamps."""
     st.title("Transactions")
     
+    # --- 1. NAVIGATION BUTTONS ---
     col_btn1, col_btn2, _ = st.columns([1, 1, 4])
     with col_btn1:
         if st.button("➕ New Transaction", use_container_width=True):
@@ -321,15 +319,91 @@ def render_list_view():
             st.rerun()
     with col_btn2:
         if st.button("📥 Import CSV", use_container_width=True):
-            if "scroll_done" in st.session_state: del st.session_state["scroll_done"] # Reset scroll
+            if "scroll_done" in st.session_state: del st.session_state["scroll_done"]
             st.session_state["view"] = "import_upload"
             st.rerun()
 
+    # --- 2. GET DATA ---
     data = get_all_transactions()
-    if data:
-        st.dataframe(data, use_container_width=True, hide_index=True)
-    else:
+    if not data:
         st.info("No records found in transactions.")
+        return
+
+    df = pd.DataFrame(data)
+    
+    # Ensure timestamps are actual datetime objects for better formatting
+    if 'created_at' in df.columns:
+        df['created_at'] = pd.to_datetime(df['created_at'])
+    if 'updated_at' in df.columns:
+        df['updated_at'] = pd.to_datetime(df['updated_at'])
+
+    all_columns = df.columns.tolist()
+
+    # --- 3. ADVANCED FILTERING (Consistent with Import Screen) ---
+    if "list_filter_rules" not in st.session_state:
+        st.session_state["list_filter_rules"] = []
+
+    with st.expander("🔍 Advanced Filter", expanded=False):
+        logic_mode = st.radio("Logic Mode", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True, key="list_logic")
+        fc1, fc2 = st.columns([1, 4])
+        if fc1.button("➕ Add Rule", key="list_add_rule"):
+            st.session_state["list_filter_rules"].append({"column": all_columns[0], "value": []})
+            st.rerun()
+        if fc2.button("🗑 Clear All", key="list_clear_rules"):
+            st.session_state["list_filter_rules"] = []
+            st.rerun()
+
+        active_filters = []
+        for i, rule in enumerate(st.session_state["list_filter_rules"]):
+            r1, r2, r3 = st.columns([2, 3, 0.5])
+            
+            # Column Selection
+            sel_col = r1.selectbox(f"Col {i}", all_columns, 
+                                   index=all_columns.index(rule["column"]) if rule["column"] in all_columns else 0,
+                                   key=f"list_fcol_{i}")
+            st.session_state["list_filter_rules"][i]["column"] = sel_col
+            
+            # Value Selection (Multiselect)
+            opts = sorted(df[sel_col].dropna().unique().astype(str).tolist())
+            sel_val = r2.multiselect(f"Values {i}", opts, 
+                                     default=rule["value"] if all(v in opts for v in rule["value"]) else [],
+                                     key=f"list_fval_{i}")
+            st.session_state["list_filter_rules"][i]["value"] = sel_val
+            
+            if sel_val:
+                active_filters.append(df[sel_col].astype(str).isin(sel_val))
+            
+            if r3.button("❌", key=f"list_frem_{i}"):
+                st.session_state["list_filter_rules"].pop(i)
+                st.rerun()
+
+    # Apply Filter Logic
+    filtered_df = df.copy()
+    if active_filters:
+        mask = active_filters[0]
+        for m in active_filters[1:]:
+            mask = (mask & m) if logic_mode == "Match ALL (AND)" else (mask | m)
+        filtered_df = df[mask]
+
+    # --- 4. DISPLAY TABLE ---
+    # Sort by created_at descending so new entries are visible immediately
+    if 'created_at' in filtered_df.columns:
+        filtered_df = filtered_df.sort_values(by='created_at', ascending=False)
+
+    st.write(f"Showing **{len(filtered_df)}** transactions.")
+    
+    st.dataframe(
+        filtered_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "created_at": st.column_config.DatetimeColumn("Created At", format="DD.MM.YYYY, HH:mm"),
+            "updated_at": st.column_config.DatetimeColumn("Updated At", format="DD.MM.YYYY, HH:mm"),
+            "trade_amount": st.column_config.NumberColumn("Amount", format="%.2f €"),
+            "quantity": st.column_config.NumberColumn("Qty", format="%.4f")
+        }
+    )
+
 
 def render_transaction_form():
     """Renders the input form with custom ID logic."""
