@@ -252,20 +252,48 @@ def render_import_preview_screen():
                 st.session_state["import_confirmed"] = True
                 st.rerun()
 
+    
     # --- FINAL EXECUTION ---
     if st.session_state.get("import_confirmed"):
         st.session_state["import_confirmed"] = False
+        
+        # We only import what is currently filtered AND checked
         final_sel = st.session_state["imported_df"].loc[filtered_df.index]
         final_sel = final_sel[final_sel["import_row"] == True]
         
         success_count = 0
         progress_bar = st.progress(0)
+        
         for i, (idx, row) in enumerate(final_sel.iterrows()):
             try:
-                # [Your actual save_transaction(payload) logic here]
+                # 1. Prepare Data
+                t_curr = str(row[map_cur]).upper().strip()[:3]
+                t_amount = float(row[map_amt])
+                raw_date = pd.to_datetime(row[map_date])
+                db_date = raw_date.date().isoformat()
+                isin = str(row[map_isin]).strip()
+                
+                # 2. Build Payload
+                payload = {
+                    "username": user, 
+                    "id": f"{isin}_{raw_date.strftime('%Y%m%d')}_{get_next_transaction_count(user, isin, db_date):03d}",
+                    "account_code": acc_code, 
+                    "isin": isin, 
+                    "date": db_date,
+                    "type_code": type_mapping[row[type_column]].split(" (")[0],
+                    "quantity": float(row[map_qty]), 
+                    "trade_amount": t_amount, 
+                    "trade_currency": t_curr,
+                    "amount_eur": t_amount if t_curr == "EUR" else (float(row[map_eur]) if map_eur != "<Not in CSV>" else None)
+                }
+                
+                # 3. ACTUAL INSERT
+                save_transaction(payload)
                 success_count += 1
+                
             except Exception as e:
                 st.error(f"Row {idx} Error: {e}")
+            
             progress_bar.progress((i + 1) / len(final_sel))
 
         # Save settings for next time
@@ -275,11 +303,16 @@ def render_import_preview_screen():
             "map_trade_amt": map_amt, "map_trade_curr": map_cur, "map_amt_eur": map_eur
         })
         
-        st.success(f"Import complete: {success_count} rows.")
+        st.success(f"Successfully imported {success_count} transactions to {acc_code}!")
         st.cache_data.clear()
-        if "imported_df" in st.session_state: del st.session_state["imported_df"]
+        
+        # Clean up session state
+        if "imported_df" in st.session_state: 
+            del st.session_state["imported_df"]
+        
         st.session_state["view"] = "list"
         st.rerun()
+
 
 
 
