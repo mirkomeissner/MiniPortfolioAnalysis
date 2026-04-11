@@ -285,7 +285,27 @@ def render_import_preview_screen():
                     "account_code": acc_code, "isin": isin, "date": db_date,
                     "type_code": type_mapping[row[type_column]].split(" (")[0],
                     "quantity": float(row[map_qty]), "trade_amount": t_amount, "trade_currency": t_curr,
-                    "amount_eur": t_amount if t_curr == "EUR" else (float(row
+                    "amount_eur": t_amount if t_curr == "EUR" else (float(row[map_amt_eur]) if map_amt_eur != "<Not in CSV>" else None)
+                }
+                save_transaction(payload)
+                success_count += 1
+            except Exception as e:
+                st.error(f"Row {idx} Error: {e}")
+            progress_bar.progress((i + 1) / len(final_selection))
+
+        # Save settings for next time
+        save_import_settings(user, acc_code, {
+            "type_column": type_column, "type_mapping": type_mapping,
+            "map_isin": map_isin, "map_date": map_date, "map_qty": map_qty,
+            "map_trade_amt": map_trade_amt, "map_trade_curr": map_trade_curr, "map_amt_eur": map_amt_eur
+        })
+        
+        st.success(f"Successfully imported {success_count} transactions!")
+        st.cache_data.clear()
+        if "imported_df" in st.session_state: del st.session_state["imported_df"]
+        st.session_state["view"] = "list"
+        st.rerun()
+
 
 
 
