@@ -262,28 +262,62 @@ def render_import_preview_screen():
                 st.session_state["import_confirmed"] = True
                 st.rerun()
 
-    # ACTUAL IMPORT PHASE
+    # --- ACTUAL IMPORT PHASE ---
     if st.session_state.get("import_confirmed"):
         st.session_state["import_confirmed"] = False
         final_sel = st.session_state["imported_df"].loc[filtered_df.index]
         final_sel = final_sel[final_sel["import_row"] == True]
         
+        # 1. IDENTIFY MISSING ASSETS
+        unique_isins = final_sel[map_isin].unique().tolist()
+        
+        # Get existing ISINs from the DB (helper function needed or direct query)
+        # We use a set for O(1) lookup performance
+        existing_assets_raw = supabase.table("asset_static_data").select("isin").in_("isin", unique_isins).execute()
+        existing_isins = {item['isin'] for item in existing_assets_raw.data}
+        
+        missing_isins = [i for i in unique_isins if i not in existing_isins]
+        
+        # 2. AUTO-INSERT MISSING ASSETS (Skeleton records)
+        if missing_isins:
+            with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
+                for m_isin in missing_isins:
+                    # Minimal payload to satisfy constraints
+                    # We use the ISIN as the name for now
+                    asset_payload = {
+                        "isin": m_isin,
+                        "name": m_isin,
+                        "created_by": user
+                    }
+                    try:
+                        save_asset_static_data(asset_payload)
+                        st.write(f"✅ Created asset placeholder for: {m_isin}")
+                    except Exception as e:
+                        st.error(f"Failed to create asset {m_isin}: {e}")
+                status.update(label="Asset provisioning complete!", state="complete")
+
+        # 3. PROCEED WITH TRANSACTION IMPORT
         success_count = 0
         progress_bar = st.progress(0)
+        
         for i, (idx, row) in enumerate(final_sel.iterrows()):
             try:
                 t_curr = str(row[map_cur]).upper().strip()[:3]
                 t_amount = float(row[map_amt])
                 raw_date = pd.to_datetime(row[map_date])
                 db_date = raw_date.date().isoformat()
-                isin = str(row[map_isin]).strip()
+                isin_val = str(row[map_isin]).strip()
                 
                 payload = {
                     "username": user, 
-                    "id": f"{isin}_{raw_date.strftime('%Y%m%d')}_{get_next_transaction_count(user, isin, db_date):03d}",
-                    "account_code": acc_code, "isin": isin, "date": db_date,
+                    "id": f"{isin_val}_{raw_date.strftime('%Y%m%d')}_{get_next_transaction_count(user, isin_val, db_date):03d}",
+                    "account_code": acc_code, 
+                    "isin": isin_val, 
+                    "date": db_date,
                     "type_code": type_mapping[row[type_column]].split(" (")[0],
-                    "quantity": float(row[map_qty]), "trade_amount": t_amount, "trade_currency": t_curr,
+                    "quantity": float(row[map_qty]), 
+                    "trade_amount": t_amount, 
+                    "trade_currency": t_curr,
                     "amount_eur": t_amount if t_curr == "EUR" else (float(row[map_eur]) if map_eur != "<Not in CSV>" else None)
                 }
                 save_transaction(payload)
@@ -292,19 +326,19 @@ def render_import_preview_screen():
                 st.error(f"Row {idx} Error: {e}")
             progress_bar.progress((i + 1) / len(final_sel))
 
+        # 4. FINALIZE
         save_import_settings(user, acc_code, {
             "type_column": type_column, "type_mapping": type_mapping,
             "map_isin": map_isin, "map_date": map_date, "map_qty": map_qty,
             "map_trade_amt": map_amt, "map_trade_curr": map_cur, "map_amt_eur": map_eur
         })
         
-        st.success(f"Import complete: {success_count} rows.")
+        st.success(f"Import complete: {success_count} transactions saved.")
         st.cache_data.clear()
         if "imported_df" in st.session_state: del st.session_state["imported_df"]
         if "scroll_done" in st.session_state: del st.session_state["scroll_done"]
         st.session_state["view"] = "list"
         st.rerun()
-
 
 
 def render_list_view():
