@@ -223,26 +223,21 @@ def render_import_preview_screen():
         req_col1, req_col2 = st.columns(2)
         with req_col1:
             map_isin = st.selectbox("ISIN Column", csv_columns, 
-                                    index=get_map_idx("isin", "map_isin"),
-                                    help="Unique identifier for the asset (required)")
+                                    index=get_map_idx("isin", "map_isin"))
             map_date = st.selectbox("Date Column", csv_columns, 
-                                    index=get_map_idx("date", "map_date"),
-                                    help="Transaction date (required)")
+                                    index=get_map_idx("date", "map_date"))
             map_qty  = st.selectbox("Quantity Column", csv_columns, 
-                                    index=get_map_idx("qty", "map_qty"),
-                                    help="Number of units (required)")
+                                    index=get_map_idx("qty", "map_qty"))
         with req_col2:
             map_s_amt = st.selectbox("Settlement Amount", csv_columns, 
-                                     index=get_map_idx("amount", "map_settle_amt"),
-                                     help="The total amount paid or received (required)")
+                                     index=get_map_idx("amount", "map_settle_amt"))
             map_s_cur = st.selectbox("Settlement Currency", csv_columns, 
-                                     index=get_map_idx("curr", "map_settle_curr"),
-                                     help="The currency of the settlement amount (required)")
+                                     index=get_map_idx("curr", "map_settle_curr"))
 
     st.write("") # Spacer
 
     # --- Optional Fields Group ---
-    st.markdown("Optional Fields")
+    st.markdown("Optional Fields", help="lala")
     with st.container(border=True):
         opt_col1, opt_col2 = st.columns(2)
     
@@ -252,13 +247,11 @@ def render_import_preview_screen():
 
         with opt_col1:
             map_eur = st.selectbox("Amount in EUR", eur_opts, 
-                                   index=eur_opts.index(s_eur) if s_eur in eur_opts else 0,
-                                   help="Use this if your CSV already provides the value converted to EUR")
+                                   index=eur_opts.index(s_eur) if s_eur in eur_opts else 0)
     
         with opt_col2:
             map_fx = st.selectbox("FX Rate Column", eur_opts, 
-                                  index=eur_opts.index(s_fx) if s_fx in eur_opts else 0,
-                                  help="Exchange rate used for calculation (Settle Amount / FX = EUR)")
+                                  index=eur_opts.index(s_fx) if s_fx in eur_opts else 0)
 
     st.divider()
 
