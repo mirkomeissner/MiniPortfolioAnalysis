@@ -13,12 +13,13 @@ from src.database import (
 )
 
 def transaction_table_view():
-    """Main component for transactions."""
-    # Check the current view state
+    """Main entry point for transaction management."""
     current_view = st.session_state.get("view", "list")
 
     if current_view == "form":
         render_transaction_form()
+    elif current_view == "import_preview":
+        render_import_preview_screen()
     else:
         render_list_view()
 
