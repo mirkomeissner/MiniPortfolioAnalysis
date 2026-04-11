@@ -216,18 +216,49 @@ def render_import_preview_screen():
 
     # --- 7. SECTION 4: DATA FIELD MAPPING ---
     st.subheader("4. Data Field Mapping")
-    col_m1, col_m2 = st.columns(2)
-    with col_m1:
-        map_isin = st.selectbox("ISIN Column", csv_columns, index=get_map_idx("isin", "map_isin"))
-        map_date = st.selectbox("Date Column", csv_columns, index=get_map_idx("date", "map_date"))
-        map_qty  = st.selectbox("Quantity Column", csv_columns, index=get_map_idx("qty", "map_qty"))
-    with col_m2:
-        map_s_amt = st.selectbox("Settlement Amount", csv_columns, index=get_map_idx("amount", "map_settle_amt"))
-        map_s_cur = st.selectbox("Settlement Currency", csv_columns, index=get_map_idx("curr", "map_settle_curr"))
-        map_fx    = st.selectbox("FX Rate (Optional)", ["<Not in CSV>"] + csv_columns, index=0)
+
+    # --- Required Fields Group ---
+    st.markdown("### 🔴 Required Fields")
+    with st.container(border=True):
+        req_col1, req_col2 = st.columns(2)
+        with req_col1:
+            map_isin = st.selectbox("ISIN Column ⚠️", csv_columns, 
+                                    index=get_map_idx("isin", "map_isin"),
+                                    help="Unique identifier for the asset (required)")
+            map_date = st.selectbox("Date Column ⚠️", csv_columns, 
+                                    index=get_map_idx("date", "map_date"),
+                                    help="Transaction date (required)")
+            map_qty  = st.selectbox("Quantity Column ⚠️", csv_columns, 
+                                    index=get_map_idx("qty", "map_qty"),
+                                    help="Number of units (required)")
+        with req_col2:
+            map_s_amt = st.selectbox("Settlement Amount ⚠️", csv_columns, 
+                                     index=get_map_idx("amount", "map_settle_amt"),
+                                     help="The total amount paid or received (required)")
+            map_s_cur = st.selectbox("Settlement Currency ⚠️", csv_columns, 
+                                     index=get_map_idx("curr", "map_settle_curr"),
+                                     help="The currency of the settlement amount (required)")
+
+    st.write("") # Spacer
+
+    # --- Optional Fields Group ---
+    st.markdown("### 🟢 Optional Fields")
+    with st.container(border=True):
+        opt_col1, opt_col2 = st.columns(2)
+    
         eur_opts = ["<Not in CSV>"] + csv_columns
         s_eur = saved_config.get("map_amt_eur", "<Not in CSV>")
-        map_eur = st.selectbox("Amount in EUR (Optional)", eur_opts, index=eur_opts.index(s_eur) if s_eur in eur_opts else 0)
+        s_fx = saved_config.get("map_settle_fx", "<Not in CSV>") # Assuming this key in your config
+
+        with opt_col1:
+            map_eur = st.selectbox("Amount in EUR", eur_opts, 
+                                   index=eur_opts.index(s_eur) if s_eur in eur_opts else 0,
+                                   help="Use this if your CSV already provides the value converted to EUR")
+    
+        with opt_col2:
+            map_fx = st.selectbox("FX Rate Column", eur_opts, 
+                                  index=eur_opts.index(s_fx) if s_fx in eur_opts else 0,
+                                  help="Exchange rate used for calculation (Settle Amount / FX = EUR)")
 
     st.divider()
 
