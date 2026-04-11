@@ -74,4 +74,31 @@ def get_all_transactions():
     response = supabase.table("transactions").select("*").eq("username", user).execute()
     return response.data
 
+def get_asset_ref_options():
+    """Fetches all assets in 'ISIN (Name)' format for dropdowns."""
+    try:
+        # Select isin and name from asset_static_data [cite: 76]
+        res = supabase.table("asset_static_data").select("isin, name").execute()
+        return [f"{item['isin']} ({item['name']})" for item in res.data] if res.data else []
+    except Exception as e:
+        st.error(f"Error loading assets for dropdown: {e}")
+        return []
+
+def get_account_ref_options(username):
+    """Fetches user accounts in 'Code (Description)' format."""
+    try:
+        # Filter by username to show only relevant accounts [cite: 79, 81]
+        res = supabase.table("accounts").select("account_code, description").eq("username", username).execute()
+        return [f"{item['account_code']} ({item['description']})" for item in res.data] if res.data else []
+    except Exception as e:
+        st.error(f"Error loading accounts: {e}")
+        return []
+
+def save_transaction(transaction_data):
+    """Inserts a new transaction record into the database."""
+    # Insert data into the transactions table [cite: 80]
+    return supabase.table("transactions").insert(transaction_data).execute()
+
+
+
 
