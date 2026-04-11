@@ -103,7 +103,37 @@ def render_edit_view():
         st.error("Asset not found.")
         return
 
-    # Load Ref Options
+    # --- CLOSE / REOPEN LOGIC ---
+    st.write("---")
+    closed_val = asset.get("Closed On") # Based on the dict key in database.py
+    
+    if closed_val is None:
+        if st.button("🔒 Close Asset", help="Set the closing date to today", use_container_width=True):
+            update_asset_static_data(isin, {
+                "closed_on": datetime.now().date().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "updated_by": st.session_state.get("user_name", "System")
+            })
+            st.success("Asset closed.")
+            st.cache_data.clear()
+            st.session_state["view"] = "list"
+            st.rerun()
+    else:
+        st.warning(f"This asset was closed on {closed_val}")
+        if st.button("🔓 Reopen Asset", help="Clear the closing date", use_container_width=True):
+            update_asset_static_data(isin, {
+                "closed_on": None,
+                "updated_at": datetime.now().isoformat(),
+                "updated_by": st.session_state.get("user_name", "System")
+            })
+            st.success("Asset reopened.")
+            st.cache_data.clear()
+            st.session_state["view"] = "list"
+            st.rerun()
+    st.write("---")
+
+    # --- MAIN EDIT FORM ---
+    # Load Ref Options if not in session
     if 'ref_data_loaded' not in st.session_state:
         st.session_state['opt_asset'] = get_ref_options("ref_asset_class")
         st.session_state['opt_gics'] = get_ref_options("ref_sector")
@@ -113,16 +143,11 @@ def render_edit_view():
 
     with st.form("edit_form"):
         col1, col2 = st.columns(2)
-        
-        # Read-only
         col1.text_input("ISIN (Primary Key)", value=isin, disabled=True)
-        
-        # Editable Fields
         name = col1.text_input("Name", value=asset["Name"])
         ticker = col2.text_input("Ticker", value=asset["Ticker"])
         currency = col2.text_input("Currency", value=asset["Currency"])
         
-        # Dropdowns (matching Code (Label) format)
         def get_index(options, current_label):
             try: return next(i for i, s in enumerate(options) if f"({current_label})" in s)
             except: return 0
@@ -151,15 +176,13 @@ def render_edit_view():
                 "updated_at": datetime.now().isoformat(),
                 "updated_by": st.session_state.get("user_name", "System")
             }
-            
-            try:
-                update_asset_static_data(isin, updated_payload)
-                st.success("Asset updated successfully!")
-                st.cache_data.clear()
-                st.session_state["view"] = "list"
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error updating asset: {e}")
+            update_asset_static_data(isin, updated_payload)
+            st.success("Asset updated successfully!")
+            st.cache_data.clear()
+            st.session_state["view"] = "list"
+            st.rerun()
+
+
 
 
 
