@@ -12,7 +12,8 @@ from src.database import (
     save_transaction,
     get_next_transaction_count,
     get_import_settings,
-    save_import_settings
+    save_import_settings,
+    get_missing_isins
 )
 
 def transaction_table_view():
