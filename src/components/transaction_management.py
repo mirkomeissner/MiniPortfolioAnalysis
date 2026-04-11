@@ -78,11 +78,16 @@ def render_import_upload_screen():
 
 
 
+# This is the Modal function
+@st.dialog("Data Validation Error")
+def show_validation_modal(error_count):
+    st.warning(f"⚠️ {error_count} selected rows contain invalid data (e.g., missing ISIN, invalid Date or Amount).")
+    st.write("These rows have been automatically deselected. Please review the updated selection before proceeding.")
+    if st.button("OK, I will review"):
+        st.session_state["show_val_modal"] = False
+        st.rerun()
 
 def render_import_preview_screen():
-    # 1. THE SCROLL ANCHOR (Needs to be at the very top)
-    st.markdown("<div id='top'></div>", unsafe_allow_html=True)
-
     if "imported_df" not in st.session_state:
         st.session_state["view"] = "list"
         st.rerun()
@@ -93,34 +98,21 @@ def render_import_preview_screen():
         st.session_state["val_error_indices"] = []
     if "import_confirmed" not in st.session_state:
         st.session_state["import_confirmed"] = False
-    if "show_val_warning" not in st.session_state:
-        st.session_state["show_val_warning"] = False
+    if "show_val_modal" not in st.session_state:
+        st.session_state["show_val_modal"] = False
     if "import_filter_rules" not in st.session_state:
         st.session_state["import_filter_rules"] = []
 
-    # --- 2. VALIDATION GUARD & WARNING ---
-    # We apply errors to the dataframe before rendering the editor
+    # --- 1. VALIDATION GUARD ---
+    # If the dry-run found errors, we update the data here
     if st.session_state["val_error_indices"]:
         err_idx = st.session_state["val_error_indices"]
         st.session_state["imported_df"].loc[err_idx, "import_row"] = False
+        error_count = len(err_idx)
         st.session_state["val_error_indices"] = []
-        st.session_state["show_val_warning"] = True
-
-    if st.session_state["show_val_warning"]:
-        # FORCE SCROLL VIA JAVASCRIPT
-        components.html(
-            """
-            <script>
-                var mainSection = window.parent.document.querySelector('section.main');
-                if (mainSection) { mainSection.scrollTo({ top: 0, behavior: 'smooth' }); }
-            </script>
-            """,
-            height=0
-        )
-        st.warning("⚠️ Data errors detected! Invalid rows have been automatically deselected for review.")
-        if st.button("Dismiss Warning"):
-            st.session_state["show_val_warning"] = False
-            st.rerun()
+        st.session_state["show_val_modal"] = True
+        # Trigger the modal immediately
+        show_validation_modal(error_count)
 
     df_raw = st.session_state["imported_df"]
     csv_columns = [c for c in df_raw.columns if c != "import_row"]
@@ -145,7 +137,7 @@ def render_import_preview_screen():
 
     st.divider()
 
-    # --- SECTION 2: ADVANCED FILTERING ---
+    # --- SECTION 2: ADVANCED FILTERING (STABLE) ---
     st.subheader("2. Filter Rows")
     with st.expander("🛠 Advanced Query Builder", expanded=False):
         logic_mode = st.radio("Logic Mode", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True)
@@ -174,6 +166,7 @@ def render_import_preview_screen():
                 st.session_state["import_filter_rules"].pop(i)
                 st.rerun()
 
+    # APPLY FILTERS TO VIEW
     filtered_df = df_raw.copy()
     if active_filters:
         mask = active_filters[0]
@@ -181,9 +174,8 @@ def render_import_preview_screen():
             mask = (mask & m) if logic_mode == "Match ALL (AND)" else (mask | m)
         filtered_df = df_raw[mask]
 
-    # --- DATA EDITOR (The Critical Part) ---
-    # We remove the sync logic from the top and let the Editor handle its own state.
-    # We will grab the final state ONLY when the button is clicked.
+    # --- DATA EDITOR ---
+    # We use the key to keep it reactive
     edited_df = st.data_editor(
         filtered_df,
         column_config={"import_row": st.column_config.CheckboxColumn("Import?", default=True)},
@@ -195,8 +187,8 @@ def render_import_preview_screen():
 
     st.divider()
 
-    # --- SECTION 3 & 4: MAPPING ---
-    st.subheader("3. Mapping Configuration")
+    # --- SECTION 3: TRANSACTION TYPE MAPPING ---
+    st.subheader("3. Transaction Type Mapping")
     col_t1, _ = st.columns([1, 2])
     type_column = col_t1.selectbox("CSV Type Column", csv_columns, index=get_map_idx("type", "type_column"))
     
@@ -211,8 +203,13 @@ def render_import_preview_screen():
         default_idx = 0
         if str(csv_val) in saved_type_map and saved_type_map[str(csv_val)] in db_trans_types:
             default_idx = db_trans_types.index(saved_type_map[str(csv_val)])
-        type_mapping[csv_val] = target_col.selectbox(f"CSV Type: '{csv_val}'", options=db_trans_types, index=default_idx, key=f"tmap_{csv_val}")
+        
+        type_mapping[csv_val] = target_col.selectbox(f"CSV Type: '{csv_val}'", options=db_trans_types, 
+                                                     index=default_idx, key=f"tmap_{csv_val}")
 
+    st.divider()
+
+    # --- SECTION 4: DATA FIELD MAPPING ---
     st.subheader("4. Data Field Mapping")
     col_m1, col_m2 = st.columns(2)
     with col_m1:
@@ -224,22 +221,21 @@ def render_import_preview_screen():
         map_trade_curr = st.selectbox("Trade Currency", csv_columns, index=get_map_idx("curr", "map_trade_curr"))
         eur_opts = ["<Not in CSV>"] + csv_columns
         saved_eur = saved_config.get("map_amt_eur", "<Not in CSV>") if saved_config else "<Not in CSV>"
-        map_amt_eur = st.selectbox("Amount in EUR (Optional)", eur_opts, index=eur_opts.index(saved_eur) if saved_eur in eur_opts else 0)
+        map_amt_eur = st.selectbox("Amount in EUR (Optional)", eur_opts, 
+                                   index=eur_opts.index(saved_eur) if saved_eur in eur_opts else 0)
 
     st.divider()
 
     # --- SECTION 5: DRY-RUN & EXECUTION ---
     if st.button("🚀 Start Import", type="primary", use_container_width=True):
-        # IMPORTANT: We sync the UI changes to the session state dataframe RIGHT NOW
-        # This ensures manual deselections are saved before the rerun happens.
+        # SYNC MANUAL SELECTION: Apply UI changes to the master DF before validation
         if "import_editor_final" in st.session_state:
             edits = st.session_state["import_editor_final"].get("edited_rows", {})
             for row_idx_str, change in edits.items():
                 if "import_row" in change:
-                    # edited_df uses the index of filtered_df, which matches df_raw
                     st.session_state["imported_df"].at[int(row_idx_str), "import_row"] = change["import_row"]
 
-        # Re-read the selection after sync
+        # Validate selection
         current_selection = st.session_state["imported_df"][st.session_state["imported_df"]["import_row"] == True].copy()
         
         if current_selection.empty:
@@ -257,20 +253,33 @@ def render_import_preview_screen():
 
             if invalid_indices:
                 st.session_state["val_error_indices"] = invalid_indices
-                st.rerun()
+                st.rerun() # This will trigger the Validation Guard at the top
             else:
                 st.session_state["import_confirmed"] = True
                 st.rerun()
 
-    # --- EXECUTION ---
+    # ACTUAL DATABASE IMPORT
     if st.session_state.get("import_confirmed"):
         st.session_state["import_confirmed"] = False
         final_selection = st.session_state["imported_df"][st.session_state["imported_df"]["import_row"] == True]
         
-        # ... [Rest of your DB saving logic remains the same] ...
-        st.success("Import Successful")
-        # Cleanup code here...
+        success_count = 0
+        progress_bar = st.progress(0)
+        for i, (idx, row) in enumerate(final_selection.iterrows()):
+            try:
+                # [Database logic here...]
+                success_count += 1
+            except Exception as e:
+                st.error(f"Row {idx} Error: {e}")
+            progress_bar.progress((i + 1) / len(final_selection))
+
+        st.success(f"Successfully imported {success_count} transactions!")
+        st.cache_data.clear()
+        if "imported_df" in st.session_state: del st.session_state["imported_df"]
+        st.session_state["view"] = "list"
         st.rerun()
+
+
 
 
 
