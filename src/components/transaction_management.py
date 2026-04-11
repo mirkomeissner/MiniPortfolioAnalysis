@@ -163,15 +163,20 @@ def show_import_dialog():
             st.dataframe(df, use_container_width=True)
             
             st.info(f"Detected {len(df)} rows. All numbers have been converted to dot-decimal format.")
-            
-            if st.button("Proceed with Import"):
-                # "Everything else comes later" - but we could store it in session state for now
+
+            if st.button("Proceed with Import", type="primary"):
+                # Initialize the 'import_row' column (all checked by default)
+                df.insert(0, "import_row", True)
+                
+                # Store in session state
                 st.session_state["imported_df"] = df
-                st.success("Data loaded into preview. Ready for mapping!")
-                # st.rerun() # or close dialog
+                st.session_state["view"] = "import_preview"
+                st.rerun()
                 
         except Exception as e:
             st.error(f"Error parsing CSV: {e}")
+
+            
 
 
 
