@@ -271,40 +271,39 @@ def render_import_preview_screen():
         final_sel = final_sel[final_sel["import_row"] == True]
         
         # 1. CHECK AND PROVISION MISSING ASSETS
-        # We take ALL unique ISINs that are marked for import
-        unique_isins = final_sel[map_isin].unique().tolist()
-        unique_isins = [str(i).strip() for i in unique_isins if str(i).strip()]
+        # --- DEBUG START ---
+        st.write("### 🛠 Debug Provisioning")
         
+        # 1. Alle ISINs aus der Auswahl holen
+        raw_isins = final_sel[map_isin].unique().tolist()
+        st.write(f"Unique ISINs found in selection: `{raw_isins}`")
+
+        # 2. ISINs säubern
+        unique_isins = [str(i).strip() for i in raw_isins if str(i).strip() and str(i).lower() != 'nan']
+        st.write(f"Cleaned ISINs for check: `{unique_isins}`")
+        
+        # 3. DB Check
         missing_isins = get_missing_isins(unique_isins)
+        st.write(f"Missing ISINs according to DB: `{missing_isins}`")
         
+        if not missing_isins:
+            st.warning("⚠️ No missing ISINs detected. Skipping provisioning. If the transaction fails now, get_missing_isins lied to us!")
+        # --- DEBUG END ---
+
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
                 for m_isin in missing_isins:
-                    # VERY MINIMAL PAYLOAD - only fields we are 100% sure about
                     asset_payload = {
                         "isin": m_isin,
                         "name": m_isin,
                         "created_by": user
                     }
+                    st.write(f"Sending Payload: `{asset_payload}`")
                     try:
-                        # Call the DB function
                         res = save_asset_static_data(asset_payload)
-                        
-                        # DEBUG PRINT
-                        st.write(f"Trying ISIN: {m_isin}...")
-                        
-                        # Explicit check of the response object
-                        if hasattr(res, 'data') and res.data:
-                            st.write(f"✅ DB confirmed: {m_isin} saved.")
-                        else:
-                            # If res.data is empty, Supabase didn't save but might not have thrown an exception
-                            st.error(f"❌ DB rejected {m_isin} without error message. Check RLS or Column names!")
-                            # Print the whole response to see what's inside
-                            st.code(str(res))
-                            
+                        st.write(f"Result for {m_isin}: `{res}`")
                     except Exception as e:
-                        st.error(f"❌ Fatal Error for {m_isin}: {str(e)}")
-                
+                        st.error(f"❌ Error during insert: {e}")
                 status.update(label="Asset provisioning finished!", state="complete")
 
 
