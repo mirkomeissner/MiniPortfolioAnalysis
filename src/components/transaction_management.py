@@ -271,41 +271,35 @@ def render_import_preview_screen():
         final_sel = st.session_state["imported_df"].loc[filtered_df.index]
         final_sel = final_sel[final_sel["import_row"] == True]
         
-        # 1. CHECK AND PROVISION MISSING ASSETS
-        # --- DEBUG START ---
-        st.write("### 🛠 Debug Provisioning")
+        # --- 1. ASSET PROVISIONING (JIT) ---
+        # Get all unique ISINs from the selected rows
+        unique_isins = [str(i).strip() for i in final_sel[map_isin].unique().tolist() if str(i).strip()]
         
-        # 1. Alle ISINs aus der Auswahl holen
-        raw_isins = final_sel[map_isin].unique().tolist()
-        st.write(f"Unique ISINs found in selection: `{raw_isins}`")
-
-        # 2. ISINs säubern
-        unique_isins = [str(i).strip() for i in raw_isins if str(i).strip() and str(i).lower() != 'nan']
-        st.write(f"Cleaned ISINs for check: `{unique_isins}`")
-        
-        # 3. DB Check
+        # Check which ones are missing in the database
         missing_isins = get_missing_isins(unique_isins)
-        st.write(f"Missing ISINs according to DB: `{missing_isins}`")
         
-        if not missing_isins:
-            st.warning("⚠️ No missing ISINs detected. Skipping provisioning. If the transaction fails now, get_missing_isins lied to us!")
-        # --- DEBUG END ---
-
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
                 for m_isin in missing_isins:
                     asset_payload = {
                         "isin": m_isin,
-                        "name": m_isin,
+                        "name": m_isin,  # Placeholder name
                         "created_by": user
                     }
-                    st.write(f"Sending Payload: `{asset_payload}`")
                     try:
-                        res = save_asset_static_data(asset_payload)
-                        st.write(f"Result for {m_isin}: `{res}`")
+                        # Attempt to save the missing asset
+                        save_asset_static_data(asset_payload)
+                        st.write(f"✅ Created asset placeholder: {m_isin}")
                     except Exception as e:
-                        st.error(f"❌ Error during insert: {e}")
-                status.update(label="Asset provisioning finished!", state="complete")
+                        # If multiple rows have the same new ISIN, 
+                        # one might have been created by a parallel process
+                        if "duplicate" not in str(e).lower():
+                            st.error(f"Could not create asset {m_isin}: {e}")
+                
+                # Brief pause to ensure DB indices are updated before transactions start
+                import time
+                time.sleep(0.5)
+                status.update(label="Asset provisioning complete!", state="complete")
 
 
         
@@ -347,11 +341,11 @@ def render_import_preview_screen():
         })
         
         st.success(f"Import complete: {success_count} transactions saved.")
-        #st.cache_data.clear()
-        #if "imported_df" in st.session_state: del st.session_state["imported_df"]
-        #if "scroll_done" in st.session_state: del st.session_state["scroll_done"]
-        #st.session_state["view"] = "list"
-        #st.rerun()
+        st.cache_data.clear()
+        if "imported_df" in st.session_state: del st.session_state["imported_df"]
+        if "scroll_done" in st.session_state: del st.session_state["scroll_done"]
+        st.session_state["view"] = "list"
+        st.rerun()
 
 
 def render_list_view():
