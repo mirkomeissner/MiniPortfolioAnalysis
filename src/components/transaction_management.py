@@ -63,7 +63,7 @@ def render_import_upload_screen():
             st.write("### Preview of uploaded data:")
             st.dataframe(df, use_container_width=True)
             
-            if st.button("Proceed with Import", type="primary"):
+            if st.button("Proceed with Mapping", type="primary"):
                 # Initialize the 'import_row' column (all checked by default)
                 df.insert(0, "import_row", True)
                 
