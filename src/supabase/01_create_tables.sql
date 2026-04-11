@@ -52,7 +52,9 @@ CREATE TABLE IF NOT EXISTS asset_static_data (
   created_by TEXT
 );
 
-
+ALTER TABLE asset_static_data 
+ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ,
+ADD COLUMN IF NOT EXISTS updated_by TEXT;
 
 
 
