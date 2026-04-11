@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     quantity NUMERIC,
     settle_amount NUMERIC,
     settle_currency VARCHAR(3),
+    settle_fxrate NUMERIC,
     amount_eur NUMERIC,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ,
