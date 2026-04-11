@@ -175,8 +175,12 @@ def render_edit_view():
         currency = col2.text_input("Currency", value=asset["Currency"])
         
         def get_index(options, current_label):
-            try: return next(i for i, s in enumerate(options) if f"({current_label})" in s)
-            except: return 0
+            if not current_label: return 0
+            try: 
+                # Sucht nach dem Label im String, z.B. "STO (Stock)"
+                return next(i for i, s in enumerate(options) if f"({current_label})" in s or s.startswith(current_label))
+            except: 
+                return 0
 
         asset_class = col1.selectbox("Asset Class", st.session_state['opt_asset'], index=get_index(st.session_state['opt_asset'], asset["Asset Class"]))
         region = col2.selectbox("Region", st.session_state['opt_region'], index=get_index(st.session_state['opt_region'], asset["Region"]))
