@@ -10,6 +10,7 @@ from src.database import (
     get_asset_ref_options, 
     get_account_ref_options,
     save_transaction,
+    save_transactions_bulk,
     get_next_transaction_count,
     get_import_settings,
     save_import_settings,
@@ -332,8 +333,7 @@ def render_import_preview_screen():
                         save_asset_static_data(asset_payload)
                         st.write(f"✅ Created asset placeholder: {m_isin}")
                     except Exception as e:
-                        # If multiple rows have the same new ISIN, 
-                        # one might have been created by a parallel process
+                        # Handle potential race conditions for duplicates
                         if "duplicate" not in str(e).lower():
                             st.error(f"Could not create asset {m_isin}: {e}")
                 
@@ -342,64 +342,88 @@ def render_import_preview_screen():
                 time.sleep(0.5)
                 status.update(label="Asset provisioning complete!", state="complete")
 
-
-        
-        # 3. PROCEED WITH TRANSACTION IMPORT
+        # --- 2. PREPARE BATCH IMPORT ---
         success_count = 0
         progress_bar = st.progress(0)
+        payload_batch = []
         
-        for i, (idx, row) in enumerate(final_sel.iterrows()):
-            try:
-                s_curr = str(row[map_s_cur]).upper().strip()[:3]
-                s_amount = float(row[map_s_amt])
-                raw_date = pd.to_datetime(row[map_date])
-                db_date = raw_date.date().isoformat()
-                isin_val = str(row[map_isin]).strip()
+        # Local cache for ID counters to minimize DB Roundtrips
+        # Format: {(isin, date): current_count}
+        local_counters = {}
+        
+        with st.status("Processing records...", expanded=True) as status:
+            for i, (idx, row) in enumerate(final_sel.iterrows()):
+                try:
+                    # Basic extraction
+                    s_curr = str(row[map_s_cur]).upper().strip()[:3]
+                    s_amount = float(row[map_s_amt])
+                    raw_date = pd.to_datetime(row[map_date])
+                    db_date = raw_date.date().isoformat()
+                    isin_val = str(row[map_isin]).strip()
 
-                # 1. Determine Amount in EUR
-                amt_eur = None
-                if s_curr == "EUR":
-                    amt_eur = s_amount
-                elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]):
-                    amt_eur = float(row[map_eur])
-                elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]) and float(row[map_fx]) != 0:
-                    amt_eur = s_amount / float(row[map_fx])
-                else:
+                    # 1. Determine Amount in EUR
                     amt_eur = None
+                    if s_curr == "EUR":
+                        amt_eur = s_amount
+                    elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]):
+                        amt_eur = float(row[map_eur])
+                    elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]) and float(row[map_fx]) != 0:
+                        amt_eur = s_amount / float(row[map_fx])
 
-                # 2. Determine FX Rate
-                settle_fx = None
-                if s_curr == "EUR":
-                    settle_fx = 1.0
-                elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]) and float(row[map_eur]) != 0:
-                    settle_fx = s_amount / float(row[map_eur])
-                elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]):
-                    settle_fx = float(row[map_fx])
-                else:
+                    # 2. Determine FX Rate
                     settle_fx = None
+                    if s_curr == "EUR":
+                        settle_fx = 1.0
+                    elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]) and float(row[map_eur]) != 0:
+                        settle_fx = s_amount / float(row[map_eur])
+                    elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]):
+                        settle_fx = float(row[map_fx])
 
-                # 3. Create Payload
-                payload = {
-                    "username": user,
-                    "id": f"{isin_val}_{raw_date.strftime('%Y%m%d')}_{get_next_transaction_count(user, isin_val, db_date):03d}",
-                    "account_code": acc_code,
-                    "isin": isin_val,
-                    "date": db_date,
-                    "type_code": type_mapping[row[type_column]].split(" (")[0],
-                    "quantity": float(row[map_qty]),
-                    "settle_amount": s_amount,
-                    "settle_currency": s_curr,
-                    "settle_fxrate": settle_fx,
-                    "amount_eur": amt_eur
-                }
-        
-                save_transaction(payload)
-                success_count += 1
+                    # 3. Optimized ID Generation using local counter cache
+                    counter_key = (isin_val, db_date)
+                    if counter_key not in local_counters:
+                        # Fetch starting index from DB once per ISIN/Date combo
+                        local_counters[counter_key] = get_next_transaction_count(user, isin_val, db_date)
+                    
+                    current_idx = local_counters[counter_key]
+                    generated_id = f"{isin_val}_{raw_date.strftime('%Y%m%d')}_{current_idx:03d}"
+                    
+                    # Increment local counter for the next record in this ISIN/Date group
+                    local_counters[counter_key] += 1
 
-            except Exception as e:
-                st.error(f"Row {idx} Error: {e}")
-    
-            progress_bar.progress((i + 1) / len(final_sel))
+                    # 4. Create Payload
+                    payload = {
+                        "username": user,
+                        "id": generated_id,
+                        "account_code": acc_code,
+                        "isin": isin_val,
+                        "date": db_date,
+                        "type_code": type_mapping[row[type_column]].split(" (")[0],
+                        "quantity": float(row[map_qty]),
+                        "settle_amount": s_amount,
+                        "settle_currency": s_curr,
+                        "settle_fxrate": settle_fx,
+                        "amount_eur": amt_eur
+                    }
+                    
+                    payload_batch.append(payload)
+
+                except Exception as e:
+                    st.error(f"Row {idx} preparation Error: {e}")
+                
+                progress_bar.progress((i + 1) / len(final_sel))
+
+            # --- 3. EXECUTE BULK INSERT ---
+            if payload_batch:
+                status.update(label=f"Uploading {len(payload_batch)} transactions...", state="running")
+                try:
+                    # Call the bulk save function in database.py
+                    save_transactions_bulk(payload_batch)
+                    success_count = len(payload_batch)
+                    status.update(label=f"Successfully imported {success_count} transactions!", state="complete")
+                except Exception as e:
+                    st.error(f"Database Bulk Insert Error: {e}")
+                    status.update(label="Import failed during DB upload.", state="error")
 
         # 4. FINALIZE
         save_import_settings(user, acc_code, {
