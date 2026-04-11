@@ -464,9 +464,8 @@ def render_list_view():
             "id": st.column_config.TextColumn("Internal ID"),
         }
     )
-
 def render_transaction_form():
-    """Renders the input form with custom ID logic and new settle data structure."""
+    """Renders an improved transaction form with dynamic FX-Rate locking."""
     st.subheader("Create New Transaction")
     
     if st.button("⬅ Cancel"):
@@ -482,9 +481,34 @@ def render_transaction_form():
 
     currency_options = ["EUR", "USD", "CHF", "GBP", "JPY", "CAD"]
 
-    with st.form("transaction_entry_form", clear_on_submit=False):
+    # --- DYNAMIK ANFANG ---
+    # Wir platzieren die Währung außerhalb des Forms oder nutzen ein Spalten-Layout
+    # damit die Änderung sofort das FX-Feld beeinflussen kann.
+    
+    col_top1, col_top2 = st.columns(2)
+    with col_top1:
+        s_curr = st.selectbox("Settlement Currency", currency_options, index=0)
+    
+    # Logik für das Sperren (Disabled-Status)
+    is_eur = (s_curr == "EUR")
+    
+    with col_top2:
+        # Wenn EUR, dann Wert 1.0 und Feld gesperrt (disabled=True)
+        s_fx = st.number_input(
+            "FX Rate (Settle/EUR)", 
+            step=0.000001, 
+            format="%.6f", 
+            value=1.0 if is_eur else st.session_state.get("last_fx", 0.0),
+            disabled=is_eur,
+            help="Locked to 1.0 for EUR transactions." if is_eur else "Enter rate: 1 unit of foreign currency = X units of EUR"
+        )
+        # Wir speichern den Wert kurz im State, damit er bei Wechsel nicht sofort genullt wird
+        if not is_eur:
+            st.session_state["last_fx"] = s_fx
+
+    # --- FORMULAR FÜR DIE RESTLICHEN DATEN ---
+    with st.form("transaction_main_data"):
         col1, col2 = st.columns(2)
-        
         account_selection = col1.selectbox("Account", st.session_state.get('opt_accounts', []))
         asset_selection = col2.selectbox("Asset (ISIN)", st.session_state.get('opt_assets', []))
         
@@ -494,36 +518,28 @@ def render_transaction_form():
         quantity = col1.number_input("Quantity", step=0.0001, format="%.4f", min_value=0.0)
         s_amount = col2.number_input("Settlement Amount", step=0.01, format="%.2f", min_value=0.0)
         
-        s_curr = col1.selectbox("Settlement Currency", currency_options, index=0)
-        # Wir setzen den Standardwert auf 1.0, damit bei EUR/EUR nichts schiefgeht
-        s_fx = col2.number_input("FX Rate (Settle/EUR)", step=0.000001, format="%.6f", value=1.0)
-        
-        st.caption("Calculation: Amount in EUR = Settlement Amount / FX Rate")
-
-        submit = st.form_submit_button("Save Transaction", type="primary")
+        st.divider()
+        submit = st.form_submit_button("Save Transaction", type="primary", use_container_width=True)
 
         if submit:
-            # 1. Daten bereinigen
+            # Validierung: FX Rate darf bei Nicht-EUR nicht 0 sein
+            if not is_eur and s_fx <= 0:
+                st.error("Please enter a valid FX Rate for foreign currency transactions.")
+                st.stop()
+
+            # Berechnung
+            calc_eur = s_amount if is_eur else (s_amount / s_fx if s_fx > 0 else 0.0)
+            
             clean_isin = asset_selection.split(" (")[0] if asset_selection else ""
-            id_date_str = trans_date.strftime("%Y%m%d")
             db_date_str = trans_date.isoformat()
             
-            # 2. EUR Betrag berechnen
-            # Wichtig: Wir nutzen hier direkt s_amount und s_fx aus den Formular-Inputs
-            if s_curr == "EUR":
-                final_fx = 1.0
-                calc_eur = s_amount
-            else:
-                final_fx = s_fx
-                calc_eur = s_amount / final_fx if final_fx > 0 else 0.0
-
-            # 3. ID generieren
+            # ID generieren
             current_count = get_next_transaction_count(
                 st.session_state["user_name"], 
                 clean_isin, 
                 db_date_str
             )
-            generated_id = f"{clean_isin}_{id_date_str}_{current_count:03d}"
+            generated_id = f"{clean_isin}_{trans_date.strftime('%Y%m%d')}_{current_count:03d}"
 
             new_payload = {
                 "username": st.session_state["user_name"],
@@ -535,23 +551,20 @@ def render_transaction_form():
                 "quantity": quantity,
                 "settle_amount": s_amount,
                 "settle_currency": s_curr,
-                "settle_fxrate": final_fx, # Hier stellen wir sicher, dass 1.0 bei EUR steht
+                "settle_fxrate": 1.0 if is_eur else s_fx,
                 "amount_eur": calc_eur
             }
             
             try:
                 save_transaction(new_payload)
-                st.success(f"Saved! ID: {generated_id} | EUR: {calc_eur:.2f}")
+                st.success(f"Transaction saved successfully! (EUR {calc_eur:.2f})")
                 st.cache_data.clear()
-                
-                # Cleanup & Redirect
-                if 'ref_trans_loaded' in st.session_state: 
-                    del st.session_state['ref_trans_loaded']
-                
                 st.session_state["view"] = "list"
                 st.rerun()
             except Exception as e:
-                st.error(f"Failed to save transaction: {e}")
+                st.error(f"Database Error: {e}")
+
+
 
 
 
