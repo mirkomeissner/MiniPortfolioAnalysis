@@ -94,6 +94,24 @@ def get_account_ref_options(username):
         st.error(f"Error loading accounts: {e}")
         return []
 
+def get_next_transaction_count(username, isin, date_str):
+    """Counts existing transactions for an ISIN and date to determine the next suffix."""
+    try:
+        # We query the transactions for the specific user, ISIN and date [cite: 80, 81]
+        res = supabase.table("transactions") \
+            .select("id") \
+            .eq("username", username) \
+            .eq("isin", isin) \
+            .eq("date", date_str) \
+            .execute()
+        
+        return len(res.data) + 1
+    except Exception as e:
+        st.error(f"Error calculating transaction count: {e}")
+        return 1
+
+
+
 def save_transaction(transaction_data):
     """Inserts a new transaction record into the database."""
     # Insert data into the transactions table [cite: 80]
