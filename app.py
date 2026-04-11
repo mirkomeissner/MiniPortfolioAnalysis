@@ -7,7 +7,7 @@ st.set_page_config(page_title="Asset Manager", layout="wide")
 
 if check_password(): 
     st.sidebar.title(f"User: {st.session_state['user_name']}") 
-    menu = st.sidebar.radio("Navigation", ["Home", "AssetStaticData", "Transactions", "SearchTicker"]) 
+    menu = st.sidebar.radio("Navigation", ["Home", "AssetStaticData", "Transactions"]) 
     
     if st.sidebar.button("Logout"): 
         st.session_state["logged_in"] = False 
