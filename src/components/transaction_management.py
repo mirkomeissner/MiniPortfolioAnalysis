@@ -29,15 +29,19 @@ def transaction_table_view():
         render_list_view()
 
 def render_import_upload_screen():
-    """Screen for CSV upload and format configuration."""
     st.subheader("Import Transactions via CSV")
     
-    if st.button("⬅ Cancel"):
+    # --- NAVIGATION ROW AT TOP ---
+    col_nav1, col_nav2, _ = st.columns([1, 2, 4])
+    if col_nav1.button("⬅ Cancel", use_container_width=True):
         st.session_state["view"] = "list"
         st.rerun()
 
+    # We only show the "Proceed" button if a file has been uploaded
+    # It's now visible at the top once the CSV is ready
+    proceed_placeholder = col_nav2.empty()
+
     st.write("Please select your CSV file and configure the format.")
-    
     uploaded_file = st.file_uploader("Choose CSV file", type="csv")
     
     col1, col2 = st.columns(2)
@@ -48,33 +52,23 @@ def render_import_upload_screen():
 
     if uploaded_file is not None:
         try:
-            # Thousand separator logic
             thousand_sep = "." if decimal_sep == "," else ","
+            df = pd.read_csv(uploaded_file, sep=separator, decimal=decimal_sep, thousands=thousand_sep)
             
-            # Load CSV with pandas
-            df = pd.read_csv(
-                uploaded_file,
-                sep=separator,
-                decimal=decimal_sep,
-                thousands=thousand_sep,
-                quotechar='"',
-                skipinitialspace=True
-            )
-            
-            st.write("### Preview of uploaded data:")
-            st.dataframe(df, use_container_width=True)
-            
-            if st.button("Proceed with Mapping", type="primary"):
-                # Initialize the 'import_row' column (all checked by default)
+            # Place the "Proceed" button in the placeholder created above
+            if proceed_placeholder.button("Proceed with Mapping ➡", type="primary", use_container_width=True):
                 df.insert(0, "import_row", True)
-                
-                # Store in session state and switch view
                 st.session_state["imported_df"] = df
                 st.session_state["view"] = "import_preview"
+                if "scroll_done" in st.session_state: del st.session_state["scroll_done"]
                 st.rerun()
+
+            st.write("### Preview of uploaded data:")
+            st.dataframe(df, use_container_width=True)
                 
         except Exception as e:
             st.error(f"Error parsing CSV: {e}")
+
 
 
 @st.dialog("Data Validation Error")
