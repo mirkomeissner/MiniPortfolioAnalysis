@@ -308,7 +308,7 @@ def render_import_preview_screen():
 
 
 def render_list_view():
-    """Displays the transaction table with advanced filtering and new timestamps."""
+    """Displays the transaction table with advanced filtering and all columns."""
     st.title("Transactions")
     
     # --- 1. NAVIGATION BUTTONS ---
@@ -323,19 +323,20 @@ def render_list_view():
             st.session_state["view"] = "import_upload"
             st.rerun()
 
-    # --- 2. GET DATA ---
+    # --- 2. DATA RETRIEVAL ---
     data = get_all_transactions()
     if not data:
         st.info("No records found in transactions.")
         return
 
+    # Create DataFrame from Supabase response
     df = pd.DataFrame(data)
     
-    # Ensure timestamps are actual datetime objects for better formatting
-    if 'created_at' in df.columns:
-        df['created_at'] = pd.to_datetime(df['created_at'])
-    if 'updated_at' in df.columns:
-        df['updated_at'] = pd.to_datetime(df['updated_at'])
+    # Pre-process date and timestamp columns for the filter and display
+    date_cols = ['date', 'created_at', 'updated_at']
+    for col in date_cols:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce')
 
     all_columns = df.columns.tolist()
 
@@ -385,24 +386,44 @@ def render_list_view():
             mask = (mask & m) if logic_mode == "Match ALL (AND)" else (mask | m)
         filtered_df = df[mask]
 
-    # --- 4. DISPLAY TABLE ---
-    # Sort by created_at descending so new entries are visible immediately
-    if 'created_at' in filtered_df.columns:
-        filtered_df = filtered_df.sort_values(by='created_at', ascending=False)
+    # --- 4. COLUMN ORDERING & DISPLAY ---
+    
+    # Defining a logical sequence for the columns
+    preferred_order = [
+        "date", "account_code", "isin", "type_code", 
+        "quantity", "trade_amount", "trade_currency", "amount_eur",
+        "created_at", "updated_at", "id"
+    ]
+    
+    # Ensure we only try to display columns that actually exist in the data
+    existing_cols = [c for c in preferred_order if c in filtered_df.columns]
+    display_df = filtered_df[existing_cols]
 
-    st.write(f"Showing **{len(filtered_df)}** transactions.")
+    # Default Sorting: Newest created records at the top
+    if 'created_at' in display_df.columns:
+        display_df = display_df.sort_values(by='created_at', ascending=False)
+
+    st.write(f"Showing **{len(display_df)}** transactions.")
     
     st.dataframe(
-        filtered_df,
+        display_df,
         use_container_width=True,
         hide_index=True,
         column_config={
+            "date": st.column_config.DateColumn("Date", format="DD.MM.YYYY"),
+            "account_code": st.column_config.TextColumn("Account"),
+            "isin": st.column_config.TextColumn("ISIN"),
+            "type_code": st.column_config.TextColumn("Type"),
+            "quantity": st.column_config.NumberColumn("Quantity", format="%.4f"),
+            "trade_amount": st.column_config.NumberColumn("Trade Amount", format="%.2f"),
+            "trade_currency": st.column_config.TextColumn("Curr"),
+            "amount_eur": st.column_config.NumberColumn("Amount (EUR)", format="%.2f €"),
             "created_at": st.column_config.DatetimeColumn("Created At", format="DD.MM.YYYY, HH:mm"),
             "updated_at": st.column_config.DatetimeColumn("Updated At", format="DD.MM.YYYY, HH:mm"),
-            "trade_amount": st.column_config.NumberColumn("Amount", format="%.2f €"),
-            "quantity": st.column_config.NumberColumn("Qty", format="%.4f")
+            "id": st.column_config.TextColumn("Internal ID"),
         }
     )
+
 
 
 def render_transaction_form():
