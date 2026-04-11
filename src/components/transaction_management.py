@@ -264,19 +264,14 @@ def render_import_preview_screen():
 
     # --- ACTUAL IMPORT PHASE ---
     if st.session_state.get("import_confirmed"):
+
         st.session_state["import_confirmed"] = False
         final_sel = st.session_state["imported_df"].loc[filtered_df.index]
         final_sel = final_sel[final_sel["import_row"] == True]
         
-        # 1. IDENTIFY MISSING ASSETS
+        # 1. CHECK AND PROVISION MISSING ASSETS
         unique_isins = final_sel[map_isin].unique().tolist()
-        
-        # Get existing ISINs from the DB (helper function needed or direct query)
-        # We use a set for O(1) lookup performance
-        existing_assets_raw = supabase.table("asset_static_data").select("isin").in_("isin", unique_isins).execute()
-        existing_isins = {item['isin'] for item in existing_assets_raw.data}
-        
-        missing_isins = [i for i in unique_isins if i not in existing_isins]
+        missing_isins = get_missing_isins(unique_isins)
         
         # 2. AUTO-INSERT MISSING ASSETS (Skeleton records)
         if missing_isins:
