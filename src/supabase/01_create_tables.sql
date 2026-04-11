@@ -83,6 +83,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     trade_amount NUMERIC,
     trade_currency VARCHAR(3),
     amount_eur NUMERIC,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
     
     PRIMARY KEY (username, id),
     
