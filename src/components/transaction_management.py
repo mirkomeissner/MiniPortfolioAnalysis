@@ -1,4 +1,6 @@
 import streamlit as st
+import pandas as pd
+import io
 import uuid
 from datetime import datetime
 from src.database import (
@@ -125,6 +127,51 @@ def render_transaction_form():
             except Exception as e:
                 st.error(f"Failed to save transaction: {e}")
 
+
+
+
+@st.dialog("Import Transactions via CSV")
+def show_import_dialog():
+    """Dialog window for CSV upload and configuration."""
+    st.write("Please select your CSV file and configure the format.")
+    
+    uploaded_file = st.file_uploader("Choose CSV file", type="csv")
+    
+    col1, col2 = st.columns(2)
+    separator = col1.selectbox("Separator", options=[",", ";", "\t"], format_func=lambda x: "Comma" if x == "," else "Semicolon" if x == ";" else "Tab")
+    decimal_sep = col2.selectbox("Decimal Separator", options=[",", "."], format_func=lambda x: "Comma (,)" if x == "," else "Dot (.)")
+
+    if uploaded_file is not None:
+        try:
+            # We read the file as text first to handle manual cleaning if needed
+            # or use pandas' powerful parsing engine
+            
+            # Logic for Thousand Separator: 
+            # If decimal is ',', thousands is usually '.' (and vice-versa)
+            thousand_sep = "." if decimal_sep == "," else ","
+            
+            df = pd.read_csv(
+                uploaded_file,
+                sep=separator,
+                decimal=decimal_sep,
+                thousands=thousand_sep,
+                quotechar='"', # Handles quotes around values automatically
+                skipinitialspace=True
+            )
+            
+            st.write("### Preview of uploaded data:")
+            st.dataframe(df, use_container_width=True)
+            
+            st.info(f"Detected {len(df)} rows. All numbers have been converted to dot-decimal format.")
+            
+            if st.button("Proceed with Import"):
+                # "Everything else comes later" - but we could store it in session state for now
+                st.session_state["imported_df"] = df
+                st.success("Data loaded into preview. Ready for mapping!")
+                # st.rerun() # or close dialog
+                
+        except Exception as e:
+            st.error(f"Error parsing CSV: {e}")
 
 
 
