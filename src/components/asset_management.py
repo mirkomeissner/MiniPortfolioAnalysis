@@ -157,12 +157,15 @@ def render_edit_view():
 
     # --- MAIN EDIT FORM ---
     # Load Ref Options if not in session
-    if 'ref_data_loaded' not in st.session_state:
-        st.session_state['opt_asset'] = get_ref_options("ref_asset_class")
-        st.session_state['opt_gics'] = get_ref_options("ref_sector")
-        st.session_state['opt_region'] = get_ref_options("ref_region")
-        st.session_state['opt_type'] = get_ref_options("ref_instrument_type")
-        st.session_state['opt_source'] = get_ref_options("ref_price_source")
+    # Robust check: If 'opt_source' is missing, reload reference data
+    if 'opt_source' not in st.session_state:
+        with st.spinner("Loading reference data..."):
+            st.session_state['opt_asset'] = get_ref_options("ref_asset_class")
+            st.session_state['opt_gics'] = get_ref_options("ref_sector")
+            st.session_state['opt_region'] = get_ref_options("ref_region")
+            st.session_state['opt_type'] = get_ref_options("ref_instrument_type")
+            st.session_state['opt_source'] = get_ref_options("ref_price_source")
+            st.session_state['ref_data_loaded'] = True
 
     with st.form("edit_form"):
         col1, col2 = st.columns(2)
