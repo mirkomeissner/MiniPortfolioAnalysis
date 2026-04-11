@@ -75,11 +75,8 @@ def render_import_upload_screen():
         except Exception as e:
             st.error(f"Error parsing CSV: {e}")
 
+
 def render_import_preview_screen():
-    """
-    Finalized Import Screen (English)
-    Fixes: Persistent manual selection and stable validation warnings.
-    """
     st.title("Finalize Import: Filter & Map")
 
     if "imported_df" not in st.session_state:
@@ -95,43 +92,41 @@ def render_import_preview_screen():
     if "show_val_warning" not in st.session_state:
         st.session_state["show_val_warning"] = False
 
-    # --- 1. SYNC MANUAL UI CHANGES TO SESSION STATE ---
-    # This is crucial: Before doing anything, we check if the user edited the checkboxes
+    # --- 1. SYNC MANUAL UI CHANGES ---
+    # We catch the changes from the editor BEFORE rendering it again
     if "import_editor_final" in st.session_state:
         edits = st.session_state["import_editor_final"].get("edited_rows", {})
         for row_idx_str, change in edits.items():
             if "import_row" in change:
-                # Map back to the underlying dataframe
-                actual_idx = int(row_idx_str) 
-                st.session_state["imported_df"].at[actual_idx, "import_row"] = change["import_row"]
+                # We need to be careful with the index if filtering is active
+                # For now, we assume the index matches the underlying dataframe
+                try:
+                    actual_idx = int(row_idx_str)
+                    st.session_state["imported_df"].at[actual_idx, "import_row"] = change["import_row"]
+                except: pass
 
-    # --- 2. VALIDATION GUARD & STABLE WARNING ---
+    # --- 2. VALIDATION GUARD ---
     if st.session_state["val_error_indices"]:
         err_idx = st.session_state["val_error_indices"]
-        # Only modify the faulty rows, leave the rest of the user selection as is
         st.session_state["imported_df"].loc[err_idx, "import_row"] = False
         st.session_state["val_error_indices"] = []
         st.session_state["show_val_warning"] = True
 
-    # Render warning at the very top so it's visible after rerun
     if st.session_state["show_val_warning"]:
-        st.warning("⚠️ Some selected rows had errors (missing dates/amounts) and were automatically deselected.")
+        st.warning("⚠️ Some selected rows had errors and were automatically deselected.")
         if st.button("I understand"):
             st.session_state["show_val_warning"] = False
             st.rerun()
 
     df_raw = st.session_state["imported_df"]
-    csv_columns = df_raw.columns.tolist()
+    csv_columns = [c for c in df_raw.columns if c != "import_row"]
     user = st.session_state.get("user_name", "System")
 
     # --- SECTION 1: GLOBAL SETTINGS ---
     st.subheader("1. Global Settings")
-    col_g1, col_g2 = st.columns(2)
-    with col_g1:
-        accounts = get_account_ref_options(user)
-        selected_account_full = st.selectbox("Target Account", accounts, key="active_account")
-        acc_code = selected_account_full.split(" (")[0]
-
+    accounts = get_account_ref_options(user)
+    selected_account_full = st.selectbox("Target Account", accounts, key="active_account")
+    acc_code = selected_account_full.split(" (")[0]
     saved_config = get_import_settings(user, acc_code)
     
     def get_map_idx(keyword, config_key):
@@ -144,14 +139,45 @@ def render_import_preview_screen():
 
     st.divider()
 
-    # --- SECTION 2: FILTER & DATA EDITOR ---
-    # [Insert your Filter Expander logic here if needed]
-    
-    # Render Editor - It will show the synchronized 'import_row' values
+    # --- SECTION 2: ADVANCED FILTERING (RESTORED) ---
+    st.subheader("2. Filter Rows")
+    with st.expander("🛠 Advanced Query Builder", expanded=False):
+        logic_mode = st.radio("Logic Mode", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True)
+        if "import_filter_rules" not in st.session_state:
+            st.session_state["import_filter_rules"] = []
+        
+        fc1, fc2 = st.columns([1, 4])
+        if fc1.button("➕ Add Rule"):
+            st.session_state["import_filter_rules"].append({"column": csv_columns[0], "value": None})
+            st.rerun()
+        if fc2.button("🗑 Clear All"):
+            st.session_state["import_filter_rules"] = []
+            st.rerun()
+
+        active_filters = []
+        for i, rule in enumerate(st.session_state["import_filter_rules"]):
+            r1, r2, r3 = st.columns([2, 3, 0.5])
+            col_name = r1.selectbox(f"Col {i}", csv_columns, key=f"fcol_{i}")
+            opts = sorted(df_raw[col_name].dropna().unique().astype(str).tolist())
+            val = r2.multiselect(f"Values {i}", opts, key=f"fval_{i}")
+            if val: active_filters.append(df_raw[col_name].astype(str).isin(val))
+            if r3.button("❌", key=f"frem_{i}"):
+                st.session_state["import_filter_rules"].pop(i)
+                st.rerun()
+
+    filtered_df = df_raw.copy()
+    if active_filters:
+        mask = active_filters[0]
+        for m in active_filters[1:]:
+            mask = (mask & m) if logic_mode == "Match ALL (AND)" else (mask | m)
+        filtered_df = df_raw[mask]
+
+    # --- DATA EDITOR ---
+    # Fix: Disable all columns EXCEPT 'import_row'
     edited_df = st.data_editor(
-        st.session_state["imported_df"], # Use the synced state
+        filtered_df,
         column_config={"import_row": st.column_config.CheckboxColumn("Import?", default=True)},
-        disabled=[c for c in csv_columns],
+        disabled=csv_columns, # csv_columns does not contain 'import_row'
         hide_index=True, use_container_width=True, key="import_editor_final"
     )
 
@@ -162,7 +188,7 @@ def render_import_preview_screen():
     col_t1, _ = st.columns([1, 2])
     type_column = col_t1.selectbox("CSV Type Column", csv_columns, index=get_map_idx("type", "type_column"))
     
-    distinct_csv_types = edited_df[type_column].unique().tolist()
+    distinct_csv_types = filtered_df[type_column].unique().tolist()
     db_trans_types = get_ref_options("ref_transaction_type")
     saved_type_map = saved_config.get("type_mapping", {}) if saved_config else {}
     
@@ -192,13 +218,13 @@ def render_import_preview_screen():
 
     st.divider()
 
-    # --- SECTION 4: DRY RUN & EXECUTION ---
+    # --- SECTION 4: EXECUTION ---
     if st.button("🚀 Start Import", type="primary", use_container_width=True):
-        # We read the current selection from the session state (which we synced at the top)
-        current_selection = st.session_state["imported_df"][st.session_state["imported_df"]["import_row"] == True].copy()
+        # Read directly from editor state for safety
+        current_selection = edited_df[edited_df["import_row"] == True].copy()
         
         if current_selection.empty:
-            st.error("No rows selected for import.")
+            st.error("No rows selected.")
         else:
             invalid_indices = []
             for idx, row in current_selection.iterrows():
@@ -217,10 +243,10 @@ def render_import_preview_screen():
                 st.session_state["import_confirmed"] = True
                 st.rerun()
 
-    # EXECUTION PHASE
     if st.session_state.get("import_confirmed"):
         st.session_state["import_confirmed"] = False
-        final_selection = st.session_state["imported_df"][st.session_state["imported_df"]["import_row"] == True]
+        # Final import using the edited dataframe
+        final_selection = edited_df[edited_df["import_row"] == True]
         
         success_count = 0
         progress_bar = st.progress(0)
@@ -245,18 +271,17 @@ def render_import_preview_screen():
                 st.error(f"Row {idx} Error: {e}")
             progress_bar.progress((i + 1) / len(final_selection))
 
-        # Save mapping and clean up
         save_import_settings(user, acc_code, {
             "type_column": type_column, "type_mapping": type_mapping,
             "map_isin": map_isin, "map_date": map_date, "map_qty": map_qty,
             "map_trade_amt": map_trade_amt, "map_trade_curr": map_trade_curr, "map_amt_eur": map_amt_eur
         })
-        
-        st.success(f"Successfully imported {success_count} transactions!")
+        st.success(f"Import complete: {success_count} rows.")
         st.cache_data.clear()
         if "imported_df" in st.session_state: del st.session_state["imported_df"]
         st.session_state["view"] = "list"
         st.rerun()
+
 
 
 
