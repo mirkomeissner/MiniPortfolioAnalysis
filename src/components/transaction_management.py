@@ -271,8 +271,8 @@ def render_import_preview_screen():
         final_sel = final_sel[final_sel["import_row"] == True]
         
         # 1. CHECK AND PROVISION MISSING ASSETS
+        # We take ALL unique ISINs that are marked for import
         unique_isins = final_sel[map_isin].unique().tolist()
-        # Clean the ISINs (remove whitespace and ensure they aren't empty)
         unique_isins = [str(i).strip() for i in unique_isins if str(i).strip()]
         
         missing_isins = get_missing_isins(unique_isins)
@@ -280,24 +280,34 @@ def render_import_preview_screen():
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
                 for m_isin in missing_isins:
+                    # VERY MINIMAL PAYLOAD - only fields we are 100% sure about
                     asset_payload = {
                         "isin": m_isin,
                         "name": m_isin,
                         "created_by": user
                     }
                     try:
-                        # We execute and capture the response
-                        response = save_asset_static_data(asset_payload)
+                        # Call the DB function
+                        res = save_asset_static_data(asset_payload)
                         
-                        # Check if Supabase actually saved it
-                        if hasattr(response, 'data') and len(response.data) > 0:
-                            st.write(f"✅ Created asset placeholder for: {m_isin}")
+                        # DEBUG PRINT
+                        st.write(f"Trying ISIN: {m_isin}...")
+                        
+                        # Explicit check of the response object
+                        if hasattr(res, 'data') and res.data:
+                            st.write(f"✅ DB confirmed: {m_isin} saved.")
                         else:
-                            # This happens if RLS blocks the insert or it fails silently
-                            st.error(f"❌ Failed to insert {m_isin}. Check Supabase RLS Policies!")
+                            # If res.data is empty, Supabase didn't save but might not have thrown an exception
+                            st.error(f"❌ DB rejected {m_isin} without error message. Check RLS or Column names!")
+                            # Print the whole response to see what's inside
+                            st.code(str(res))
+                            
                     except Exception as e:
-                        st.error(f"Error provisioning {m_isin}: {e}")
-                status.update(label="Asset provisioning complete!", state="complete")
+                        st.error(f"❌ Fatal Error for {m_isin}: {str(e)}")
+                
+                status.update(label="Asset provisioning finished!", state="complete")
+
+
         
         # 3. PROCEED WITH TRANSACTION IMPORT
         success_count = 0
