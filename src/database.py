@@ -140,7 +140,24 @@ def save_transaction(transaction_data):
     # Insert data into the transactions table [cite: 80]
     return supabase.table("transactions").insert(transaction_data).execute()
 
-
+def save_transactions_bulk(payload_list):
+    """
+    Saves multiple transactions in a single database call.
+    Payload_list must be a list of dictionaries where each dict 
+    represents a row in the 'transactions' table.
+    """
+    try:
+        # The .insert() method accepts a list of objects for bulk insertion.
+        # This is significantly faster than inserting row by row.
+        response = supabase.table("transactions").insert(payload_list).execute()
+        
+        # You can optionally return the response if you need to 
+        # verify the inserted data.
+        return response
+    except Exception as e:
+        # Re-raise the exception to be caught by the UI error handling
+        print(f"Error during bulk transaction insert: {e}")
+        raise e
 
 
 
