@@ -272,26 +272,33 @@ def render_import_preview_screen():
         
         # 1. CHECK AND PROVISION MISSING ASSETS
         unique_isins = final_sel[map_isin].unique().tolist()
+        # Clean the ISINs (remove whitespace and ensure they aren't empty)
+        unique_isins = [str(i).strip() for i in unique_isins if str(i).strip()]
+        
         missing_isins = get_missing_isins(unique_isins)
         
-        # 2. AUTO-INSERT MISSING ASSETS (Skeleton records)
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
                 for m_isin in missing_isins:
-                    # Minimal payload to satisfy constraints
-                    # We use the ISIN as the name for now
                     asset_payload = {
                         "isin": m_isin,
                         "name": m_isin,
                         "created_by": user
                     }
                     try:
-                        save_asset_static_data(asset_payload)
-                        st.write(f"✅ Created asset placeholder for: {m_isin}")
+                        # We execute and capture the response
+                        response = save_asset_static_data(asset_payload)
+                        
+                        # Check if Supabase actually saved it
+                        if hasattr(response, 'data') and len(response.data) > 0:
+                            st.write(f"✅ Created asset placeholder for: {m_isin}")
+                        else:
+                            # This happens if RLS blocks the insert or it fails silently
+                            st.error(f"❌ Failed to insert {m_isin}. Check Supabase RLS Policies!")
                     except Exception as e:
-                        st.error(f"Failed to create asset {m_isin}: {e}")
+                        st.error(f"Error provisioning {m_isin}: {e}")
                 status.update(label="Asset provisioning complete!", state="complete")
-
+        
         # 3. PROCEED WITH TRANSACTION IMPORT
         success_count = 0
         progress_bar = st.progress(0)
