@@ -218,7 +218,7 @@ def render_import_preview_screen():
     st.subheader("4. Data Field Mapping")
 
     # --- Required Fields Group ---
-    st.markdown("### Required Fields")
+    st.markdown("Required Fields")
     with st.container(border=True):
         req_col1, req_col2 = st.columns(2)
         with req_col1:
