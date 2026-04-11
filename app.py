@@ -12,9 +12,7 @@ from src.database import (
 )
 from src.components import (
     asset_table_view, 
-    asset_bulk_form, 
     transaction_table_view, 
-    transaction_bulk_form,
     ticker_search_view
 )
 
