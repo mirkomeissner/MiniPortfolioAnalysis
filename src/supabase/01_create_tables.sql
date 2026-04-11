@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     username TEXT NOT NULL,
     id TEXT NOT NULL,
     account_code TEXT NOT NULL,
-    isin TEXT,
+    isin VARCHAR(12),
     date DATE DEFAULT CURRENT_DATE,
     type_code TEXT,
     quantity NUMERIC,
@@ -91,7 +91,11 @@ CREATE TABLE IF NOT EXISTS transactions (
     CONSTRAINT fk_ref_type
         FOREIGN KEY (type_code) REFERENCES ref_transaction_type(code)
         ON DELETE SET NULL,
-        
+
+    CONSTRAINT fk_transaction_isin
+        FOREIGN KEY (isin) REFERENCES asset_static_data(isin)
+        ON DELETE SET NULL,
+    
     CONSTRAINT fk_accounts
         FOREIGN KEY (username, account_code) REFERENCES accounts(username, account_code)
         ON DELETE CASCADE
