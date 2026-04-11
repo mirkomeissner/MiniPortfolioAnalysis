@@ -24,6 +24,10 @@ if check_password():
     if menu == "Home": 
         st.title("Welcome") 
         st.write(f"Hello **{st.session_state['user_name']}**, please use the sidebar to navigate.") 
+     
+        with st.expander("Security Settings"):
+            from src.authentication import change_password_ui
+            change_password_ui()
  
     elif menu == "Asset Data": 
         asset_table_view()  
