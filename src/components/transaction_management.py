@@ -85,14 +85,25 @@ def show_validation_modal(error_count):
         st.rerun()
 
 def render_import_preview_screen():
-    # --- 1. ONE-TIME AUTO-SCROLL TO TOP ---
+    # --- 1. ROBUST AUTO-SCROLL TO TOP ---
     if "scroll_done" not in st.session_state:
+        # We use a slightly more aggressive JS and a small timeout to 
+        # override the browser's attempt to stay at the button position
         components.html(
-            "<script>window.parent.document.querySelector('section.main').scrollTo(0,0);</script>",
+            """
+            <script>
+                window.parent.window.scrollTo(0,0);
+                var mainContent = window.parent.document.querySelector('section.main');
+                if (mainContent) {
+                    mainContent.scrollTo(0,0);
+                }
+            </script>
+            """,
             height=0
         )
         st.session_state["scroll_done"] = True
 
+    # Check for data
     if "imported_df" not in st.session_state:
         st.session_state["view"] = "list"
         if "scroll_done" in st.session_state: del st.session_state["scroll_done"]
@@ -319,6 +330,7 @@ def render_list_view():
             st.rerun()
     with col_btn2:
         if st.button("📥 Import CSV", use_container_width=True):
+            if "scroll_done" in st.session_state: del st.session_state["scroll_done"] # Reset scroll
             st.session_state["view"] = "import_upload"
             st.rerun()
 
