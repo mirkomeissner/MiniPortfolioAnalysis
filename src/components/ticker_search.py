@@ -1,45 +1,34 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-# Wir importieren die Speicherfunktion aus deiner database.py
-from src.database import supabase, save_asset_static_data
+from src.database import save_asset_static_data, get_ref_options, get_country_region_map
 
-# --- 1. HILFSFUNKTIONEN ---
-
-def get_ref_options_list(table_name):
-    try:
-        response = supabase.table(table_name).select("code, label").execute()
-        if not response.data:
-            return []
-        return [f"{item['code']} ({item['label']})" for item in response.data]
-    except Exception as e:
-        st.error(f"Fehler beim Laden von {table_name}: {e}")
-        return []
-
-def get_country_mapping():
-    try:
-        response = supabase.table("country_region_mapping").select("country, region_code").execute()
-        return {item['country']: item['region_code'] for item in response.data}
-    except:
-        return {}
+# --- 1. MAPPING-LOGIK (Yahoo Finance -> DB-Standard) ---
 
 def map_yahoo_to_ref(yahoo_sector):
+    """Mappt Yahoo Sektoren auf GICS Codes."""
     mapping = {
         "Technology": "45", "Financial Services": "40", "Healthcare": "35",
         "Consumer Cyclical": "25", "Consumer Defensive": "30", "Basic Materials": "15",
         "Energy": "10", "Industrials": "20", "Communication Services": "50",
         "Utilities": "55", "Real Estate": "60"
     }
-    return mapping.get(yahoo_sector, None)
+    return mapping.get(yahoo_sector)
 
 def map_yahoo_to_instrument_type(quote_type, symbol_name=""):
-    mapping = {"EQUITY": "STO", "ETF": "ETF", "MUTUALFUND": "FUN", "BOND": "BON", "CURRENCY": "FX", "CRYPTOCURRENCY": "CRY"}
+    """Bestimmt den Instrumententyp basierend auf Yahoo Meta-Daten."""
+    mapping = {
+        "EQUITY": "STO", "ETF": "ETF", "MUTUALFUND": "FUN", 
+        "BOND": "BON", "CURRENCY": "FX", "CRYPTOCURRENCY": "CRY"
+    }
     res = mapping.get(str(quote_type).upper(), "STO")
+    # Sonderlogik für Zertifikate
     if any(word in str(symbol_name).upper() for word in ["ZERTIFIKAT", "CERTIFICATE", "WARRANT"]):
         return "CER"
     return res
 
 def map_yahoo_to_asset_class(quote_type, symbol_name=""):
+    """Mappt Yahoo Typen auf grobe Asset Klassen."""
     name_up = str(symbol_name).upper()
     qt_up = str(quote_type).upper()
     if qt_up == "CURRENCY" or "MONEY MARKET" in name_up: return "LIQ"
@@ -47,9 +36,12 @@ def map_yahoo_to_asset_class(quote_type, symbol_name=""):
     if qt_up in ["CRYPTOCURRENCY", "COMMODITY"] or any(word in name_up for word in ["GOLD", "REIT"]): return "ALT"
     return "EQU"
 
-# Diese Funktion bereitet die Daten vor und ruft die Datenbank-Funktion auf
+# --- 2. HILFSFUNKTIONEN FÜR DIE UI ---
+
 def handle_save_request(row, isin):
+    """Bereitet die editierten Daten auf und sendet sie an die Datenbank."""
     def clean_code(val):
+        # Extrahiert 'EQU' aus 'EQU (Equities & Equity Funds)'
         return val.split(" (")[0] if val and " (" in str(val) else val
 
     asset_entry = {
@@ -69,34 +61,36 @@ def handle_save_request(row, isin):
 
     try:
         save_asset_static_data(asset_entry)
-        st.success(f"✅ {row['Ticker']} wurde erfolgreich als Stammdatum gespeichert!")
+        st.success(f"✅ {row['Ticker']} wurde erfolgreich gespeichert!")
         st.balloons()
+        # Cache leeren, damit die Tabelle in AssetStaticData aktualisiert wird
+        st.cache_data.clear() 
     except Exception as e:
         st.error(f"Fehler beim Speichern: {e}")
 
-# --- 2. HAUPTFUNKTION ---
+# --- 3. HAUPTFUNKTION (UI) ---
 
 def ticker_search_view():
     st.title("🔍 Ticker Search & Edit")
 
+    # Referenzdaten einmalig pro Session laden
     if 'ref_data_loaded' not in st.session_state:
         with st.spinner("Lade Referenzdaten..."):
-            st.session_state['db_region_map'] = get_country_mapping()
-            st.session_state['opt_asset'] = get_ref_options_list("ref_asset_class")
-            st.session_state['opt_gics'] = get_ref_options_list("ref_sector")
-            st.session_state['opt_region'] = get_ref_options_list("ref_region")
-            st.session_state['opt_type'] = get_ref_options_list("ref_instrument_type")
+            st.session_state['db_region_map'] = get_country_region_map()
+            st.session_state['opt_asset'] = get_ref_options("ref_asset_class")
+            st.session_state['opt_gics'] = get_ref_options("ref_sector")
+            st.session_state['opt_region'] = get_ref_options("ref_region")
+            st.session_state['opt_type'] = get_ref_options("ref_instrument_type")
             st.session_state['ref_data_loaded'] = True
 
     isin_input = st.text_input("ISIN eingeben", placeholder="z.B. US0378331005")
-    search_button = st.button("Ticker suchen")
-
-    if search_button and isin_input:
-        with st.spinner("Suche läuft..."):
+    
+    if st.button("Ticker suchen") and isin_input:
+        with st.spinner("Suche auf Yahoo Finance läuft..."):
             try:
                 search_results = yf.Search(isin_input).quotes
                 if not search_results:
-                    st.warning("Keine Ergebnisse.")
+                    st.warning("Keine Ergebnisse für diese ISIN gefunden.")
                 else:
                     raw_data = []
                     for res in search_results:
@@ -106,6 +100,7 @@ def ticker_search_view():
                         name = info.get("longName") or res.get("longname") or "Unbekannt"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
                         
+                        # Mappings anwenden
                         a_code = map_yahoo_to_asset_class(raw_type, name)
                         asset_val = next((s for s in st.session_state['opt_asset'] if s.startswith(a_code)), a_code)
                         
@@ -128,36 +123,28 @@ def ticker_search_view():
                             "Sector_GICS": gics_val,
                             "Country": info.get("country", "Unknown"),
                             "Region": reg_val,
-                            "InstrumentType_Raw": raw_type,
                             "InstrumentType": type_val,
-                            "AssetClass": asset_val,
-                            "Vol (7d Avg)": int(t.history(period="7d")['Volume'].mean()) if not t.history(period="7d").empty else 0
+                            "AssetClass": asset_val
                         })
                     st.session_state["search_results_df"] = pd.DataFrame(raw_data)
             except Exception as e:
                 st.error(f"Suche fehlgeschlagen: {e}")
 
-# --- TABELLE & AUSWAHL ---
+    # Darstellung der Ergebnisse & Editierung
     if "search_results_df" in st.session_state:
         df = st.session_state["search_results_df"]
         
         st.subheader("1. Daten prüfen & editieren")
         
-        # Wir nutzen den Editor ohne selection_mode, um maximale Stabilität zu garantieren
         column_config = {
             "Ticker": st.column_config.TextColumn(disabled=True),
             "Name": st.column_config.TextColumn(disabled=True),
             "Exchange": st.column_config.TextColumn(disabled=True),
             "Currency": st.column_config.TextColumn(disabled=True),
-            "Industry": st.column_config.TextColumn("Industry"),
-            "Sector": st.column_config.TextColumn("Yahoo Sector", disabled=True),
-            "Sector_GICS": st.column_config.SelectboxColumn("GICS", options=st.session_state.get('opt_gics', []), required=True),
-            "Country": st.column_config.TextColumn("Country"),
-            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state.get('opt_region', []), required=True),
-            "InstrumentType_Raw": None,
-            "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state.get('opt_type', []), required=True),
-            "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state.get('opt_asset', []), required=True),
-            "Vol (7d Avg)": st.column_config.NumberColumn("Vol (7d)", disabled=True, format="%d")
+            "Sector_GICS": st.column_config.SelectboxColumn("GICS", options=st.session_state['opt_gics'], required=True),
+            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
+            "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type'], required=True),
+            "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'], required=True)
         }
 
         edited_df = st.data_editor(
@@ -165,33 +152,20 @@ def ticker_search_view():
             column_config=column_config,
             use_container_width=True,
             hide_index=True,
-            key="stable_editor_v6"
+            key="ticker_editor"
         )
 
         st.markdown("---")
         st.subheader("2. Ticker für Import wählen")
         
-        # Der User wählt den Ticker aus einer Liste der gefundenen Symbole
         ticker_options = edited_df["Ticker"].tolist()
         selected_ticker = st.selectbox(
-            "Welchen Ticker möchten Sie als Stammdatum speichern?",
-            options=ticker_options,
-            index=0 if len(ticker_options) > 0 else None
+            "Welchen Ticker als Stammdatum speichern?",
+            options=ticker_options
         )
 
         if selected_ticker:
-            # Die entsprechende Zeile aus dem editierten DataFrame ziehen
             selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
-            
-            st.write(f"Ausgewählt: **{selected_row['Name']}** ({selected_ticker})")
-            
-            if st.button("Jetzt in Datenbank speichern", type="primary", use_container_width=True):
+            if st.button("Jetzt in Datenbank speichern", type="primary"):
                 handle_save_request(selected_row, isin_input)
-
-
-
-
-
-
-
 
