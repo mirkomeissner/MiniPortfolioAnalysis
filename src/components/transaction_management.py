@@ -202,15 +202,59 @@ def render_import_preview_screen():
 
     st.divider()
 
-    # --- SECTION 5: EXECUTION ---
+# --- SECTION 5: EXECUTION WITH VALIDATION ---
+    st.divider()
     if st.button("🚀 Start Import", type="primary", use_container_width=True):
+        # 1. Get currently selected rows
         final_selection = edited_df[edited_df["import_row"] == True]
+        
         if final_selection.empty:
             st.error("No rows selected.")
             return
 
+        # --- VALIDATION PHASE (DRY RUN) ---
+        invalid_indices = []
+        validation_errors = []
+
+        for idx, row in final_selection.iterrows():
+            try:
+                # Test Date conversion
+                _ = pd.to_datetime(row[map_date])
+                # Test Numeric conversions
+                _ = float(row[map_trade_amt])
+                _ = float(row[map_qty])
+                if map_amt_eur != "<Not in CSV>" and pd.notna(row[map_amt_eur]):
+                    _ = float(row[map_amt_eur])
+                
+                # Test Mandatory fields
+                if pd.isna(row[map_isin]) or str(row[map_isin]).strip() == "":
+                    raise ValueError("ISIN is empty")
+                
+            except Exception as e:
+                invalid_indices.append(idx)
+                validation_errors.append(f"Row {idx}: {str(e)}")
+
+        # --- EVALUATE VALIDATION ---
+        if invalid_indices:
+            st.warning("⚠️ Some of your transactions cannot be imported. The related lines have been deactivated in your selection. Please verify.")
+            
+            # Update the original dataframe in session state to uncheck the broken rows
+            # This ensures that when the screen reruns, these rows are deselected
+            st.session_state["imported_df"].loc[invalid_indices, "import_row"] = False
+            
+            if st.button("OK - Review Errors"):
+                st.rerun()
+            
+            # Show details of errors for the user
+            with st.expander("Show Error Details"):
+                for err in validation_errors:
+                    st.write(err)
+            return # Stop the import process here
+
+        # --- ACTUAL IMPORT PHASE (only reached if 0 errors) ---
         success_count = 0
         progress_bar = st.progress(0)
+        
         for i, (idx, row) in enumerate(final_selection.iterrows()):
             try:
                 t_curr = str(row[map_trade_curr]).upper().strip()[:3]
@@ -219,7 +263,6 @@ def render_import_preview_screen():
                 db_date = raw_date.date().isoformat()
                 clean_isin = str(row[map_isin]).strip()
                 
-                # Payload construction
                 payload = {
                     "username": user,
                     "id": f"{clean_isin}_{raw_date.strftime('%Y%m%d')}_{get_next_transaction_count(user, clean_isin, db_date):03d}",
@@ -235,10 +278,11 @@ def render_import_preview_screen():
                 save_transaction(payload)
                 success_count += 1
             except Exception as e:
-                st.error(f"Error row {i+1}: {e}")
+                st.error(f"Unexpected error in row {idx}: {e}")
+            
             progress_bar.progress((i + 1) / len(final_selection))
 
-        # Save Mapping Configuration for next time
+        # Save Mapping Configuration & Cleanup
         current_config = {
             "type_column": type_column, "type_mapping": type_mapping,
             "map_isin": map_isin, "map_date": map_date, "map_qty": map_qty,
@@ -248,10 +292,12 @@ def render_import_preview_screen():
         
         st.success(f"Successfully imported {success_count} rows!")
         st.cache_data.clear()
+        
+        # Cleanup and Redirect
         if "imported_df" in st.session_state: del st.session_state["imported_df"]
+        if "import_filter_rules" in st.session_state: del st.session_state["import_filter_rules"]
         st.session_state["view"] = "list"
-        st.rerun()
-    
+        st.rerun()    
 
 
 
