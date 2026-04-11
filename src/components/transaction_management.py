@@ -458,7 +458,7 @@ def render_list_view():
             "quantity": st.column_config.NumberColumn("Quantity", format="%.4f"),
             "trade_amount": st.column_config.NumberColumn("Trade Amount", format="%.2f"),
             "trade_currency": st.column_config.TextColumn("Trade Curr"),
-            "amount_eur": st.column_config.NumberColumn("Amount (EUR)", format="%.2f €"),
+            "amount_eur": st.column_config.NumberColumn("Amount (EUR)", format="%.2f"),
             "created_at": st.column_config.DatetimeColumn("Created At", format="DD.MM.YYYY, HH:mm"),
             "updated_at": st.column_config.DatetimeColumn("Updated At", format="DD.MM.YYYY, HH:mm"),
             "id": st.column_config.TextColumn("Internal ID"),
