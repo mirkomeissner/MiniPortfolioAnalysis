@@ -23,18 +23,23 @@ def get_country_region_map():
     return {item['country']: item['region_code'] for item in res.data}
 
 def save_asset_static_data(asset_data):
+    """Inserts a new asset record."""
     return supabase.table("asset_static_data").insert(asset_data).execute()
+
+def update_asset_static_data(isin, updated_data):
+    """Updates an existing asset record by ISIN."""
+    return supabase.table("asset_static_data").update(updated_data).eq("isin", isin).execute()
 
 def get_all_assets_with_labels():
     """Fetches full asset records including joined reference labels."""
     flattened_data = []
     try:
-        # Added instrument_type, industry, and country to the query
+        # Added updated_at and updated_by to the query strings
         columns = (
             "isin, name, currency, ticker, industry, country, "
             "ref_price_source(label), ref_instrument_type(label), "
             "ref_asset_class(label), ref_region(label), ref_sector(label), "
-            "closed_on, created_at, created_by"
+            "closed_on, created_at, created_by, updated_at, updated_by"
         )
         
         query = supabase.table("asset_static_data").select(columns).execute()
@@ -55,7 +60,9 @@ def get_all_assets_with_labels():
                     "Price Source": row.get("ref_price_source", {}).get("label") if row.get("ref_price_source") else None,
                     "Closed On": row.get("closed_on"),
                     "Created At": row.get("created_at"),
-                    "Created By": row.get("created_by")
+                    "Created By": row.get("created_by"),
+                    "Updated At": row.get("updated_at"),
+                    "Updated By": row.get("updated_by")
                 })
     except Exception as e:
         st.error(f"Error fetching assets: {e}")
@@ -66,4 +73,5 @@ def get_all_transactions():
     user = st.session_state.get('user_name')
     response = supabase.table("transactions").select("*").eq("username", user).execute()
     return response.data
+
 
