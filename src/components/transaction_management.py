@@ -432,7 +432,8 @@ def render_list_view():
     # Defining a logical sequence for the columns
     preferred_order = [
         "date", "account_code", "isin", "type_code", 
-        "quantity", "settle_amount", "settle_currency", "amount_eur",
+        "quantity", "settle_amount", "settle_currency", 
+        "settle_fxrate", "amount_eur",
         "created_at", "updated_at", "id"
     ]
     
@@ -457,13 +458,16 @@ def render_list_view():
             "type_code": st.column_config.TextColumn("Type"),
             "quantity": st.column_config.NumberColumn("Quantity", format="%.4f"),
             "settle_amount": st.column_config.NumberColumn("Settle Amount", format="%.2f"),
-            "settle_currency": st.column_config.TextColumn("Settle Curr"),
+            "settle_currency": st.column_config.TextColumn("Curr"),
+            "settle_fxrate": st.column_config.NumberColumn("FX Rate", format="%.6f"),
             "amount_eur": st.column_config.NumberColumn("Amount (EUR)", format="%.2f"),
             "created_at": st.column_config.DatetimeColumn("Created At", format="DD.MM.YYYY, HH:mm"),
             "updated_at": st.column_config.DatetimeColumn("Updated At", format="DD.MM.YYYY, HH:mm"),
             "id": st.column_config.TextColumn("Internal ID"),
         }
     )
+
+
 def render_transaction_form():
     """Renders an improved transaction form with dynamic FX-Rate locking."""
     st.subheader("Create New Transaction")
