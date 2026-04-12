@@ -486,7 +486,7 @@ def render_list_view():
     all_columns = df.columns.tolist()
 
     # --- 3. ADVANCED FILTERING 
-    
+    filtered_df = apply_advanced_filters(df, session_prefix="trans_list")
 
     # --- 4. COLUMN ORDERING & DISPLAY ---
     
