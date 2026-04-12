@@ -485,51 +485,8 @@ def render_list_view():
 
     all_columns = df.columns.tolist()
 
-    # --- 3. ADVANCED FILTERING (Consistent with Import Screen) ---
-    if "list_filter_rules" not in st.session_state:
-        st.session_state["list_filter_rules"] = []
-
-    with st.expander("🔍 Advanced Filter", expanded=False):
-        logic_mode = st.radio("Logic Mode", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True, key="list_logic")
-        fc1, fc2 = st.columns([1, 4])
-        if fc1.button("➕ Add Rule", key="list_add_rule"):
-            st.session_state["list_filter_rules"].append({"column": all_columns[0], "value": []})
-            st.rerun()
-        if fc2.button("🗑 Clear All", key="list_clear_rules"):
-            st.session_state["list_filter_rules"] = []
-            st.rerun()
-
-        active_filters = []
-        for i, rule in enumerate(st.session_state["list_filter_rules"]):
-            r1, r2, r3 = st.columns([2, 3, 0.5])
-            
-            # Column Selection
-            sel_col = r1.selectbox(f"Col {i}", all_columns, 
-                                   index=all_columns.index(rule["column"]) if rule["column"] in all_columns else 0,
-                                   key=f"list_fcol_{i}")
-            st.session_state["list_filter_rules"][i]["column"] = sel_col
-            
-            # Value Selection (Multiselect)
-            opts = sorted(df[sel_col].dropna().unique().astype(str).tolist())
-            sel_val = r2.multiselect(f"Values {i}", opts, 
-                                     default=rule["value"] if all(v in opts for v in rule["value"]) else [],
-                                     key=f"list_fval_{i}")
-            st.session_state["list_filter_rules"][i]["value"] = sel_val
-            
-            if sel_val:
-                active_filters.append(df[sel_col].astype(str).isin(sel_val))
-            
-            if r3.button("❌", key=f"list_frem_{i}"):
-                st.session_state["list_filter_rules"].pop(i)
-                st.rerun()
-
-    # Apply Filter Logic
-    filtered_df = df.copy()
-    if active_filters:
-        mask = active_filters[0]
-        for m in active_filters[1:]:
-            mask = (mask & m) if logic_mode == "Match ALL (AND)" else (mask | m)
-        filtered_df = df[mask]
+    # --- 3. ADVANCED FILTERING 
+    
 
     # --- 4. COLUMN ORDERING & DISPLAY ---
     
