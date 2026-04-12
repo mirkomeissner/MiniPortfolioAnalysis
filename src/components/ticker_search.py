@@ -69,15 +69,7 @@ def handle_save_request(row, isin):
 
 def ticker_search_view():
     st.subheader("🔍 Search New Asset via ISIN")
-
-    if 'ref_data_loaded' not in st.session_state:
-        with st.spinner("Loading reference data..."):
-            st.session_state['db_region_map'] = get_country_region_map()
-            st.session_state['opt_asset'] = get_ref_options("ref_asset_class")
-            st.session_state['opt_gics'] = get_ref_options("ref_sector")
-            st.session_state['opt_region'] = get_ref_options("ref_region")
-            st.session_state['opt_type'] = get_ref_options("ref_instrument_type")
-            st.session_state['ref_data_loaded'] = True
+    ensure_reference_data()
 
     isin_input = st.text_input("Enter ISIN", placeholder="e.g. US0378331005")
     
