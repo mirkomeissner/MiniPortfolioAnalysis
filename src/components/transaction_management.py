@@ -250,7 +250,18 @@ def render_import_preview_screen():
     st.write("") 
 
     st.markdown("Optional Fields")    
-    with st.container(border=True):
+    with st.container(border=True):        
+        opt_col1, opt_col2 = st.columns(2)
+        eur_opts = ["<Not in CSV>"] + csv_columns
+        s_eur = saved_config.get("map_amt_eur", "<Not in CSV>")
+        s_fx = saved_config.get("map_settle_fx", "<Not in CSV>")
+
+        with opt_col1:
+            map_eur = st.selectbox("Amount in EUR", eur_opts, 
+                                   index=eur_opts.index(s_eur) if s_eur in eur_opts else 0)
+        with opt_col2:
+            map_fx = st.selectbox("FX Rate Column", eur_opts, 
+                                  index=eur_opts.index(s_fx) if s_fx in eur_opts else 0)
         # INSERT VISIBLE HELP TEXT
         st.info("""
         **Priorities for currency conversion to EUR:** 
@@ -266,18 +277,6 @@ def render_import_preview_screen():
 
         4. **ELSE** Amount in EUR := NULL and FX rate := NULL.
         """)
-        
-        opt_col1, opt_col2 = st.columns(2)
-        eur_opts = ["<Not in CSV>"] + csv_columns
-        s_eur = saved_config.get("map_amt_eur", "<Not in CSV>")
-        s_fx = saved_config.get("map_settle_fx", "<Not in CSV>")
-
-        with opt_col1:
-            map_eur = st.selectbox("Amount in EUR", eur_opts, 
-                                   index=eur_opts.index(s_eur) if s_eur in eur_opts else 0)
-        with opt_col2:
-            map_fx = st.selectbox("FX Rate Column", eur_opts, 
-                                  index=eur_opts.index(s_fx) if s_fx in eur_opts else 0)
 
     st.divider()
 
