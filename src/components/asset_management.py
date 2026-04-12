@@ -116,6 +116,12 @@ def render_list_view():
         st.session_state["view"] = "edit"
         st.rerun()
 
+import streamlit as st
+from datetime import datetime
+from src.database import get_all_assets_with_labels, update_asset_static_data
+# Import our new central helpers
+from src.utils import ensure_reference_data, extract_code, get_option_index
+
 def render_edit_view():
     isin = st.session_state.get("edit_isin")
     st.subheader(f"Edit Asset: {isin}")
@@ -124,7 +130,7 @@ def render_edit_view():
         st.session_state["view"] = "list"
         st.rerun()
 
-    # Load current data
+    # 1. Load current data
     all_data = get_all_assets_with_labels()
     asset = next((item for item in all_data if item["ISIN"] == isin), None)
 
@@ -134,7 +140,7 @@ def render_edit_view():
 
     # --- CLOSE / REOPEN LOGIC ---
     st.write("---")
-    closed_val = asset.get("Closed On") # Based on the dict key in database.py
+    closed_val = asset.get("Closed On")
     
     if closed_val is None:
         if st.button("🔒 Close Asset", help="Set the closing date to today", use_container_width=True):
@@ -162,16 +168,8 @@ def render_edit_view():
     st.write("---")
 
     # --- MAIN EDIT FORM ---
-    # Load Ref Options if not in session
-    # Robust check: If 'opt_source' is missing, reload reference data
-    if 'opt_source' not in st.session_state:
-        with st.spinner("Loading reference data..."):
-            st.session_state['opt_asset'] = get_ref_options("ref_asset_class")
-            st.session_state['opt_gics'] = get_ref_options("ref_sector")
-            st.session_state['opt_region'] = get_ref_options("ref_region")
-            st.session_state['opt_type'] = get_ref_options("ref_instrument_type")
-            st.session_state['opt_source'] = get_ref_options("ref_price_source")
-            st.session_state['ref_data_loaded'] = True
+    # REPLACEMENT 1: Using our central loader instead of the long IF-block
+    ensure_reference_data()
 
     with st.form("edit_form"):
         col1, col2 = st.columns(2)
@@ -180,33 +178,38 @@ def render_edit_view():
         ticker = col2.text_input("Ticker", value=asset["Ticker"])
         currency = col2.text_input("Currency", value=asset["Currency"])
         
-        def get_index(options, current_label):
-            if not current_label: return 0
-            try: 
-                # Sucht nach dem Label im String, z.B. "STO (Stock)"
-                return next(i for i, s in enumerate(options) if f"({current_label})" in s or s.startswith(current_label))
-            except: 
-                return 0
+        # REPLACEMENT 2: We no longer need the local 'def get_index' here!
+        # We use 'get_option_index' from our utils instead.
 
-        asset_class = col1.selectbox("Asset Class", st.session_state['opt_asset'], index=get_index(st.session_state['opt_asset'], asset["Asset Class"]))
-        region = col2.selectbox("Region", st.session_state['opt_region'], index=get_index(st.session_state['opt_region'], asset["Region"]))
-        sector = col1.selectbox("Sector", st.session_state['opt_gics'], index=get_index(st.session_state['opt_gics'], asset["Sector"]))
-        instr_type = col2.selectbox("Instrument Type", st.session_state['opt_type'], index=get_index(st.session_state['opt_type'], asset["Type"]))
-        source = col1.selectbox("Price Source", st.session_state['opt_source'], index=get_index(st.session_state['opt_source'], asset["Price Source"]))
+        asset_class = col1.selectbox("Asset Class", st.session_state['opt_asset'], 
+                                     index=get_option_index(st.session_state['opt_asset'], asset["Asset Class"]))
+        
+        region = col2.selectbox("Region", st.session_state['opt_region'], 
+                                index=get_option_index(st.session_state['opt_region'], asset["Region"]))
+        
+        sector = col1.selectbox("Sector", st.session_state['opt_gics'], 
+                                index=get_option_index(st.session_state['opt_gics'], asset["Sector"]))
+        
+        instr_type = col2.selectbox("Instrument Type", st.session_state['opt_type'], 
+                                    index=get_option_index(st.session_state['opt_type'], asset["Type"]))
+        
+        source = col1.selectbox("Price Source", st.session_state['opt_source'], 
+                                index=get_option_index(st.session_state['opt_source'], asset["Price Source"]))
         
         industry = col2.text_input("Industry", value=asset["Industry"])
         country = col1.text_input("Country", value=asset["Country"])
 
         if st.form_submit_button("Save Changes", type="primary"):
+            # REPLACEMENT 3: Using 'extract_code' instead of '.split(" (")[0]'
             updated_payload = {
                 "name": name,
                 "ticker": ticker,
                 "currency": currency,
-                "asset_class_code": asset_class.split(" (")[0],
-                "region_code": region.split(" (")[0],
-                "sector_code": sector.split(" (")[0],
-                "instrument_type": instr_type.split(" (")[0],
-                "price_source": source.split(" (")[0],
+                "asset_class_code": extract_code(asset_class),
+                "region_code": extract_code(region),
+                "sector_code": extract_code(sector),
+                "instrument_type": extract_code(instr_type),
+                "price_source": extract_code(source),
                 "industry": industry,
                 "country": country,
                 "updated_at": datetime.now().isoformat(),
@@ -217,4 +220,6 @@ def render_edit_view():
             st.cache_data.clear()
             st.session_state["view"] = "list"
             st.rerun()
+
+
 
