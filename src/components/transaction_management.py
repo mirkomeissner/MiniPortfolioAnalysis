@@ -252,12 +252,17 @@ def render_import_preview_screen():
     st.markdown("Optional Fields")
     # RE-INSERTED VISIBLE HELP TEXT
     st.info("""
-    **Priorities for currency conversion to EUR:** 1. **IF** Settlement Currency = EUR  
+    **Priorities for currency conversion to EUR:** 
+
+    1. **IF** Settlement Currency = EUR 
        **THEN** Amount in EUR := Settlement Amount and FX rate := 1.
-    2. **IF** mapping for Amount in EUR is configured  
+
+    2. **IF** mapping for Amount in EUR is configured 
        **THEN** FX rate := Settlement Amount / Amount in EUR.
-    3. **IF** mapping for FX rate is configured  
+
+    3. **IF** mapping for FX rate is configured 
        **THEN** Amount in EUR := Settlement Amount / FX rate.
+
     4. **ELSE** Amount in EUR := NULL and FX rate := NULL.
     """)
     
