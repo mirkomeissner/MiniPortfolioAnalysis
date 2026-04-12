@@ -12,6 +12,7 @@ from src.database import (
     save_transaction,
     save_transactions_bulk,
     get_next_transaction_count,
+    get_existing_ids_for_bulk,
     get_import_settings,
     save_import_settings,
     get_missing_isins,
@@ -314,10 +315,7 @@ def render_import_preview_screen():
         final_sel = final_sel[final_sel["import_row"] == True]
         
         # --- 1. ASSET PROVISIONING (JIT) ---
-        # Get all unique ISINs from the selected rows
         unique_isins = [str(i).strip() for i in final_sel[map_isin].unique().tolist() if str(i).strip()]
-        
-        # Check which ones are missing in the database
         missing_isins = get_missing_isins(unique_isins)
         
         if missing_isins:
@@ -329,32 +327,51 @@ def render_import_preview_screen():
                         "created_by": user
                     }
                     try:
-                        # Attempt to save the missing asset
                         save_asset_static_data(asset_payload)
                         st.write(f"✅ Created asset placeholder: {m_isin}")
                     except Exception as e:
-                        # Handle potential race conditions for duplicates
                         if "duplicate" not in str(e).lower():
                             st.error(f"Could not create asset {m_isin}: {e}")
                 
-                # Brief pause to ensure DB indices are updated before transactions start
                 import time
                 time.sleep(0.5)
                 status.update(label="Asset provisioning complete!", state="complete")
 
-        # --- 2. PREPARE BATCH IMPORT ---
+        # --- 2. PREPARE BATCH DATA (BULK COUNTER LOGIC) ---
         success_count = 0
         progress_bar = st.progress(0)
         payload_batch = []
         
-        # Local cache for ID counters to minimize DB Roundtrips
-        # Format: {(isin, date): current_count}
-        local_counters = {}
-        
-        with st.status("Processing records...", expanded=True) as status:
+        # Extract all unique dates involved in the import (formatted for DB query)
+        unique_dates = [pd.to_datetime(d).date().isoformat() for d in final_sel[map_date].unique()]
+
+        with st.status("Analyzing existing records and preparing batch...", expanded=True) as status:
+            # Step A: Fetch all existing IDs for these ISINs and dates in ONE call
+            # This avoids the "N+1 query problem"
+            existing_ids = get_existing_ids_for_bulk(unique_isins, unique_dates)
+            
+            # Step B: Build a local counter map {(isin, date): next_available_index}
+            local_counters = {}
+            for eid in existing_ids:
+                try:
+                    # ID Format: ISIN_YYYYMMDD_COUNT
+                    parts = eid.split("_")
+                    if len(parts) >= 3:
+                        isin_part = parts[0]
+                        date_part = parts[1] # YYYYMMDD
+                        count_val = int(parts[2])
+                        
+                        # Reconstruct key as (isin, YYYY-MM-DD)
+                        db_date_fmt = f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:]}"
+                        key = (isin_part, db_date_fmt)
+                        local_counters[key] = max(local_counters.get(key, 0), count_val + 1)
+                except:
+                    continue
+
+            # Step C: Process rows and generate new payloads
             for i, (idx, row) in enumerate(final_sel.iterrows()):
                 try:
-                    # Basic extraction
+                    # Data extraction
                     s_curr = str(row[map_s_cur]).upper().strip()[:3]
                     s_amount = float(row[map_s_amt])
                     raw_date = pd.to_datetime(row[map_date])
@@ -379,20 +396,16 @@ def render_import_preview_screen():
                     elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]):
                         settle_fx = float(row[map_fx])
 
-                    # 3. Optimized ID Generation using local counter cache
-                    counter_key = (isin_val, db_date)
-                    if counter_key not in local_counters:
-                        # Fetch starting index from DB once per ISIN/Date combo
-                        local_counters[counter_key] = get_next_transaction_count(user, isin_val, db_date)
-                    
-                    current_idx = local_counters[counter_key]
+                    # 3. ID Generation using local counter
+                    key = (isin_val, db_date)
+                    current_idx = local_counters.get(key, 0)
                     generated_id = f"{isin_val}_{raw_date.strftime('%Y%m%d')}_{current_idx:03d}"
                     
-                    # Increment local counter for the next record in this ISIN/Date group
-                    local_counters[counter_key] += 1
+                    # Increment counter for next record with same ISIN/Date in this batch
+                    local_counters[key] = current_idx + 1
 
-                    # 4. Create Payload
-                    payload = {
+                    # 4. Add to Batch
+                    payload_batch.append({
                         "username": user,
                         "id": generated_id,
                         "account_code": acc_code,
@@ -404,26 +417,25 @@ def render_import_preview_screen():
                         "settle_currency": s_curr,
                         "settle_fxrate": settle_fx,
                         "amount_eur": amt_eur
-                    }
-                    
-                    payload_batch.append(payload)
+                    })
 
                 except Exception as e:
-                    st.error(f"Row {idx} preparation Error: {e}")
+                    st.error(f"Row {idx} calculation error: {e}")
                 
-                progress_bar.progress((i + 1) / len(final_sel))
+                # Update progress bar occasionally to save UI performance
+                if i % 10 == 0 or i == len(final_sel)-1:
+                    progress_bar.progress((i + 1) / len(final_sel))
 
             # --- 3. EXECUTE BULK INSERT ---
             if payload_batch:
-                status.update(label=f"Uploading {len(payload_batch)} transactions...", state="running")
+                status.update(label=f"Uploading {len(payload_batch)} records to database...", state="running")
                 try:
-                    # Call the bulk save function in database.py
                     save_transactions_bulk(payload_batch)
                     success_count = len(payload_batch)
                     status.update(label=f"Successfully imported {success_count} transactions!", state="complete")
                 except Exception as e:
-                    st.error(f"Database Bulk Insert Error: {e}")
-                    status.update(label="Import failed during DB upload.", state="error")
+                    st.error(f"Database Error during bulk upload: {e}")
+                    status.update(label="Import failed.", state="error")
 
         # 4. FINALIZE
         save_import_settings(user, acc_code, {
