@@ -12,8 +12,7 @@ from src.utils import (
     ensure_reference_data, 
     apply_advanced_filters
 )
-
-# from .ticker_search import ticker_search_view
+from .ticker_search import ticker_search_view
 
 def asset_table_view():
     # --- VIEW ROUTING ---
