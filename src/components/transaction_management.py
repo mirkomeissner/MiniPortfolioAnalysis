@@ -249,8 +249,9 @@ def render_import_preview_screen():
 
     st.write("") 
 
-    st.markdown("Optional Fields")
-    # RE-INSERTED VISIBLE HELP TEXT
+    st.markdown("Optional Fields")    
+    with st.container(border=True):
+# INSERT VISIBLE HELP TEXT
     st.info("""
     **Priorities for currency conversion to EUR:** 
 
@@ -265,8 +266,7 @@ def render_import_preview_screen():
 
     4. **ELSE** Amount in EUR := NULL and FX rate := NULL.
     """)
-    
-    with st.container(border=True):
+        
         opt_col1, opt_col2 = st.columns(2)
         eur_opts = ["<Not in CSV>"] + csv_columns
         s_eur = saved_config.get("map_amt_eur", "<Not in CSV>")
