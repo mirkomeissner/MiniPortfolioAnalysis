@@ -251,21 +251,21 @@ def render_import_preview_screen():
 
     st.markdown("Optional Fields")    
     with st.container(border=True):
-# INSERT VISIBLE HELP TEXT
-    st.info("""
-    **Priorities for currency conversion to EUR:** 
+        # INSERT VISIBLE HELP TEXT
+        st.info("""
+        **Priorities for currency conversion to EUR:** 
 
-    1. **IF** Settlement Currency = EUR 
-       **THEN** Amount in EUR := Settlement Amount and FX rate := 1.
+        1. **IF** Settlement Currency = EUR 
+           **THEN** Amount in EUR := Settlement Amount and FX rate := 1.
 
-    2. **IF** mapping for Amount in EUR is configured 
-       **THEN** FX rate := Settlement Amount / Amount in EUR.
+        2. **IF** mapping for Amount in EUR is configured 
+           **THEN** FX rate := Settlement Amount / Amount in EUR.
 
-    3. **IF** mapping for FX rate is configured 
-       **THEN** Amount in EUR := Settlement Amount / FX rate.
+        3. **IF** mapping for FX rate is configured 
+           **THEN** Amount in EUR := Settlement Amount / FX rate.
 
-    4. **ELSE** Amount in EUR := NULL and FX rate := NULL.
-    """)
+        4. **ELSE** Amount in EUR := NULL and FX rate := NULL.
+        """)
         
         opt_col1, opt_col2 = st.columns(2)
         eur_opts = ["<Not in CSV>"] + csv_columns
