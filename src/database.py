@@ -133,6 +133,23 @@ def get_next_transaction_count(username, isin, date_str):
         st.error(f"Error calculating transaction count: {e}")
         return 1
 
+def get_existing_ids_for_bulk(isins, dates):
+    """
+    Fetches only the 'id' column for all transactions matching the given 
+    lists of ISINs and dates.
+    """
+    try:
+        response = supabase.table("transactions") \
+            .select("id") \
+            .in_("isin", isins) \
+            .in_("date", dates) \
+            .execute()
+        return [item['id'] for item in response.data]
+    except Exception as e:
+        print(f"Error fetching existing IDs: {e}")
+        return []
+
+
 
 
 def save_transaction(transaction_data):
