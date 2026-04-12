@@ -4,7 +4,12 @@ import io
 import uuid
 import streamlit.components.v1 as components
 from datetime import datetime
-from src.utils import extract_code, apply_advanced_filters
+from src.utils import (
+    extract_code, 
+    apply_advanced_filters, 
+    ensure_reference_data, 
+    get_option_index
+)
 from src.database import (
     get_all_transactions, 
     get_ref_options, 
