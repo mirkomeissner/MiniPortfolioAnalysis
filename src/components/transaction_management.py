@@ -36,7 +36,7 @@ def transaction_table_view():
     elif current_view == "import_preview":
         render_import_preview_screen()
     else:
-        t_view()
+        render_list_view()
 
 def render_import_upload_screen():
     st.subheader("Import Transactions via CSV")
