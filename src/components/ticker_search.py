@@ -1,6 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+from src.utils import ensure_reference_data, extract_code
 from src.database import save_asset_static_data, get_ref_options, get_country_region_map
 
 # --- 1. MAPPING (Yahoo Finance -> DB-Standard) ---
