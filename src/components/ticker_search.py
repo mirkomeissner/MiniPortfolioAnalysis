@@ -1,7 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-from src.utils import ensure_reference_data, extract_code, get_option_index
+from src.utils import ensure_reference_data, extract_code
 from src.database import save_asset_static_data, get_ref_options, get_country_region_map
 
 # --- 1. MAPPING (Yahoo Finance -> DB-Standard) ---
@@ -66,57 +66,6 @@ def handle_save_request(row, isin):
         st.rerun() 
     except Exception as e:
         st.error(f"Error saving data: {e}")
-
-def render_ticker_search():
-    """
-    Provides a search interface for Yahoo Finance tickers and 
-    allows adding them to the local asset database.
-    """
-    st.header("Search & Add Ticker")
-
-    # 1. Centralized loading of reference data (Sectors, Asset Classes, etc.)
-    ensure_reference_data()
-
-    # 2. Search UI
-    with st.expander("Search Parameters", expanded=True):
-        search_col, btn_col = st.columns([3, 1])
-        query = search_col.text_input("Company Name or Symbol", placeholder="e.g. Microsoft or MSFT")
-        
-        if btn_col.button("Search Ticker", use_container_width=True):
-            if query:
-                # Assuming search_yahoo_finance is a function in your logic
-                # st.session_state['search_results'] = search_yahoo_finance(query)
-                st.info(f"Searching for '{query}'...") 
-            else:
-                st.warning("Please enter a search term.")
-
-    # 3. Add to Database Form (Simplified Example)
-    st.divider()
-    st.subheader("Add Asset Details")
-    
-    with st.form("add_ticker_form"):
-        col1, col2 = st.columns(2)
-        
-        # Use helper 'get_option_index' to maintain selection on rerun if needed
-        selected_class = col1.selectbox(
-            "Asset Class", 
-            st.session_state['opt_asset']
-        )
-        
-        selected_sector = col2.selectbox(
-            "GICS Sector", 
-            st.session_state['opt_gics']
-        )
-
-        if st.form_submit_button("Save to Portfolio"):
-            # Use helper 'extract_code' to get 'EQU' from 'EQU (Equity)'
-            asset_code = extract_code(selected_class)
-            sector_code = extract_code(selected_sector)
-            
-            st.success(f"Saved with Codes: {asset_code} / {sector_code}")
-
-
-
 
 def ticker_search_view():
     st.subheader("🔍 Search New Asset via ISIN")
