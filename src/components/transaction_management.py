@@ -107,6 +107,10 @@ def render_import_preview_screen():
     if "import_confirmed" not in st.session_state: st.session_state["import_confirmed"] = False
     if "import_filter_rules" not in st.session_state: st.session_state["import_filter_rules"] = []
 
+    # --- REPLACEMENT: CENTRAL REFERENCE DATA LOADING ---
+    # Ensures all required dropdown options (accounts, types, etc.) are in session_state
+    ensure_reference_data()
+
     # --- VALIDATION GUARD ---
     if st.session_state["val_error_indices"]:
         err_indices = st.session_state["val_error_indices"]
@@ -130,9 +134,11 @@ def render_import_preview_screen():
     st.subheader("1. Global Settings")
     col_g1, col_g2 = st.columns(2)
     with col_g1:
-        accounts = get_account_ref_options(user)
+        # Use centrally loaded account options
+        accounts = st.session_state.get('opt_accounts', [])
         selected_account_full = st.selectbox("Target Account", accounts, key="active_account")
-        acc_code = selected_account_full.split(" (")[0]
+        # Optimized: Use helper to extract the account code
+        acc_code = extract_code(selected_account_full)
     
     # --- INFO DISPLAY FOR LOADED SETTINGS ---
     raw_config = get_import_settings(user, acc_code)
@@ -152,9 +158,8 @@ def render_import_preview_screen():
         return 0
 
     st.divider()
-    
 
-    # --- 5. SECTION 2: ADVANCED FILTERING ---
+    # --- SECTION 2: ADVANCED FILTERING ---
     st.subheader("2. Filter Rows")
     with st.expander("🛠 Advanced Query Builder", expanded=False):
         logic_mode = st.radio("Logic Mode", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True)
@@ -202,87 +207,67 @@ def render_import_preview_screen():
 
     st.divider()
 
-    # --- 6. SECTION 3: TRANSACTION TYPE MAPPING ---
+    # --- SECTION 3: TRANSACTION TYPE MAPPING ---
     st.subheader("3. Transaction Type Mapping")
     col_t1, _ = st.columns([1, 2])
     type_column = col_t1.selectbox("CSV Type Column", csv_columns, index=get_map_idx("type", "type_column"))
     
     distinct_csv_types = filtered_df[type_column].unique().tolist()
-    db_trans_types = get_ref_options("ref_transaction_type")
+    # Optimized: Use centrally loaded transaction types
+    db_trans_types = st.session_state.get('opt_trans_types', [])
     saved_type_map = saved_config.get("type_mapping", {})
     
     type_mapping = {}
     m_col1, m_col2 = st.columns(2)
     for i, csv_val in enumerate(distinct_csv_types):
         target_col = m_col1 if i % 2 == 0 else m_col2
-        d_idx = 0
-        if str(csv_val) in saved_type_map and saved_type_map[str(csv_val)] in db_trans_types:
-            d_idx = db_trans_types.index(saved_type_map[str(csv_val)])
-        type_mapping[csv_val] = target_col.selectbox(f"CSV Type: '{csv_val}'", db_trans_types, index=d_idx, key=f"tmap_{csv_val}")
+        
+        # Optimized: Use helper to find correct dropdown index
+        d_idx = get_option_index(db_trans_types, saved_type_map.get(str(csv_val)))
+        
+        type_mapping[csv_val] = target_col.selectbox(
+            f"CSV Type: '{csv_val}'", 
+            db_trans_types, 
+            index=d_idx, 
+            key=f"tmap_{csv_val}"
+        )
 
     st.divider()
 
-    # --- 7. SECTION 4: DATA FIELD MAPPING ---
+    # --- SECTION 4: DATA FIELD MAPPING ---
     st.subheader("4. Data Field Mapping")
-
-    # --- Required Fields Group ---
     st.markdown("Required Fields")
     with st.container(border=True):
         req_col1, req_col2 = st.columns(2)
         with req_col1:
-            map_isin = st.selectbox("ISIN Column", csv_columns, 
-                                    index=get_map_idx("isin", "map_isin"))
-            map_date = st.selectbox("Date Column", csv_columns, 
-                                    index=get_map_idx("date", "map_date"))
-            map_qty  = st.selectbox("Quantity Column", csv_columns, 
-                                    index=get_map_idx("qty", "map_qty"))
+            map_isin = st.selectbox("ISIN Column", csv_columns, index=get_map_idx("isin", "map_isin"))
+            map_date = st.selectbox("Date Column", csv_columns, index=get_map_idx("date", "map_date"))
+            map_qty  = st.selectbox("Quantity Column", csv_columns, index=get_map_idx("qty", "map_qty"))
         with req_col2:
-            map_s_amt = st.selectbox("Settlement Amount", csv_columns, 
-                                     index=get_map_idx("amount", "map_settle_amt"))
-            map_s_cur = st.selectbox("Settlement Currency", csv_columns, 
-                                     index=get_map_idx("curr", "map_settle_curr"))
+            map_s_amt = st.selectbox("Settlement Amount", csv_columns, index=get_map_idx("amount", "map_settle_amt"))
+            map_s_cur = st.selectbox("Settlement Currency", csv_columns, index=get_map_idx("curr", "map_settle_curr"))
 
-    st.write("") # Spacer
+    st.write("") 
 
-    # --- Optional Fields Group ---
-    st.markdown(
-        "Optional Fields", 
-        help="""
-    Priorities for currency conversion to EUR: 
-        
-    1. **IF** Settlement Currency = EUR 
-       **THEN** Amount in EUR := Settlement Amount and FX rate := 1.
-
-    2. **IF** mapping for Amount in EUR is configured 
-       **THEN** FX rate := Settlement Amount / Amount in EUR.
-
-    3. **IF** mapping for FX rate is configured 
-       **THEN** Amount in EUR := Settlement Amount / FX rate.
-
-    4. **ELSE** Amount in EUR := NULL and FX rate := NULL.
-        """
-    )
+    st.markdown("Optional Fields")
     with st.container(border=True):
         opt_col1, opt_col2 = st.columns(2)
-    
         eur_opts = ["<Not in CSV>"] + csv_columns
         s_eur = saved_config.get("map_amt_eur", "<Not in CSV>")
-        s_fx = saved_config.get("map_settle_fx", "<Not in CSV>") # Assuming this key in your config
+        s_fx = saved_config.get("map_settle_fx", "<Not in CSV>")
 
         with opt_col1:
             map_eur = st.selectbox("Amount in EUR", eur_opts, 
                                    index=eur_opts.index(s_eur) if s_eur in eur_opts else 0)
-    
         with opt_col2:
             map_fx = st.selectbox("FX Rate Column", eur_opts, 
                                   index=eur_opts.index(s_fx) if s_fx in eur_opts else 0)
 
     st.divider()
 
-
-    # --- 8. SECTION 5: DRY-RUN & EXECUTION ---
+    # --- SECTION 5: DRY-RUN & EXECUTION ---
     if st.button("🚀 Start Import", type="primary", use_container_width=True):
-        # SYNC MANUAL UI EDITS
+        # Sync manual edits from the data editor
         if "import_editor_final" in st.session_state:
             edits = st.session_state["import_editor_final"].get("edited_rows", {})
             for ui_row_idx_str, change in edits.items():
@@ -315,138 +300,106 @@ def render_import_preview_screen():
 
     # --- ACTUAL IMPORT PHASE ---
     if st.session_state.get("import_confirmed"):
-
         st.session_state["import_confirmed"] = False
         final_sel = st.session_state["imported_df"].loc[filtered_df.index]
         final_sel = final_sel[final_sel["import_row"] == True]
         
-        # --- 1. ASSET PROVISIONING (OPTIMIZED JIT) ---
+        # 1. ASSET PROVISIONING (Optimized JIT)
         unique_isins = [str(i).strip() for i in final_sel[map_isin].unique().tolist() if str(i).strip()]
         missing_isins = get_missing_isins(unique_isins)
         
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
-                # Create a LIST of dictionaries
-                asset_payloads = [
-                    {"isin": m_isin, "name": m_isin, "created_by": user} 
-                    for m_isin in missing_isins
-                ]
-        
+                asset_payloads = [{"isin": m_isin, "name": m_isin, "created_by": user} for m_isin in missing_isins]
                 try:
-                    # Pass the whole list to your existing function
                     save_asset_static_data(asset_payloads) 
-                    st.write(f"✅ Created {len(asset_payloads)} assets in one go.")
+                    st.write(f"✅ Created {len(asset_payloads)} assets.")
                 except Exception as e:
-                    if "duplicate" not in str(e).lower():
-                        st.error(f"Asset provisioning error: {e}")
-        
+                    if "duplicate" not in str(e).lower(): st.error(f"Asset provisioning error: {e}")
                 status.update(label="Asset provisioning complete!", state="complete")
 
-        # --- 2. PREPARE BATCH DATA (BULK COUNTER LOGIC) ---
+        # 2. PREPARE BATCH DATA
         success_count = 0
         progress_bar = st.progress(0)
         payload_batch = []
-        
-        # Extract all unique dates involved in the import (formatted for DB query)
         unique_dates = [pd.to_datetime(d).date().isoformat() for d in final_sel[map_date].unique()]
 
         with st.status("Analyzing existing records and preparing batch...", expanded=True) as status:
-            # Step A: Fetch all existing IDs for these ISINs and dates in ONE call
-            # This avoids the "N+1 query problem"
             existing_ids = get_existing_ids_for_bulk(unique_isins, unique_dates)
-            
-            # Step B: Build a local counter map {(isin, date): next_available_index}
             local_counters = {}
             for eid in existing_ids:
                 try:
-                    # ID Format: ISIN_YYYYMMDD_COUNT
                     parts = eid.split("_")
                     if len(parts) >= 3:
-                        isin_part = parts[0]
-                        date_part = parts[1] # YYYYMMDD
-                        count_val = int(parts[2])
-                        
-                        # Reconstruct key as (isin, YYYY-MM-DD)
+                        isin_part, date_part, count_val = parts[0], parts[1], int(parts[2])
                         db_date_fmt = f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:]}"
                         key = (isin_part, db_date_fmt)
                         local_counters[key] = max(local_counters.get(key, 0), count_val + 1)
-                except:
-                    continue
+                except: continue
 
-            # Step C: Process rows and generate new payloads
             for i, (idx, row) in enumerate(final_sel.iterrows()):
                 try:
-                    # Data extraction
                     s_curr = str(row[map_s_cur]).upper().strip()[:3]
                     s_amount = float(row[map_s_amt])
                     raw_date = pd.to_datetime(row[map_date])
                     db_date = raw_date.date().isoformat()
                     isin_val = str(row[map_isin]).strip()
 
-                    # 1. Determine Amount in EUR
+                    # Currency logic
                     amt_eur = None
-                    if s_curr == "EUR":
-                        amt_eur = s_amount
-                    elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]):
-                        amt_eur = float(row[map_eur])
+                    if s_curr == "EUR": amt_eur = s_amount
+                    elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]): amt_eur = float(row[map_eur])
                     elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]) and float(row[map_fx]) != 0:
                         amt_eur = s_amount / float(row[map_fx])
 
-                    # 2. Determine FX Rate
                     settle_fx = None
-                    if s_curr == "EUR":
-                        settle_fx = 1.0
+                    if s_curr == "EUR": settle_fx = 1.0
                     elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]) and float(row[map_eur]) != 0:
                         settle_fx = s_amount / float(row[map_eur])
-                    elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]):
-                        settle_fx = float(row[map_fx])
+                    elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]): settle_fx = float(row[map_fx])
 
-                    # 3. ID Generation using local counter
+                    # Optimized ID Generation
                     key = (isin_val, db_date)
                     current_idx = local_counters.get(key, 0)
                     generated_id = f"{isin_val}_{raw_date.strftime('%Y%m%d')}_{current_idx:03d}"
-                    
-                    # Increment counter for next record with same ISIN/Date in this batch
                     local_counters[key] = current_idx + 1
 
-                    # 4. Add to Batch
+                    # Optimized: Use extract_code helper for type mapping
                     payload_batch.append({
                         "username": user,
                         "id": generated_id,
                         "account_code": acc_code,
                         "isin": isin_val,
                         "date": db_date,
-                        "type_code": type_mapping[row[type_column]].split(" (")[0],
+                        "type_code": extract_code(type_mapping[row[type_column]]),
                         "quantity": float(row[map_qty]),
                         "settle_amount": s_amount,
                         "settle_currency": s_curr,
                         "settle_fxrate": settle_fx,
                         "amount_eur": amt_eur
                     })
-
                 except Exception as e:
                     st.error(f"Row {idx} calculation error: {e}")
                 
-                # Update progress bar occasionally to save UI performance
-                if i % 10 == 0 or i == len(final_sel)-1:
-                    progress_bar.progress((i + 1) / len(final_sel))
+                if i % 10 == 0 or i == len(final_sel)-1: progress_bar.progress((i + 1) / len(final_sel))
 
-            # --- 3. EXECUTE BULK INSERT ---
+            # 3. EXECUTE BULK INSERT
             if payload_batch:
-                status.update(label=f"Uploading {len(payload_batch)} records to database...", state="running")
+                status.update(label=f"Uploading {len(payload_batch)} records...", state="running")
                 try:
                     save_transactions_bulk(payload_batch)
                     success_count = len(payload_batch)
                     status.update(label=f"Successfully imported {success_count} transactions!", state="complete")
                 except Exception as e:
-                    st.error(f"Database Error during bulk upload: {e}")
+                    st.error(f"Database Error: {e}")
                     status.update(label="Import failed.", state="error")
 
-        # 4. FINALIZE
+        # 4. FINALIZE & SAVE SETTINGS
         save_import_settings(user, acc_code, {
             "type_column": type_column, "type_mapping": type_mapping,
             "map_isin": map_isin, "map_date": map_date, "map_qty": map_qty,
-            "map_settle_amt": map_s_amt, "map_settle_curr": map_s_cur, "map_amt_eur": map_eur
+            "map_settle_amt": map_s_amt, "map_settle_curr": map_s_cur, 
+            "map_amt_eur": map_eur, "map_settle_fx": map_fx
         })
         
         st.success(f"Import complete: {success_count} transactions saved.")
@@ -455,6 +408,7 @@ def render_import_preview_screen():
         if "scroll_done" in st.session_state: del st.session_state["scroll_done"]
         st.session_state["view"] = "list"
         st.rerun()
+
 
 
 def render_list_view():
