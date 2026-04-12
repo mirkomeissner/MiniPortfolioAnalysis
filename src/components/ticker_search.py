@@ -4,6 +4,22 @@ import pandas as pd
 from src.utils import ensure_reference_data, extract_code
 from src.database import save_asset_static_data, get_ref_options, get_country_region_map
 
+# --- 0. HELPER FUNCTIONS ---
+
+def get_average_volume_7d(ticker):
+    """Return the average trading volume for the last 7 trading days."""
+    try:
+        history = ticker.history(period="14d", interval="1d")
+        if history is None or history.empty:
+            return None
+        volumes = history.get("Volume")
+        if volumes is None or volumes.dropna().empty:
+            return None
+        last7 = volumes.dropna().tail(7)
+        return int(last7.mean()) if not last7.empty else None
+    except Exception:
+        return None
+
 # --- 1. MAPPING (Yahoo Finance -> DB-Standard) ---
 
 def map_yahoo_to_ref(yahoo_sector):
@@ -103,7 +119,10 @@ def ticker_search_view():
                         i_code = map_yahoo_to_instrument_type(raw_type, name)
                         type_val = next((s for s in st.session_state['opt_type'] if s.startswith(i_code)), i_code)
 
+                        avg_vol_7d = get_average_volume_7d(t)
+
                         raw_data.append({
+                            "Volume 7 days": avg_vol_7d,
                             "Ticker": symbol,
                             "Name": name,
                             "Exchange": info.get("exchange", "Unknown"),
@@ -125,15 +144,22 @@ def ticker_search_view():
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
         
+        # Sort and ensure the volume column is first
+        if "Volume 7 days" in df.columns:
+            df = df.sort_values(by="Volume 7 days", ascending=False, na_position="last")
+            ordered_cols = ["Volume 7 days"] + [col for col in df.columns if col != "Volume 7 days"]
+            df = df[ordered_cols]
+
         # --- COLUMN CONFIGURATION ---
         column_config = {
+            "Volume 7 days": st.column_config.NumberColumn("Volume 7 days", disabled=True),
             "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
             "Name": st.column_config.TextColumn("Name"),
             "Exchange": st.column_config.TextColumn("Exchange"),
             "Currency": st.column_config.TextColumn("Currency"),
             "Industry": st.column_config.TextColumn("Industry"),
             "Sector Raw": st.column_config.TextColumn("Sector Raw", disabled=True),
-            "Sector_GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics'], required=True),
+            "Sector GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics'], required=True),
             "Country": st.column_config.TextColumn("Country"),
             "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
             "Type Raw": st.column_config.TextColumn("Type Raw", disabled=True),
@@ -141,12 +167,11 @@ def ticker_search_view():
             "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'], required=True)
         }
 
-        # Display the data editor
         edited_df = st.data_editor(
-            df, 
-            column_config=column_config, 
-            use_container_width=True, 
-            hide_index=True, 
+            df,
+            column_config=column_config,
+            use_container_width=True,
+            hide_index=True,
             key="ticker_editor"
         )
 
