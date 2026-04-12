@@ -36,7 +36,7 @@ def transaction_table_view():
     elif current_view == "import_preview":
         render_import_preview_screen()
     else:
-        render_list_view()
+        t_view()
 
 def render_import_upload_screen():
     st.subheader("Import Transactions via CSV")
@@ -425,12 +425,14 @@ def render_import_preview_screen():
         st.rerun()
 
 
-
 def render_list_view():
-    """Displays the transaction table with advanced filtering and all columns."""
+    """
+    Displays the transaction table with advanced filtering and formatted columns.
+    Uses centralized utility functions for filtering and state management.
+    """
     st.title("Transactions")
     
-    # --- 1. NAVIGATION BUTTONS ---
+    # --- 1. NAVIGATION & ACTION BUTTONS ---
     col_btn1, col_btn2, _ = st.columns([1, 1, 4])
     with col_btn1:
         if st.button("➕ New Transaction", use_container_width=True):
@@ -438,7 +440,9 @@ def render_list_view():
             st.rerun()
     with col_btn2:
         if st.button("📥 Import CSV", use_container_width=True):
-            if "scroll_done" in st.session_state: del st.session_state["scroll_done"]
+            # Clear scroll state to ensure the import screen starts at the top
+            if "scroll_done" in st.session_state: 
+                del st.session_state["scroll_done"]
             st.session_state["view"] = "import_upload"
             st.rerun()
 
@@ -448,23 +452,22 @@ def render_list_view():
         st.info("No records found in transactions.")
         return
 
-    # Create DataFrame from Supabase response
+    # Convert Supabase response to DataFrame
     df = pd.DataFrame(data)
     
-    # Pre-process date and timestamp columns for the filter and display
-    date_cols = ['date', 'created_at', 'updated_at']
-    for col in date_cols:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors='coerce')
-
-    all_columns = df.columns.tolist()
-
-    # --- 3. ADVANCED FILTERING 
+    # --- 3. ADVANCED FILTERING ---
+    # apply_advanced_filters handles date conversion and multi-rule logic
     filtered_df = apply_advanced_filters(df, session_prefix="trans_list")
 
-    # --- 4. COLUMN ORDERING & DISPLAY ---
-    
-    # Defining a logical sequence for the columns
+    # --- 4. DATA PROCESSING & SORTING ---
+    # Ensure created_at is datetime for accurate chronological sorting
+    if 'created_at' in filtered_df.columns:
+        filtered_df['created_at'] = pd.to_datetime(filtered_df['created_at'])
+        # Default Sort: Show most recently created records first
+        filtered_df = filtered_df.sort_values(by='created_at', ascending=False)
+
+    # --- 5. COLUMN ORDERING & DISPLAY ---
+    # Define a logical sequence for the columns to be displayed
     preferred_order = [
         "date", "account_code", "isin", "type_code", 
         "quantity", "settle_amount", "settle_currency", 
@@ -472,16 +475,13 @@ def render_list_view():
         "created_at", "updated_at", "id"
     ]
     
-    # Ensure we only try to display columns that actually exist in the data
+    # Filter preferred_order to only include columns that actually exist in the dataframe
     existing_cols = [c for c in preferred_order if c in filtered_df.columns]
     display_df = filtered_df[existing_cols]
 
-    # Default Sorting: Newest created records at the top
-    if 'created_at' in display_df.columns:
-        display_df = display_df.sort_values(by='created_at', ascending=False)
-
     st.write(f"Showing **{len(display_df)}** transactions.")
     
+    # Render the main data table with specific column configurations
     st.dataframe(
         display_df,
         use_container_width=True,
@@ -501,6 +501,7 @@ def render_list_view():
             "id": st.column_config.TextColumn("Internal ID"),
         }
     )
+
 
 
 def render_transaction_form():
