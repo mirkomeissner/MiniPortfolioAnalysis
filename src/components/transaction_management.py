@@ -314,27 +314,34 @@ def render_import_preview_screen():
         final_sel = st.session_state["imported_df"].loc[filtered_df.index]
         final_sel = final_sel[final_sel["import_row"] == True]
         
-        # --- 1. ASSET PROVISIONING (JIT) ---
+        # --- 1. ASSET PROVISIONING (OPTIMIZED JIT) ---
         unique_isins = [str(i).strip() for i in final_sel[map_isin].unique().tolist() if str(i).strip()]
         missing_isins = get_missing_isins(unique_isins)
         
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
-                for m_isin in missing_isins:
-                    asset_payload = {
+                # Create a list of all new asset payloads
+                asset_payloads = [
+                    {
                         "isin": m_isin,
-                        "name": m_isin,  # Placeholder name
+                        "name": m_isin,
                         "created_by": user
-                    }
-                    try:
-                        save_asset_static_data(asset_payload)
-                        st.write(f"✅ Created asset placeholder: {m_isin}")
-                    except Exception as e:
-                        if "duplicate" not in str(e).lower():
-                            st.error(f"Could not create asset {m_isin}: {e}")
+                    } 
+                    for m_isin in missing_isins
+                ]
                 
-                import time
-                time.sleep(0.5)
+                try:
+                    # Use a bulk save function for assets (if you have one)
+                    # or just a very fast loop WITHOUT sleep
+                    for payload in asset_payloads:
+                        save_asset_static_data(payload)
+                    
+                    st.write(f"✅ Created {len(asset_payloads)} asset placeholders.")
+                except Exception as e:
+                    if "duplicate" not in str(e).lower():
+                        st.error(f"Asset provisioning error: {e}")
+                
+                # REMOVED: time.sleep(0.5) <- This was the main bottleneck
                 status.update(label="Asset provisioning complete!", state="complete")
 
         # --- 2. PREPARE BATCH DATA (BULK COUNTER LOGIC) ---
