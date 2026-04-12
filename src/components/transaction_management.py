@@ -320,28 +320,20 @@ def render_import_preview_screen():
         
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
-                # Create a list of all new asset payloads
+                # Create a LIST of dictionaries
                 asset_payloads = [
-                    {
-                        "isin": m_isin,
-                        "name": m_isin,
-                        "created_by": user
-                    } 
+                    {"isin": m_isin, "name": m_isin, "created_by": user} 
                     for m_isin in missing_isins
                 ]
-                
+        
                 try:
-                    # Use a bulk save function for assets (if you have one)
-                    # or just a very fast loop WITHOUT sleep
-                    for payload in asset_payloads:
-                        save_asset_static_data(payload)
-                    
-                    st.write(f"✅ Created {len(asset_payloads)} asset placeholders.")
+                    # Pass the whole list to your existing function
+                    save_asset_static_data(asset_payloads) 
+                    st.write(f"✅ Created {len(asset_payloads)} assets in one go.")
                 except Exception as e:
                     if "duplicate" not in str(e).lower():
                         st.error(f"Asset provisioning error: {e}")
-                
-                # REMOVED: time.sleep(0.5) <- This was the main bottleneck
+        
                 status.update(label="Asset provisioning complete!", state="complete")
 
         # --- 2. PREPARE BATCH DATA (BULK COUNTER LOGIC) ---
