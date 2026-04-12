@@ -6,7 +6,14 @@ from src.database import (
     update_asset_static_data, 
     get_ref_options
 )
-from .ticker_search import ticker_search_view
+from src.utils import (
+    extract_code, 
+    get_option_index, 
+    ensure_reference_data, 
+    apply_advanced_filters
+)
+
+# from .ticker_search import ticker_search_view
 
 def asset_table_view():
     # --- VIEW ROUTING ---
