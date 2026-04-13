@@ -73,7 +73,7 @@ def render_list_view():
     )
 
     st.info(f"Displaying {len(filtered_df)} assets.")
-
+    st.write(df.columns.tolist())
     # --- PLAIN VANILLA TABLE ---
     # Just a clean display using st.dataframe
     st.dataframe(
