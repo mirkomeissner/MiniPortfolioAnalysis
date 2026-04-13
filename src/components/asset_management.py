@@ -14,30 +14,19 @@ from src.utils import (
 )
 from .ticker_search import ticker_search_view
 
-
-def asset_table_view():
-    # --- VIEW ROUTING ---
-    current_view = st.session_state.get("view", "list")
-
-    if current_view == "search":
-        if st.button("⬅ Back to List"):
-            st.session_state["view"] = "list"
-            st.rerun()
-        ticker_search_view()
-
-    elif current_view == "edit":
-        render_edit_view()
-
-    else:
-        render_list_view()
-
 def render_list_view():
+    """
+    Renders the main list view for assets, including a 
+    dynamic query builder and the asset data table.
+    """
     st.title("Asset Static Data")
     
+    # Navigation to create a new asset
     if st.button("➕ New ISIN"):
         st.session_state["view"] = "search"
         st.rerun()
 
+    # Load data from database
     data = get_all_assets_with_labels()
     if not data:
         st.info("No records found.")
@@ -45,64 +34,32 @@ def render_list_view():
 
     df = pd.DataFrame(data)
 
+    # --- CUSTOM FILTER LOGIC FOR 'CLOSED ON' ---
+    # This function is passed to the utility to handle the specific
+    # Null/Not Null requirements for the 'Closed On' column.
+    def closed_on_logic(df_in, widget_col, index, prefix):
+        selection = widget_col.selectbox(
+            f"Criteria {index}", 
+            ["Is Null (Active Assets)", "Is Not Null (Closed Assets)"], 
+            key=f"{prefix}_closed_val_{index}"
+        )
+        if selection == "Is Null (Active Assets)":
+            return df_in["Closed On"].isna()
+        else:
+            return df_in["Closed On"].notna()
 
-    # --- ADVANCED DYNAMIC FILTER SECTION ---
-    with st.expander("🛠 Advanced Query Builder", expanded=False):
-        logic_mode = st.radio("Combination Logic", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True)
-        if "filter_rules" not in st.session_state: 
-            st.session_state["filter_rules"] = []
-        
-        c1, c2 = st.columns([1, 4])
-        if c1.button("➕ Add Rule"): 
-            st.session_state["filter_rules"].append({"column": df.columns[0], "value": None})
-        if c2.button("🗑 Clear All"):
-            st.session_state["filter_rules"] = []
-            st.rerun()
-
-        active_filters = []
-        for i, rule in enumerate(st.session_state["filter_rules"]):
-            r_col1, r_col2, r_col3 = st.columns([2, 3, 0.5])
-            
-            col_name = r_col1.selectbox(f"Column {i}", df.columns, key=f"fcol_{i}")
-            
-            # --- CUSTOM LOGIC FOR CLOSED ON ---
-            if col_name == "Closed On":
-                val = r_col2.selectbox(
-                    f"Criteria {i}", 
-                    ["Is Null (Active Assets)", "Is Not Null (Closed Assets)"], 
-                    key=f"fval_{i}"
-                )
-                
-                if val == "Is Null (Active Assets)":
-                    active_filters.append(df[col_name].isna())
-                else:
-                    active_filters.append(df[col_name].notna())
-            
-            # --- STANDARD LOGIC FOR ALL OTHER COLUMNS ---
-            else:
-                options = sorted(df[col_name].dropna().unique().astype(str).tolist())
-                val = r_col2.multiselect(f"Values {i}", options, key=f"fval_{i}")
-                if val: 
-                    active_filters.append(df[col_name].astype(str).isin(val))
-
-            if r_col3.button("❌", key=f"frem_{i}"):
-                st.session_state["filter_rules"].pop(i)
-                st.rerun()
-
-    # --- APPLY FILTER LOGIC ---
-    filtered_df = df.copy()
-    if active_filters:
-        mask = active_filters[0]
-        for m in active_filters[1:]:
-            mask = (mask & m) if logic_mode == "Match ALL (AND)" else (mask | m)
-        filtered_df = df[mask]
-
+    # --- DYNAMIC FILTERING ---
+    # We delegate the entire Query Builder UI and logic to our utility function.
+    filtered_df = apply_advanced_filters(
+        df, 
+        session_prefix="asset_management", 
+        custom_filter_logic={"Closed On": closed_on_logic}
+    )
 
     st.info(f"Displaying {len(filtered_df)} assets.")
 
-    # --- TABLE WITH EDIT LINK ---
-    # We use a trick: add a column to trigger edit mode
-    # In Streamlit, the easiest way to "click a row" is using the selection state of the dataframe
+    # --- DATA TABLE & SELECTION ---
+    # Display the filtered dataframe and capture row selection events.
     event = st.dataframe(
         filtered_df,
         use_container_width=True,
@@ -111,11 +68,15 @@ def render_list_view():
         selection_mode="single-row"
     )
 
+    # Handle row selection to enter Edit Mode
     if event.selection.rows:
         selected_index = event.selection.rows[0]
+        # Retrieve the ISIN of the selected row
         st.session_state["edit_isin"] = filtered_df.iloc[selected_index]["ISIN"]
         st.session_state["view"] = "edit"
         st.rerun()
+
+
 
 def render_edit_view():
     isin = st.session_state.get("edit_isin")
