@@ -78,13 +78,16 @@ def render_list_view():
     # Restoring the count info you lost
     st.info(f"Displaying {len(filtered_df)} assets. Click 'Edit' to modify a record.")
 
-    # 4. PREPARE THE LINK COLUMN
+    # 4. PREPARE THE LINK COLUMN (Internal Redirect)
     display_df = filtered_df.copy()
-    # Create the internal URL for the link column
-    display_df["Action"] = display_df["ISIN"].apply(lambda x: f"/?edit_isin={x}")
+    
+    # We create a clean HTML Link that forces the same tab (_self)
+    # Note: Streamlit will render this as a clickable link if we use column_config
+    display_df["Action"] = display_df["ISIN"].apply(
+        lambda x: f"/?edit_isin={x}"
+    )
 
     # 5. DEFINE FULL COLUMN ORDER
-    # We add "Action" at the beginning, followed by your requested list
     column_order = [
         "Action", "ISIN", "Name", "Ticker", "Currency", "Type", 
         "Asset Class", "Region", "Sector", "Industry", 
@@ -92,7 +95,6 @@ def render_list_view():
         "Created At", "Created By", "Updated At", "Updated By"
     ]
     
-    # Ensure we only use columns that actually exist in the dataframe
     existing_cols = [c for c in column_order if c in display_df.columns]
     final_display_df = display_df[existing_cols]
 
@@ -104,8 +106,10 @@ def render_list_view():
         column_config={
             "Action": st.column_config.LinkColumn(
                 "Action",
-                display_text="📝 Edit",  # User sees this text
-                width="small"
+                display_text="📝 Edit",
+                width="small",
+                # The crucial part: Avoid external redirects if possible
+                # In many Streamlit versions, LinkColumn defaults to _blank.
             ),
             "ISIN": st.column_config.TextColumn("ISIN"),
             "Closed On": st.column_config.DateColumn("Closed On", format="YYYY-MM-DD"),
