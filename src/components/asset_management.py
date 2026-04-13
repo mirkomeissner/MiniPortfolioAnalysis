@@ -14,6 +14,7 @@ from src.utils import (
 )
 from .ticker_search import ticker_search_view
 
+
 def asset_table_view():
     # --- VIEW ROUTING ---
     current_view = st.session_state.get("view", "list")
@@ -115,12 +116,6 @@ def render_list_view():
         st.session_state["edit_isin"] = filtered_df.iloc[selected_index]["ISIN"]
         st.session_state["view"] = "edit"
         st.rerun()
-
-import streamlit as st
-from datetime import datetime
-from src.database import get_all_assets_with_labels, update_asset_static_data
-# Import our new central helpers
-from src.utils import ensure_reference_data, extract_code, get_option_index
 
 def render_edit_view():
     isin = st.session_state.get("edit_isin")
