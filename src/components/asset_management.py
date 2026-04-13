@@ -74,40 +74,35 @@ def render_list_view():
 
     st.info(f"Displaying {len(filtered_df)} assets.")
 
-    # --- DATA TABLE WITH CLICKABLE BUTTON COLUMN ---
-    # We add a dummy column that will hold the button
+    # --- DATA TABLE WITH ROW SELECTION ---
+    # Wir kehren zur stabilen on_select Methode zurück, 
+    # fixen aber das "rote Leuchten" durch explizites Deaktivieren des Editierens.
+    
     display_df = filtered_df.copy()
-    display_df.insert(0, "Edit_Action", "Edit")
+    display_df.insert(0, "Edit", "🔧")
 
-    # We use data_editor but make it look like a table
-    event = st.data_editor(
+    event = st.dataframe(
         display_df,
         use_container_width=True,
         hide_index=True,
-        key="asset_editor",
-        # Disable editing for all columns except our action button
-        disabled=[c for c in display_df.columns if c != "Edit_Action"],
+        on_select="rerun",           # Stabile Auswahl-Methode
+        selection_mode="single-row",
         column_config={
-            "Edit_Action": st.column_config.ButtonColumn(
-                label="Action",
-                help="Click to edit this asset",
-                width="small",
-                # The wrench icon as button text
-                component_props={"label": "🔧"} 
-            ),
+            "Edit": st.column_config.TextColumn(label="", width="small"),
+            # Wir definieren alle Spalten explizit als TextColumn, 
+            # damit Streamlit nicht versucht, sie interaktiv zu machen.
+            "ISIN": st.column_config.TextColumn(width="medium"),
+            "Name": st.column_config.TextColumn(width="large")
         }
     )
 
-    # --- SELECTION LOGIC ---
-    # When a button in the 'Edit_Action' column is clicked, 
-    # it returns True in that specific cell for one rerun.
-    # We check which row was clicked:
-    for i in range(len(event)):
-        if event.iloc[i]["Edit_Action"] is True:
-            st.session_state["edit_isin"] = filtered_df.iloc[i]["ISIN"]
-            st.session_state["view"] = "edit"
-            st.rerun()
-
+    # --- SELECTION HANDLING ---
+    if event.selection.rows:
+        selected_index = event.selection.rows[0]
+        st.session_state["edit_isin"] = filtered_df.iloc[selected_index]["ISIN"]
+        st.session_state["view"] = "edit"
+        st.rerun()
+    
 
 
 def render_edit_view():
