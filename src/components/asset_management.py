@@ -35,50 +35,84 @@ def asset_table_view():
 def render_list_view():
     st.title("Asset Static Data")
     
-    # 1. Check if an ISIN was clicked via URL Parameter
-    # (This handles the "Link Click" action)
+    # 1. HANDLE URL PARAMETER (The "Link-Click" Action)
+    # This checks if the user clicked the 'Edit' link in the table
     query_params = st.query_params
     if "edit_isin" in query_params:
         clicked_isin = query_params["edit_isin"]
-        # Clear params so it doesn't loop
+        # Clear the parameter so it doesn't stay in the URL forever
         st.query_params.clear() 
         st.session_state["edit_isin"] = clicked_isin
         st.session_state["view"] = "edit"
         st.rerun()
 
+    # Navigation to create a new asset
     if st.button("➕ New ISIN"):
         st.session_state["view"] = "search"
         st.rerun()
 
-    # 2. Data Loading & Filtering
+    # 2. LOAD & FILTER DATA
     data = get_all_assets_with_labels()
+    if not data:
+        st.info("No records found.")
+        return
+
     df = pd.DataFrame(data)
-    filtered_df = apply_advanced_filters(df, session_prefix="asset_management")
 
-    # 3. Create a Link-URL for each ISIN
-    # This creates a URL like: your-app.streamlit.app/?edit_isin=DE000123
+    # Custom logic for filtering (as defined before)
+    def closed_on_logic(df_in, widget_col, index, prefix):
+        selection = widget_col.selectbox(
+            f"Criteria {index}", 
+            ["Is Null (Active Assets)", "Is Not Null (Closed Assets)"], 
+            key=f"{prefix}_closed_val_{index}"
+        )
+        return df_in["Closed On"].isna() if selection == "Is Null (Active Assets)" else df_in["Closed On"].notna()
+
+    filtered_df = apply_advanced_filters(
+        df, 
+        session_prefix="asset_management", 
+        custom_filter_logic={"Closed On": closed_on_logic}
+    )
+
+    # 3. DISPLAY FILTER INFO
+    # Restoring the count info you lost
+    st.info(f"Displaying {len(filtered_df)} assets. Click 'Edit' to modify a record.")
+
+    # 4. PREPARE THE LINK COLUMN
     display_df = filtered_df.copy()
-    display_df["Edit Link"] = display_df["ISIN"].apply(lambda x: f"/?edit_isin={x}")
+    # Create the internal URL for the link column
+    display_df["Action"] = display_df["ISIN"].apply(lambda x: f"/?edit_isin={x}")
 
-    # 4. Define Column Order (Link first)
-    column_order = ["Edit Link", "ISIN", "Name", "Ticker", "Currency", "Type", "Asset Class"]
-    existing_cols = [c for c in column_order if c in display_df.columns]
+    # 5. DEFINE FULL COLUMN ORDER
+    # We add "Action" at the beginning, followed by your requested list
+    column_order = [
+        "Action", "ISIN", "Name", "Ticker", "Currency", "Type", 
+        "Asset Class", "Region", "Sector", "Industry", 
+        "Country", "Price Source", "Closed On", 
+        "Created At", "Created By", "Updated At", "Updated By"
+    ]
     
-    # 5. Render Table
+    # Ensure we only use columns that actually exist in the dataframe
+    existing_cols = [c for c in column_order if c in display_df.columns]
+    final_display_df = display_df[existing_cols]
+
+    # 6. RENDER DATA TABLE
     st.dataframe(
-        display_df[existing_cols],
+        final_display_df,
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Edit Link": st.column_config.LinkColumn(
+            "Action": st.column_config.LinkColumn(
                 "Action",
-                display_text="📝 Edit",  # What the user sees
+                display_text="📝 Edit",  # User sees this text
                 width="small"
             ),
             "ISIN": st.column_config.TextColumn("ISIN"),
+            "Closed On": st.column_config.DateColumn("Closed On", format="YYYY-MM-DD"),
+            "Created At": st.column_config.DatetimeColumn("Created At", format="D MMM YYYY, HH:mm"),
+            "Updated At": st.column_config.DatetimeColumn("Updated At", format="D MMM YYYY, HH:mm"),
         }
-    )    
-
+    )
 
 def render_edit_view():
     isin = st.session_state.get("edit_isin")
