@@ -34,8 +34,8 @@ def asset_table_view():
 
 def render_list_view():
     """
-    Renders the main list view for assets, including a 
-    dynamic query builder and the asset data table.
+    Renders the main list view for assets, including a dynamic query builder 
+    and the asset data table with a custom edit icon.
     """
     st.title("Asset Static Data")
     
@@ -53,8 +53,6 @@ def render_list_view():
     df = pd.DataFrame(data)
 
     # --- CUSTOM FILTER LOGIC FOR 'CLOSED ON' ---
-    # This function is passed to the utility to handle the specific
-    # Null/Not Null requirements for the 'Closed On' column.
     def closed_on_logic(df_in, widget_col, index, prefix):
         selection = widget_col.selectbox(
             f"Criteria {index}", 
@@ -67,7 +65,7 @@ def render_list_view():
             return df_in["Closed On"].notna()
 
     # --- DYNAMIC FILTERING ---
-    # We delegate the entire Query Builder UI and logic to our utility function.
+    # Delegate UI and filtering logic to our utility function
     filtered_df = apply_advanced_filters(
         df, 
         session_prefix="asset_management", 
@@ -76,20 +74,32 @@ def render_list_view():
 
     st.info(f"Displaying {len(filtered_df)} assets.")
 
-    # --- DATA TABLE & SELECTION ---
-    # Display the filtered dataframe and capture row selection events.
+    # --- DATA TABLE WITH EDIT ICON ---
+    # Create a display copy and insert the wrench icon column at the start (index 0)
+    display_df = filtered_df.copy()
+    display_df.insert(0, "Edit", "🔧")
+
     event = st.dataframe(
-        filtered_df,
+        display_df,
         use_container_width=True,
         hide_index=True,
         on_select="rerun",
-        selection_mode="single-row"
+        selection_mode="single-row",
+        # We configure the 'Edit' column to be small and clean
+        column_config={
+            "Edit": st.column_config.TextColumn(
+                label="", # Empty label looks cleaner for an icon column
+                help="Select this row to edit the asset",
+                width="small"
+            )
+        }
     )
 
-    # Handle row selection to enter Edit Mode
+    # --- SELECTION HANDLING ---
     if event.selection.rows:
         selected_index = event.selection.rows[0]
-        # Retrieve the ISIN of the selected row
+        # We use 'filtered_df' for data retrieval to ensure 
+        # the indices match correctly without the extra 'Edit' column
         st.session_state["edit_isin"] = filtered_df.iloc[selected_index]["ISIN"]
         st.session_state["view"] = "edit"
         st.rerun()
