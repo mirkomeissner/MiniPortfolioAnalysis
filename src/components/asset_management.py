@@ -74,34 +74,24 @@ def render_list_view():
 
     st.info(f"Displaying {len(filtered_df)} assets.")
 
-    # --- DATA TABLE WITH ROW SELECTION ---
-    # Wir kehren zur stabilen on_select Methode zurück, 
-    # fixen aber das "rote Leuchten" durch explizites Deaktivieren des Editierens.
-    
-    display_df = filtered_df.copy()
-    display_df.insert(0, "Edit", "🔧")
-
-    event = st.dataframe(
-        display_df,
+    # --- PLAIN VANILLA TABLE ---
+    # Just a clean display using st.dataframe
+    st.dataframe(
+        filtered_df,
         use_container_width=True,
         hide_index=True,
-        on_select="rerun",           # Stabile Auswahl-Methode
-        selection_mode="single-row",
         column_config={
-            "Edit": st.column_config.TextColumn(label="", width="small"),
-            # Wir definieren alle Spalten explizit als TextColumn, 
-            # damit Streamlit nicht versucht, sie interaktiv zu machen.
-            "ISIN": st.column_config.TextColumn(width="medium"),
-            "Name": st.column_config.TextColumn(width="large")
+            "ISIN": st.column_config.TextColumn("ISIN"),
+            "Name": st.column_config.TextColumn("Name"),
+            "Ticker": st.column_config.TextColumn("Ticker"),
+            "Currency": st.column_config.TextColumn("Currency"),
+            "Asset Class": st.column_config.TextColumn("Asset Class"),
+            "Sector": st.column_config.TextColumn("Sector"),
+            # For date columns, we use the DateColumn formatter
+            "Closed On": st.column_config.DateColumn("Closed On", format="YYYY-MM-DD"),
+            "Updated At": st.column_config.DatetimeColumn("Last Update", format="D MMM YYYY, HH:mm"),
         }
     )
-
-    # --- SELECTION HANDLING ---
-    if event.selection.rows:
-        selected_index = event.selection.rows[0]
-        st.session_state["edit_isin"] = filtered_df.iloc[selected_index]["ISIN"]
-        st.session_state["view"] = "edit"
-        st.rerun()
     
 
 
