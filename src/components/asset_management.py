@@ -88,27 +88,44 @@ def render_list_view():
 
     st.info(f"Displaying {len(display_df)} assets.")
 
-    # --- PLAIN VANILLA TABLE WITH SELECTION ---
-    event = st.dataframe(
+
+
+
+# --- DER TRICK: Eine Link-Spalte simulieren ---
+    # Wir erstellen eine Spalte, die wie ein Link aussieht
+    display_df = filtered_df.copy()
+    
+    # Wir definieren die Spaltenreihenfolge
+    column_order = ["ISIN", "Name", "Ticker", "Currency", "Type", "Asset Class", "Region", "Sector"] # gekürzt für Beispiel
+    existing_cols = [c for c in column_order if c in display_df.columns]
+    display_df = display_df[existing_cols]
+
+    st.info("💡 Tip: Click on the ISIN to edit the asset.")
+
+    # --- DATAFRAME ALS EDITOR (aber schreibgeschützt) ---
+    event = st.data_editor(
         display_df,
         use_container_width=True,
         hide_index=True,
-        on_select="rerun",           # Aktiviert die Auswahl-Logik
-        selection_mode="single-row", # Erlaubt das Auswählen einer Zeile
+        on_select="rerun",
+        selection_mode="single-row", # Das aktiviert die Zeilenauswahl
+        disabled=display_df.columns, # Verhindert das "Rote Leuchten" beim Tippen
         column_config={
-            "ISIN": st.column_config.TextColumn("ISIN"),
-            "Closed On": st.column_config.DateColumn("Closed On", format="YYYY-MM-DD"),
-            "Updated At": st.column_config.DatetimeColumn("Updated At"),
+            "ISIN": st.column_config.TextColumn(
+                "ISIN 🔗", 
+                help="Click here to select this row",
+            ),
+            # Deine restlichen Formatierungen...
         }
     )
 
     # --- SELECTION HANDLING ---
-    # Wenn der User den Radio-Button links klickt:
     if event.selection.rows:
         selected_index = event.selection.rows[0]
         st.session_state["edit_isin"] = display_df.iloc[selected_index]["ISIN"]
         st.session_state["view"] = "edit"
         st.rerun()
+
     
 
 
