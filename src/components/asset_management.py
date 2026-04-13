@@ -33,100 +33,51 @@ def asset_table_view():
 
 
 def render_list_view():
-    """
-    Renders the main list view for assets, including a dynamic query builder 
-    and the asset data table with a custom edit icon.
-    """
     st.title("Asset Static Data")
     
-    # Navigation to create a new asset
+    # 1. Check if an ISIN was clicked via URL Parameter
+    # (This handles the "Link Click" action)
+    query_params = st.query_params
+    if "edit_isin" in query_params:
+        clicked_isin = query_params["edit_isin"]
+        # Clear params so it doesn't loop
+        st.query_params.clear() 
+        st.session_state["edit_isin"] = clicked_isin
+        st.session_state["view"] = "edit"
+        st.rerun()
+
     if st.button("➕ New ISIN"):
         st.session_state["view"] = "search"
         st.rerun()
 
-    # Load data from database
+    # 2. Data Loading & Filtering
     data = get_all_assets_with_labels()
-    if not data:
-        st.info("No records found.")
-        return
-
     df = pd.DataFrame(data)
+    filtered_df = apply_advanced_filters(df, session_prefix="asset_management")
 
-    # --- CUSTOM FILTER LOGIC FOR 'CLOSED ON' ---
-    def closed_on_logic(df_in, widget_col, index, prefix):
-        selection = widget_col.selectbox(
-            f"Criteria {index}", 
-            ["Is Null (Active Assets)", "Is Not Null (Closed Assets)"], 
-            key=f"{prefix}_closed_val_{index}"
-        )
-        if selection == "Is Null (Active Assets)":
-            return df_in["Closed On"].isna()
-        else:
-            return df_in["Closed On"].notna()
-
-    # --- DYNAMIC FILTERING ---
-    # Delegate UI and filtering logic to our utility function
-    filtered_df = apply_advanced_filters(
-        df, 
-        session_prefix="asset_management", 
-        custom_filter_logic={"Closed On": closed_on_logic}
-    )
-
-    # --- DEFINE COLUMN ORDER ---
-    # We list the columns exactly as you requested. 
-    # Ensure these keys match the keys in your 'filtered_df'.
-    column_order = [
-        "ISIN", "Name", "Ticker", "Currency", "Type", 
-        "Asset Class", "Region", "Sector", "Industry", 
-        "Country", "Price Source", "Closed On", 
-        "Created At", "Created By", "Updated At", "Updated By"
-    ]
-
-    # Reorder the dataframe (only including columns that actually exist)
-    existing_columns = [col for col in column_order if col in filtered_df.columns]
-    display_df = filtered_df[existing_columns]
-
-    st.info(f"Displaying {len(display_df)} assets.")
-
-
-
-
-# --- DER TRICK: Eine Link-Spalte simulieren ---
-    # Wir erstellen eine Spalte, die wie ein Link aussieht
+    # 3. Create a Link-URL for each ISIN
+    # This creates a URL like: your-app.streamlit.app/?edit_isin=DE000123
     display_df = filtered_df.copy()
-    
-    # Wir definieren die Spaltenreihenfolge
-    column_order = ["ISIN", "Name", "Ticker", "Currency", "Type", "Asset Class", "Region", "Sector"] # gekürzt für Beispiel
+    display_df["Edit Link"] = display_df["ISIN"].apply(lambda x: f"/?edit_isin={x}")
+
+    # 4. Define Column Order (Link first)
+    column_order = ["Edit Link", "ISIN", "Name", "Ticker", "Currency", "Type", "Asset Class"]
     existing_cols = [c for c in column_order if c in display_df.columns]
-    display_df = display_df[existing_cols]
-
-    st.info("💡 Tip: Click on the ISIN to edit the asset.")
-
-    # --- DATAFRAME ALS EDITOR (aber schreibgeschützt) ---
-    event = st.data_editor(
-        display_df,
+    
+    # 5. Render Table
+    st.dataframe(
+        display_df[existing_cols],
         use_container_width=True,
         hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row", # Das aktiviert die Zeilenauswahl
-        disabled=display_df.columns, # Verhindert das "Rote Leuchten" beim Tippen
         column_config={
-            "ISIN": st.column_config.TextColumn(
-                "ISIN 🔗", 
-                help="Click here to select this row",
+            "Edit Link": st.column_config.LinkColumn(
+                "Action",
+                display_text="📝 Edit",  # What the user sees
+                width="small"
             ),
-            # Deine restlichen Formatierungen...
+            "ISIN": st.column_config.TextColumn("ISIN"),
         }
-    )
-
-    # --- SELECTION HANDLING ---
-    if event.selection.rows:
-        selected_index = event.selection.rows[0]
-        st.session_state["edit_isin"] = display_df.iloc[selected_index]["ISIN"]
-        st.session_state["view"] = "edit"
-        st.rerun()
-
-    
+    )    
 
 
 def render_edit_view():
