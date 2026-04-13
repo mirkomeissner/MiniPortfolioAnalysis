@@ -80,12 +80,6 @@ def render_list_view():
         hide_index=True,
         on_select="rerun",           # Trigger rerun within the SAME session
         selection_mode="single-row", # Enables the radio-button on the left
-        column_config={
-            "ISIN": st.column_config.TextColumn("ISIN"),
-            "Closed On": st.column_config.DateColumn("Closed On", format="YYYY-MM-DD"),
-            "Created At": st.column_config.DatetimeColumn("Created At", format="D MMM YYYY, HH:mm"),
-            "Updated At": st.column_config.DatetimeColumn("Updated At", format="D MMM YYYY, HH:mm"),
-        }
     )
 
     # 5. SELECTION LOGIC
