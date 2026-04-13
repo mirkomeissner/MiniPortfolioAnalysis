@@ -84,7 +84,6 @@ def render_list_view():
         use_container_width=True,
         hide_index=True,
         on_select="rerun",
-        on_select="rerun",
         selection_mode="single-row",
         # We configure the 'Edit' column to be small and clean
         column_config={
