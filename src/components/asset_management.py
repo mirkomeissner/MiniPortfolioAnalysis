@@ -76,7 +76,7 @@ def render_list_view():
     # We list the columns exactly as you requested. 
     # Ensure these keys match the keys in your 'filtered_df'.
     column_order = [
-        "ISIN", "Name", "Ticker", "Currency", "Type", 
+        "Name", "ISIN", "Ticker", "Currency", "Type", 
         "Asset Class", "Region", "Sector", "Industry", 
         "Country", "Price Source", "Closed On", 
         "Created At", "Created By", "Updated At", "Updated By"
