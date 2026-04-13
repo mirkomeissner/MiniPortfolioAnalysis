@@ -14,6 +14,24 @@ from src.utils import (
 )
 from .ticker_search import ticker_search_view
 
+def asset_table_view():
+    # --- VIEW ROUTING ---
+    current_view = st.session_state.get("view", "list")
+
+    if current_view == "search":
+        if st.button("⬅ Back to List"):
+            st.session_state["view"] = "list"
+            st.rerun()
+        ticker_search_view()
+
+    elif current_view == "edit":
+        render_edit_view()
+
+    else:
+        render_list_view()
+
+
+
 def render_list_view():
     """
     Renders the main list view for assets, including a 
