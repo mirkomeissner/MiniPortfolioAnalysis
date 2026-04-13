@@ -74,36 +74,39 @@ def render_list_view():
 
     st.info(f"Displaying {len(filtered_df)} assets.")
 
-    # --- DATA TABLE WITH EDIT ICON ---
-    # Create a display copy and insert the wrench icon column at the start (index 0)
+    # --- DATA TABLE WITH CLICKABLE BUTTON COLUMN ---
+    # We add a dummy column that will hold the button
     display_df = filtered_df.copy()
-    display_df.insert(0, "Edit", "🔧")
+    display_df.insert(0, "Edit_Action", "Edit")
 
-    # --- DATA TABLE ---
-    event = st.dataframe(
+    # We use data_editor but make it look like a table
+    event = st.data_editor(
         display_df,
         use_container_width=True,
         hide_index=True,
-        on_select="rerun",           # Aktiviert die Auswahl-Logik
-        selection_mode="single-row", # Erlaubt nur eine Zeile gleichzeitig
+        key="asset_editor",
+        # Disable editing for all columns except our action button
+        disabled=[c for c in display_df.columns if c != "Edit_Action"],
         column_config={
-            "Edit": st.column_config.TextColumn(label="", width="small"),
-            # Wir stellen sicher, dass alle Datenspalten als reiner Text 
-            # behandelt werden und keine Interaktion (außer Klick) bieten
-            "ISIN": st.column_config.TextColumn(disabled=True),
-            "Name": st.column_config.TextColumn(disabled=True),
-            "Ticker": st.column_config.TextColumn(disabled=True),
+            "Edit_Action": st.column_config.ButtonColumn(
+                label="Action",
+                help="Click to edit this asset",
+                width="small",
+                # The wrench icon as button text
+                component_props={"label": "🔧"} 
+            ),
         }
     )
 
-    # --- SELECTION HANDLING ---
-    if event.selection.rows:
-        selected_index = event.selection.rows[0]
-        # We use 'filtered_df' for data retrieval to ensure 
-        # the indices match correctly without the extra 'Edit' column
-        st.session_state["edit_isin"] = filtered_df.iloc[selected_index]["ISIN"]
-        st.session_state["view"] = "edit"
-        st.rerun()
+    # --- SELECTION LOGIC ---
+    # When a button in the 'Edit_Action' column is clicked, 
+    # it returns True in that specific cell for one rerun.
+    # We check which row was clicked:
+    for i in range(len(event)):
+        if event.iloc[i]["Edit_Action"] is True:
+            st.session_state["edit_isin"] = filtered_df.iloc[i]["ISIN"]
+            st.session_state["view"] = "edit"
+            st.rerun()
 
 
 
