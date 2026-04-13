@@ -88,19 +88,27 @@ def render_list_view():
 
     st.info(f"Displaying {len(display_df)} assets.")
 
-    # --- PLAIN VANILLA TABLE ---
-    st.dataframe(
+    # --- PLAIN VANILLA TABLE WITH SELECTION ---
+    event = st.dataframe(
         display_df,
         use_container_width=True,
         hide_index=True,
+        on_select="rerun",           # Aktiviert die Auswahl-Logik
+        selection_mode="single-row", # Erlaubt das Auswählen einer Zeile
         column_config={
             "ISIN": st.column_config.TextColumn("ISIN"),
             "Closed On": st.column_config.DateColumn("Closed On", format="YYYY-MM-DD"),
-            "Created At": st.column_config.DatetimeColumn("Created At", format="D MMM YYYY, HH:mm"),
-            "Updated At": st.column_config.DatetimeColumn("Updated At", format="D MMM YYYY, HH:mm"),
-            # All other columns default to their natural representation
+            "Updated At": st.column_config.DatetimeColumn("Updated At"),
         }
     )
+
+    # --- SELECTION HANDLING ---
+    # Wenn der User den Radio-Button links klickt:
+    if event.selection.rows:
+        selected_index = event.selection.rows[0]
+        st.session_state["edit_isin"] = display_df.iloc[selected_index]["ISIN"]
+        st.session_state["view"] = "edit"
+        st.rerun()
     
 
 
