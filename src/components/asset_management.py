@@ -35,23 +35,12 @@ def asset_table_view():
 def render_list_view():
     st.title("Asset Static Data")
     
-    # 1. HANDLE URL PARAMETER (The "Link-Click" Action)
-    # This checks if the user clicked the 'Edit' link in the table
-    query_params = st.query_params
-    if "edit_isin" in query_params:
-        clicked_isin = query_params["edit_isin"]
-        # Clear the parameter so it doesn't stay in the URL forever
-        st.query_params.clear() 
-        st.session_state["edit_isin"] = clicked_isin
-        st.session_state["view"] = "edit"
-        st.rerun()
-
-    # Navigation to create a new asset
+    # 1. Navigation
     if st.button("➕ New ISIN"):
         st.session_state["view"] = "search"
         st.rerun()
 
-    # 2. LOAD & FILTER DATA
+    # 2. Data Loading & Filtering
     data = get_all_assets_with_labels()
     if not data:
         st.info("No records found.")
@@ -59,7 +48,7 @@ def render_list_view():
 
     df = pd.DataFrame(data)
 
-    # Custom logic for filtering (as defined before)
+    # Filtering logic (remains the same)
     def closed_on_logic(df_in, widget_col, index, prefix):
         selection = widget_col.selectbox(
             f"Criteria {index}", 
@@ -68,55 +57,45 @@ def render_list_view():
         )
         return df_in["Closed On"].isna() if selection == "Is Null (Active Assets)" else df_in["Closed On"].notna()
 
-    filtered_df = apply_advanced_filters(
-        df, 
-        session_prefix="asset_management", 
-        custom_filter_logic={"Closed On": closed_on_logic}
-    )
+    filtered_df = apply_advanced_filters(df, session_prefix="asset_management", custom_filter_logic={"Closed On": closed_on_logic})
 
-    # 3. DISPLAY FILTER INFO
-    # Restoring the count info you lost
-    st.info(f"Displaying {len(filtered_df)} assets. Click 'Edit' to modify a record.")
-
-    # 4. PREPARE THE LINK COLUMN (Internal Redirect)
-    display_df = filtered_df.copy()
-    
-    # We create a clean HTML Link that forces the same tab (_self)
-    # Note: Streamlit will render this as a clickable link if we use column_config
-    display_df["Action"] = display_df["ISIN"].apply(
-        lambda x: f"./?edit_isin={x}"
-    )
-
-    # 5. DEFINE FULL COLUMN ORDER
+    # 3. Column Order (as requested)
     column_order = [
-        "Action", "ISIN", "Name", "Ticker", "Currency", "Type", 
+        "ISIN", "Name", "Ticker", "Currency", "Type", 
         "Asset Class", "Region", "Sector", "Industry", 
         "Country", "Price Source", "Closed On", 
         "Created At", "Created By", "Updated At", "Updated By"
     ]
-    
-    existing_cols = [c for c in column_order if c in display_df.columns]
-    final_display_df = display_df[existing_cols]
+    existing_cols = [c for c in column_order if c in filtered_df.columns]
+    display_df = filtered_df[existing_cols]
 
-    # 6. RENDER DATA TABLE
-    st.dataframe(
-        final_display_df,
+    # --- VISUAL FEEDBACK ---
+    st.info(f"Displaying {len(display_df)} assets. **Select a row using the button on the left to edit.**")
+
+    # 4. DATA TABLE (Native Selection - No Page Reload)
+    # This is the ONLY way to stay in the same session without losing login.
+    event = st.dataframe(
+        display_df,
         use_container_width=True,
         hide_index=True,
+        on_select="rerun",           # Trigger rerun within the SAME session
+        selection_mode="single-row", # Enables the radio-button on the left
         column_config={
-            "Action": st.column_config.LinkColumn(
-                "Action",
-                display_text="📝 Edit",
-                width="small",
-                # The crucial part: Avoid external redirects if possible
-                # In many Streamlit versions, LinkColumn defaults to _blank.
-            ),
             "ISIN": st.column_config.TextColumn("ISIN"),
             "Closed On": st.column_config.DateColumn("Closed On", format="YYYY-MM-DD"),
             "Created At": st.column_config.DatetimeColumn("Created At", format="D MMM YYYY, HH:mm"),
             "Updated At": st.column_config.DatetimeColumn("Updated At", format="D MMM YYYY, HH:mm"),
         }
     )
+
+    # 5. SELECTION LOGIC
+    # This triggers instantly without opening new tabs or losing login status
+    if event.selection.rows:
+        selected_index = event.selection.rows[0]
+        st.session_state["edit_isin"] = display_df.iloc[selected_index]["ISIN"]
+        st.session_state["view"] = "edit"
+        st.rerun()
+
 
 def render_edit_view():
     isin = st.session_state.get("edit_isin")
