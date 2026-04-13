@@ -79,19 +79,20 @@ def render_list_view():
     display_df = filtered_df.copy()
     display_df.insert(0, "Edit", "🔧")
 
+    # --- DATA TABLE ---
     event = st.dataframe(
         display_df,
         use_container_width=True,
         hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row",
-        # We configure the 'Edit' column to be small and clean
+        on_select="rerun",           # Aktiviert die Auswahl-Logik
+        selection_mode="single-row", # Erlaubt nur eine Zeile gleichzeitig
         column_config={
-            "Edit": st.column_config.TextColumn(
-                label="", # Empty label looks cleaner for an icon column
-                help="Select this row to edit the asset",
-                width="small"
-            )
+            "Edit": st.column_config.TextColumn(label="", width="small"),
+            # Wir stellen sicher, dass alle Datenspalten als reiner Text 
+            # behandelt werden und keine Interaktion (außer Klick) bieten
+            "ISIN": st.column_config.TextColumn(disabled=True),
+            "Name": st.column_config.TextColumn(disabled=True),
+            "Ticker": st.column_config.TextColumn(disabled=True),
         }
     )
 
