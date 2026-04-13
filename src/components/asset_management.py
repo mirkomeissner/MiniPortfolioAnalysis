@@ -84,7 +84,7 @@ def render_list_view():
     # We create a clean HTML Link that forces the same tab (_self)
     # Note: Streamlit will render this as a clickable link if we use column_config
     display_df["Action"] = display_df["ISIN"].apply(
-        lambda x: f"/?edit_isin={x}"
+        lambda x: f"./?edit_isin={x}"
     )
 
     # 5. DEFINE FULL COLUMN ORDER
