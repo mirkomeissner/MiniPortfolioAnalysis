@@ -72,24 +72,33 @@ def render_list_view():
         custom_filter_logic={"Closed On": closed_on_logic}
     )
 
-    st.info(f"Displaying {len(filtered_df)} assets.")
-    st.write(df.columns.tolist())
+# --- DEFINE COLUMN ORDER ---
+    # We list the columns exactly as you requested. 
+    # Ensure these keys match the keys in your 'filtered_df'.
+    column_order = [
+        "ISIN", "Name", "Ticker", "Currency", "Type", 
+        "Asset Class", "Region", "Sector", "Industry", 
+        "Country", "Price Source", "Closed On", 
+        "Created At", "Created By", "Updated At", "Updated By"
+    ]
+
+    # Reorder the dataframe (only including columns that actually exist)
+    existing_columns = [col for col in column_order if col in filtered_df.columns]
+    display_df = filtered_df[existing_columns]
+
+    st.info(f"Displaying {len(display_df)} assets.")
+
     # --- PLAIN VANILLA TABLE ---
-    # Just a clean display using st.dataframe
     st.dataframe(
-        filtered_df,
+        display_df,
         use_container_width=True,
         hide_index=True,
         column_config={
             "ISIN": st.column_config.TextColumn("ISIN"),
-            "Name": st.column_config.TextColumn("Name"),
-            "Ticker": st.column_config.TextColumn("Ticker"),
-            "Currency": st.column_config.TextColumn("Currency"),
-            "Asset Class": st.column_config.TextColumn("Asset Class"),
-            "Sector": st.column_config.TextColumn("Sector"),
-            # For date columns, we use the DateColumn formatter
             "Closed On": st.column_config.DateColumn("Closed On", format="YYYY-MM-DD"),
-            "Updated At": st.column_config.DatetimeColumn("Last Update", format="D MMM YYYY, HH:mm"),
+            "Created At": st.column_config.DatetimeColumn("Created At", format="D MMM YYYY, HH:mm"),
+            "Updated At": st.column_config.DatetimeColumn("Updated At", format="D MMM YYYY, HH:mm"),
+            # All other columns default to their natural representation
         }
     )
     
