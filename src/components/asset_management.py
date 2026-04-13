@@ -72,7 +72,7 @@ def render_list_view():
         custom_filter_logic={"Closed On": closed_on_logic}
     )
 
-# --- DEFINE COLUMN ORDER ---
+    # --- DEFINE COLUMN ORDER ---
     # We list the columns exactly as you requested. 
     # Ensure these keys match the keys in your 'filtered_df'.
     column_order = [
@@ -88,19 +88,25 @@ def render_list_view():
 
     st.info(f"Displaying {len(display_df)} assets.")
 
-    # --- PLAIN VANILLA TABLE ---
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "ISIN": st.column_config.TextColumn("ISIN"),
-            "Closed On": st.column_config.DateColumn("Closed On", format="YYYY-MM-DD"),
-            "Created At": st.column_config.DatetimeColumn("Created At", format="D MMM YYYY, HH:mm"),
-            "Updated At": st.column_config.DatetimeColumn("Updated At", format="D MMM YYYY, HH:mm"),
-            # All other columns default to their natural representation
-        }
-    )
+    # --- CUSTOM ROW TABLE WITH EDIT ICON ---
+    table_columns = ["🔧"] + existing_columns
+    header_cols = st.columns([0.5] + [1] * len(existing_columns))
+    for header, column in zip(header_cols, table_columns):
+        header.markdown(f"**{column}**")
+
+    for _, row in display_df.iterrows():
+        row_cols = st.columns([0.5] + [1] * len(existing_columns))
+        edit_button = row_cols[0].button("🔧", key=f"edit_{row['ISIN']}")
+        if edit_button:
+            st.session_state["edit_isin"] = row["ISIN"]
+            st.session_state["view"] = "edit"
+            st.rerun()
+
+        for col_idx, column in enumerate(existing_columns, start=1):
+            value = row[column]
+            if pd.isna(value):
+                value = ""
+            row_cols[col_idx].write(value)
     
 
 
