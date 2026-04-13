@@ -30,13 +30,17 @@ def asset_table_view():
     else:
         render_list_view()
 
+
+
 def render_list_view():
     st.title("Asset Static Data")
     
+    # 1. Navigation
     if st.button("➕ New ISIN"):
         st.session_state["view"] = "search"
         st.rerun()
 
+    # 2. Data Loading & Filtering
     data = get_all_assets_with_labels()
     if not data:
         st.info("No records found.")
@@ -44,83 +48,48 @@ def render_list_view():
 
     df = pd.DataFrame(data)
 
+    # Filtering logic (remains the same)
+    def closed_on_logic(df_in, widget_col, index, prefix):
+        selection = widget_col.selectbox(
+            f"Criteria {index}", 
+            ["Is Null (Active Assets)", "Is Not Null (Closed Assets)"], 
+            key=f"{prefix}_closed_val_{index}"
+        )
+        return df_in["Closed On"].isna() if selection == "Is Null (Active Assets)" else df_in["Closed On"].notna()
 
-    # --- ADVANCED DYNAMIC FILTER SECTION ---
-    with st.expander("🛠 Advanced Query Builder", expanded=False):
-        logic_mode = st.radio("Combination Logic", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True)
-        if "filter_rules" not in st.session_state: 
-            st.session_state["filter_rules"] = []
-        
-        c1, c2 = st.columns([1, 4])
-        if c1.button("➕ Add Rule"): 
-            st.session_state["filter_rules"].append({"column": df.columns[0], "value": None})
-        if c2.button("🗑 Clear All"):
-            st.session_state["filter_rules"] = []
-            st.rerun()
+    filtered_df = apply_advanced_filters(df, session_prefix="asset_management", custom_filter_logic={"Closed On": closed_on_logic})
 
-        active_filters = []
-        for i, rule in enumerate(st.session_state["filter_rules"]):
-            r_col1, r_col2, r_col3 = st.columns([2, 3, 0.5])
-            
-            col_name = r_col1.selectbox(f"Column {i}", df.columns, key=f"fcol_{i}")
-            
-            # --- CUSTOM LOGIC FOR CLOSED ON ---
-            if col_name == "Closed On":
-                val = r_col2.selectbox(
-                    f"Criteria {i}", 
-                    ["Is Null (Active Assets)", "Is Not Null (Closed Assets)"], 
-                    key=f"fval_{i}"
-                )
-                
-                if val == "Is Null (Active Assets)":
-                    active_filters.append(df[col_name].isna())
-                else:
-                    active_filters.append(df[col_name].notna())
-            
-            # --- STANDARD LOGIC FOR ALL OTHER COLUMNS ---
-            else:
-                options = sorted(df[col_name].dropna().unique().astype(str).tolist())
-                val = r_col2.multiselect(f"Values {i}", options, key=f"fval_{i}")
-                if val: 
-                    active_filters.append(df[col_name].astype(str).isin(val))
+    # 3. Column Order (as requested)
+    column_order = [
+        "ISIN", "Name", "Ticker", "Currency", "Type", 
+        "Asset Class", "Region", "Sector", "Industry", 
+        "Country", "Price Source", "Closed On", 
+        "Created At", "Created By", "Updated At", "Updated By"
+    ]
+    existing_cols = [c for c in column_order if c in filtered_df.columns]
+    display_df = filtered_df[existing_cols]
 
-            if r_col3.button("❌", key=f"frem_{i}"):
-                st.session_state["filter_rules"].pop(i)
-                st.rerun()
+    # --- VISUAL FEEDBACK ---
+    st.info(f"Displaying {len(display_df)} assets. **Select a row using the button on the left to edit.**")
 
-    # --- APPLY FILTER LOGIC ---
-    filtered_df = df.copy()
-    if active_filters:
-        mask = active_filters[0]
-        for m in active_filters[1:]:
-            mask = (mask & m) if logic_mode == "Match ALL (AND)" else (mask | m)
-        filtered_df = df[mask]
-
-
-    st.info(f"Displaying {len(filtered_df)} assets.")
-
-    # --- TABLE WITH EDIT LINK ---
-    # We use a trick: add a column to trigger edit mode
-    # In Streamlit, the easiest way to "click a row" is using the selection state of the dataframe
+    # 4. DATA TABLE (Native Selection - No Page Reload)
+    # This is the ONLY way to stay in the same session without losing login.
     event = st.dataframe(
-        filtered_df,
+        display_df,
         use_container_width=True,
         hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row"
+        on_select="rerun",           # Trigger rerun within the SAME session
+        selection_mode="single-row", # Enables the radio-button on the left
     )
 
+    # 5. SELECTION LOGIC
+    # This triggers instantly without opening new tabs or losing login status
     if event.selection.rows:
         selected_index = event.selection.rows[0]
-        st.session_state["edit_isin"] = filtered_df.iloc[selected_index]["ISIN"]
+        st.session_state["edit_isin"] = display_df.iloc[selected_index]["ISIN"]
         st.session_state["view"] = "edit"
         st.rerun()
 
-import streamlit as st
-from datetime import datetime
-from src.database import get_all_assets_with_labels, update_asset_static_data
-# Import our new central helpers
-from src.utils import ensure_reference_data, extract_code, get_option_index
 
 def render_edit_view():
     isin = st.session_state.get("edit_isin")
