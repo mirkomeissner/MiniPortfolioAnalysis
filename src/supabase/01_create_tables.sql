@@ -79,11 +79,11 @@ CREATE TABLE IF NOT EXISTS transactions (
     isin VARCHAR(12),
     date DATE DEFAULT CURRENT_DATE,
     type_code TEXT,
-    quantity NUMERIC,
-    settle_amount NUMERIC,
+    quantity NUMERIC(20, 8),
+    settle_amount NUMERIC(20, 8),
     settle_currency VARCHAR(3),
-    settle_fxrate NUMERIC,
-    amount_eur NUMERIC,
+    settle_fxrate NUMERIC(20, 10),
+    amount_eur NUMERIC(20, 8),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ,
     
@@ -125,4 +125,64 @@ CREATE TABLE IF NOT EXISTS country_region_mapping (
     region_code TEXT REFERENCES ref_region(code) ON UPDATE CASCADE ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+
+
+
+-- Historical price data for assets
+CREATE TABLE IF NOT EXISTS asset_prices (
+    isin VARCHAR(12) NOT NULL REFERENCES asset_static_data(isin) ON DELETE CASCADE,
+    price_date DATE NOT NULL,
+    price_close NUMERIC(20, 6) NOT NULL,
+    -- Composite primary key: ensures one price per asset per day
+    PRIMARY KEY (isin, price_date)
+);
+
+-- Index for efficient time-series charting
+CREATE INDEX idx_asset_prices_date ON asset_prices(price_date);
+
+
+
+-- Historical foreign exchange rates relative to EUR
+CREATE TABLE IF NOT EXISTS exchange_rates (
+    currency_pair VARCHAR(6) NOT NULL, -- Format: 'EURUSD', 'EURCHF'
+    rate_date DATE NOT NULL,
+    exchange_rate NUMERIC(20, 10) NOT NULL,
+    -- Primary key: ensures one rate per pair per day
+    PRIMARY KEY (currency_pair, rate_date)
+);
+
+-- Index for fast conversion lookups
+CREATE INDEX idx_exchange_rates_date ON exchange_rates(rate_date);
+
+
+
+
+-- Daily snapshot of quantities per user, account, and asset
+CREATE TABLE IF NOT EXISTS daily_holdings (
+    username TEXT NOT NULL,
+    account_code TEXT NOT NULL,
+    isin VARCHAR(12) NOT NULL,
+    holding_date DATE NOT NULL,
+    quantity NUMERIC(20, 8) NOT NULL,
+    
+    -- Primary key: ensures unique record per day, account and asset
+    PRIMARY KEY (username, account_code, isin, holding_date),
+    
+    -- Foreign Key to ensure the account exists for this user
+    CONSTRAINT fk_daily_holdings_account
+        FOREIGN KEY (username, account_code) 
+        REFERENCES accounts(username, account_code) 
+        ON DELETE CASCADE,
+        
+    -- Foreign Key to link to asset details
+    CONSTRAINT fk_daily_holdings_isin
+        FOREIGN KEY (isin) 
+        REFERENCES asset_static_data(isin) 
+        ON DELETE CASCADE
+);
+
+-- Index for faster filtering by user and date
+CREATE INDEX idx_daily_holdings_lookup ON daily_holdings(username, holding_date);
+
 
