@@ -121,7 +121,10 @@ def render_import_preview_screen():
 
     df_raw = st.session_state["imported_df"]
     csv_columns = [c for c in df_raw.columns if c != "import_row"]
-    user = st.session_state.get("user_name", "System")
+    user_id = st.session_state.get("user_id")
+    if not user_id:
+        st.error("No valid User-ID found. Please log in again.")
+        st.stop()
 
     # --- NAVIGATION AT TOP ---
     if st.button("⬅ Back to Upload"):
@@ -141,7 +144,7 @@ def render_import_preview_screen():
         acc_code = extract_code(selected_account_full)
     
     # --- INFO DISPLAY FOR LOADED SETTINGS ---
-    raw_config = get_import_settings(user, acc_code)
+    raw_config = get_import_settings(user_id, acc_code)
     if raw_config:
         st.info(f"💡 Import settings loaded for account **{acc_code}**.")
         saved_config = raw_config
@@ -325,7 +328,7 @@ def render_import_preview_screen():
         
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
-                asset_payloads = [{"isin": m_isin, "name": m_isin, "created_by": user} for m_isin in missing_isins]
+                asset_payloads = [{"isin": m_isin, "name": m_isin, "created_by": user_id, "updated_by": user_id} for m_isin in missing_isins]
                 try:
                     save_asset_static_data(asset_payloads) 
                     st.write(f"✅ Created {len(asset_payloads)} assets.")
@@ -381,7 +384,7 @@ def render_import_preview_screen():
 
                     # Optimized: Use extract_code helper for type mapping
                     payload_batch.append({
-                        "username": user,
+                        "user_id": user_id,
                         "id": generated_id,
                         "account_code": acc_code,
                         "isin": isin_val,
@@ -410,7 +413,7 @@ def render_import_preview_screen():
                     status.update(label="Import failed.", state="error")
 
         # 4. FINALIZE & SAVE SETTINGS
-        save_import_settings(user, acc_code, {
+        save_import_settings(user_id, acc_code, {
             "type_column": type_column, "type_mapping": type_mapping,
             "map_isin": map_isin, "map_date": map_date, "map_qty": map_qty,
             "map_settle_amt": map_s_amt, "map_settle_curr": map_s_cur, 
@@ -447,14 +450,28 @@ def render_list_view():
             st.rerun()
 
     # --- 2. DATA RETRIEVAL ---
-    data = get_all_transactions()
-    if not data:
+    raw_data = get_all_transactions()
+    if not raw_data:
         st.info("No records found in transactions.")
         return
 
     # Convert Supabase response to DataFrame
-    df = pd.DataFrame(data)
-    
+    processed_data = []
+    for row in raw_data:
+        processed_row = row.copy()
+        
+        # Account Label extrahieren
+        acc_info = row.get("accounts")
+        # Falls eine Beschreibung da ist, nimm diese, sonst den Code
+        processed_row["account_label"] = acc_info.get("description") if acc_info and acc_info.get("description") else row.get("account_code")
+
+        # Labels aus den Joins extrahieren
+        processed_row["type_label"] = row.get("ref_transaction_type", {}).get("label") if row.get("ref_transaction_type") else row.get("type_code")
+        processed_row["asset_name"] = row.get("asset_static_data", {}).get("name") if row.get("asset_static_data") else row.get("isin")
+        processed_data.append(processed_row)
+
+    df = pd.DataFrame(processed_data)
+        
     # --- 3. ADVANCED FILTERING ---
     # apply_advanced_filters handles date conversion and multi-rule logic
     filtered_df = apply_advanced_filters(df, session_prefix="trans_list")
@@ -469,7 +486,7 @@ def render_list_view():
     # --- 5. COLUMN ORDERING & DISPLAY ---
     # Define a logical sequence for the columns to be displayed
     preferred_order = [
-        "date", "account_code", "isin", "type_code", 
+        "date", "account_label", "isin", "asset_name", "type_label", 
         "quantity", "settle_amount", "settle_currency", 
         "settle_fxrate", "amount_eur",
         "created_at", "updated_at", "id"
@@ -488,9 +505,10 @@ def render_list_view():
         hide_index=True,
         column_config={
             "date": st.column_config.DateColumn("Trade Date", format="DD.MM.YYYY"),
-            "account_code": st.column_config.TextColumn("Account"),
+            "account_label": st.column_config.TextColumn("Account"),
             "isin": st.column_config.TextColumn("ISIN"),
-            "type_code": st.column_config.TextColumn("Type"),
+            "asset_name": st.column_config.TextColumn("Name"),
+            "type_label": st.column_config.TextColumn("Type"),
             "quantity": st.column_config.NumberColumn("Quantity", format="%.4f"),
             "settle_amount": st.column_config.NumberColumn("Settle Amount", format="%.2f"),
             "settle_currency": st.column_config.TextColumn("Curr"),
@@ -576,7 +594,7 @@ def render_transaction_form():
             
             # Generate the unique transaction ID
             current_count = get_next_transaction_count(
-                st.session_state["user_name"], 
+                st.session_state["user_id"], 
                 clean_isin, 
                 db_date_str
             )
@@ -584,7 +602,7 @@ def render_transaction_form():
 
             # Construct the database payload
             new_payload = {
-                "username": st.session_state["user_name"],
+                "user_id": st.session_state["user_id"],
                 "id": generated_id,
                 "account_code": extract_code(account_selection),
                 "isin": clean_isin,

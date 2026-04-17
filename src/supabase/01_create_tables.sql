@@ -2,6 +2,33 @@
 CREATE SCHEMA IF NOT EXISTS shared;
 CREATE SCHEMA IF NOT EXISTS public;
 
+GRANT USAGE ON SCHEMA shared TO anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+
+GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+GRANT INSERT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+GRANT UPDATE ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT INSERT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT UPDATE ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+
+-- --- create user table first ---
+
+-- Central User Table (Profile Data)
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE, -- Optional / Nullable
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE OR REPLACE VIEW shared.users AS SELECT id, username FROM public.users;
+
+
+
+
 -- --- SHARED SCHEMA TABLES (Global / Non-user specific) ---
 
 CREATE TABLE IF NOT EXISTS shared.ref_asset_class (code TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
@@ -12,14 +39,16 @@ CREATE TABLE IF NOT EXISTS shared.ref_instrument_type (code TEXT PRIMARY KEY, la
 CREATE TABLE IF NOT EXISTS shared.ref_transaction_type (code TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS shared.ref_currencies (code CHAR(3) PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
 
+CREATE OR REPLACE VIEW public.ref_transaction_type AS SELECT code, label FROM shared.ref_transaction_type;
+
 -- Global asset static data
 CREATE TABLE IF NOT EXISTS shared.asset_static_data (
     isin VARCHAR(12) PRIMARY KEY,
     name TEXT NOT NULL,
     currency VARCHAR(3),
     ticker TEXT,
-    price_source TEXT,
-    instrument_type TEXT,
+    price_source_code TEXT,
+    instrument_type_code TEXT,
     asset_class_code TEXT,
     region_code TEXT,
     sector_code TEXT,
@@ -27,17 +56,22 @@ CREATE TABLE IF NOT EXISTS shared.asset_static_data (
     country TEXT,
     closed_on DATE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    created_by TEXT,
+    created_by UUID,
     updated_at TIMESTAMPTZ,
-    updated_by TEXT,
+    updated_by UUID,
 
     CONSTRAINT fk_static_currency FOREIGN KEY (currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL,
-    CONSTRAINT fk_static_price_source FOREIGN KEY (price_source) REFERENCES shared.ref_price_source(code) ON DELETE SET NULL,
-    CONSTRAINT fk_static_instrument_type FOREIGN KEY (instrument_type) REFERENCES shared.ref_instrument_type(code) ON DELETE SET NULL,
+    CONSTRAINT fk_static_price_source FOREIGN KEY (price_source_code) REFERENCES shared.ref_price_source(code) ON DELETE SET NULL,
+    CONSTRAINT fk_static_instrument_type FOREIGN KEY (instrument_type_code) REFERENCES shared.ref_instrument_type(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_asset_class FOREIGN KEY (asset_class_code) REFERENCES shared.ref_asset_class(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_region FOREIGN KEY (region_code) REFERENCES shared.ref_region(code) ON DELETE SET NULL,
-    CONSTRAINT fk_static_sector FOREIGN KEY (sector_code) REFERENCES shared.ref_sector(code) ON DELETE SET NULL
+    CONSTRAINT fk_static_sector FOREIGN KEY (sector_code) REFERENCES shared.ref_sector(code) ON DELETE SET NULL,
+    CONSTRAINT fk_static_created_by FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_static_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id) ON DELETE SET NULL
 );
+
+
+CREATE OR REPLACE VIEW public.asset_static_data AS SELECT isin, name FROM shared.asset_static_data;
 
 -- Mapping for countries to regions
 CREATE TABLE IF NOT EXISTS shared.country_region_mapping (
@@ -80,15 +114,6 @@ CREATE INDEX idx_exchange_rates_date ON shared.exchange_rates(rate_date);
 
 
 -- --- PUBLIC SCHEMA TABLES (User specific) ---
-
--- Central User Table (Profile Data)
-CREATE TABLE IF NOT EXISTS public.users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    username TEXT UNIQUE NOT NULL,
-    email TEXT UNIQUE, -- Optional / Nullable
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
 
 -- Separate Table for Sensitive Auth Data
 CREATE TABLE IF NOT EXISTS public.user_secrets (

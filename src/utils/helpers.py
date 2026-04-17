@@ -26,16 +26,18 @@ def get_option_index(options: list, current_code: str) -> int:
     except (StopIteration, AttributeError):
         return 0
 
-# In src/utils/helpers.py
-
 def ensure_reference_data():
     """
     Zentrale Funktion, um sicherzustellen, dass ALLE Dropdown-Optionen
     im Session State vorhanden sind.
     """
-    if 'ref_data_loaded' not in st.session_state:
+    # Wir prüfen, ob der User überhaupt eingeloggt ist, bevor wir laden
+    user_id = st.session_state.get("user_id")
+    
+    if 'ref_data_loaded' not in st.session_state and user_id:
         with st.spinner("Loading reference data..."):
-            # 1. Allgemeine Stammdaten (aus ref-Tabellen)
+            # 1. Allgemeine Stammdaten (aus dem 'shared' Schema)
+            # Diese sind für alle User gleich
             st.session_state['opt_asset'] = get_ref_options("ref_asset_class")
             st.session_state['opt_gics'] = get_ref_options("ref_sector")
             st.session_state['opt_region'] = get_ref_options("ref_region")
@@ -43,9 +45,9 @@ def ensure_reference_data():
             st.session_state['opt_source'] = get_ref_options("ref_price_source")
             st.session_state['opt_trans_types'] = get_ref_options("ref_transaction_type")
             
-            # 2. Spezifische Stammdaten (für Transaktionen)
-            user = st.session_state.get("user_name", "System")
-            st.session_state['opt_accounts'] = get_account_ref_options(user)
+            # 2. Spezifische Stammdaten
+            # WICHTIG: Hier nutzen wir jetzt die user_id (UUID) statt user_name
+            st.session_state['opt_accounts'] = get_account_ref_options(user_id)
             st.session_state['opt_assets'] = get_asset_ref_options()
             
             # 3. Hilfs-Maps
@@ -54,6 +56,8 @@ def ensure_reference_data():
             # Flag setzen
             st.session_state['ref_data_loaded'] = True
 
+def reset_reference_data():
+    """Hilfsfunktion, um den Cache zu leeren (z.B. nach Account-Erstellung)"""
+    if 'ref_data_loaded' in st.session_state:
+        del st.session_state['ref_data_loaded']
 
-
-      
