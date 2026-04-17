@@ -71,7 +71,7 @@ def render_list_view():
 
     # --- VISUAL FEEDBACK ---
     st.info(f"Displaying {len(display_df)} assets. **Select a row using the button on the left to edit.**")
-    st.write(df.columns.tolist())
+
     # 4. DATA TABLE (Native Selection - No Page Reload)
     # This is the ONLY way to stay in the same session without losing login.
     event = st.dataframe(
