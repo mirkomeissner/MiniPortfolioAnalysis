@@ -11,7 +11,7 @@ supabase = get_supabase_client()
 def get_ref_options(table_name):
     """Fetch reference codes and labels for dropdowns."""
     try:
-        res = supabase.table(table_name).select("code, label").execute()
+        res = supabase.schema("shared").table(table_name).select("code, label").execute()
         return [f"{item['code']} ({item['label']})" for item in res.data] if res.data else []
     except Exception as e:
         st.error(f"Error loading reference data {table_name}: {e}")
@@ -19,16 +19,16 @@ def get_ref_options(table_name):
 
 @st.cache_data(ttl=3600)
 def get_country_region_map():
-    res = supabase.table("country_region_mapping").select("country, region_code").execute()
+    res = supabase.schema("shared").table("country_region_mapping").select("country, region_code").execute()
     return {item['country']: item['region_code'] for item in res.data}
 
 def save_asset_static_data(asset_data):
     """Inserts a new asset record."""
-    return supabase.table("asset_static_data").insert(asset_data).execute()
+    return supabase.schema("shared").table("asset_static_data").insert(asset_data).execute()
 
 def update_asset_static_data(isin, updated_data):
     """Updates an existing asset record by ISIN."""
-    return supabase.table("asset_static_data").update(updated_data).eq("isin", isin).execute()
+    return supabase.schema("shared").table("asset_static_data").update(updated_data).eq("isin", isin).execute()
 
 def get_missing_isins(isins: list) -> list:
     """
@@ -40,7 +40,7 @@ def get_missing_isins(isins: list) -> list:
     
     try:
         # Query existing ISINs from the unique set of input ISINs
-        res = supabase.table("asset_static_data") \
+        res = supabase.schema("shared").table("asset_static_data") \
             .select("isin") \
             .in_("isin", isins) \
             .execute()
@@ -65,7 +65,7 @@ def get_all_assets_with_labels():
             "closed_on, created_at, created_by, updated_at, updated_by"
         )
         
-        query = supabase.table("asset_static_data").select(columns).execute()
+        query = supabase.schema("shared").table("asset_static_data").select(columns).execute()
         
         if query.data:
             for row in query.data:
@@ -93,37 +93,37 @@ def get_all_assets_with_labels():
     return flattened_data
 
 def get_all_transactions():
-    user = st.session_state.get('user_name')
-    response = supabase.table("transactions").select("*").eq("username", user).execute()
+    user_id = st.session_state.get('user_id') 
+    response = supabase.schema("public").table("transactions").select("*").eq("user_id", user_id).execute()
     return response.data
 
 def get_asset_ref_options():
     """Fetches all assets in 'ISIN (Name)' format for dropdowns."""
     try:
         # Select isin and name from asset_static_data [cite: 76]
-        res = supabase.table("asset_static_data").select("isin, name").execute()
+        res = supabase.schema("shared").table("asset_static_data").select("isin, name").execute()
         return [f"{item['isin']} ({item['name']})" for item in res.data] if res.data else []
     except Exception as e:
         st.error(f"Error loading assets for dropdown: {e}")
         return []
 
-def get_account_ref_options(username):
+def get_account_ref_options(user_id):
     """Fetches user accounts in 'Code (Description)' format."""
     try:
         # Filter by username to show only relevant accounts [cite: 79, 81]
-        res = supabase.table("accounts").select("account_code, description").eq("username", username).execute()
+        res = supabase.schema("public").table("accounts").select("account_code, description").eq("user_id", user_id).execute()
         return [f"{item['account_code']} ({item['description']})" for item in res.data] if res.data else []
     except Exception as e:
         st.error(f"Error loading accounts: {e}")
         return []
 
-def get_next_transaction_count(username, isin, date_str):
+def get_next_transaction_count(user_id, isin, date_str):
     """Counts existing transactions for an ISIN and date to determine the next suffix."""
     try:
         # We query the transactions for the specific user, ISIN and date [cite: 80, 81]
-        res = supabase.table("transactions") \
+        res = supabase.schema("public").table("transactions") \
             .select("id") \
-            .eq("username", username) \
+            .eq("user_id", user_id) \
             .eq("isin", isin) \
             .eq("date", date_str) \
             .execute()
@@ -133,14 +133,16 @@ def get_next_transaction_count(username, isin, date_str):
         st.error(f"Error calculating transaction count: {e}")
         return 1
 
-def get_existing_ids_for_bulk(isins, dates):
+
+def get_existing_ids_for_bulk(user_id, isins, dates):
     """
-    Fetches only the 'id' column for all transactions matching the given 
-    lists of ISINs and dates.
+    Fetches only the 'id' column for transactions matching user_id, ISINs and dates.
     """
     try:
-        response = supabase.table("transactions") \
+        # Added user_id filter to ensure we only check the current user's transactions
+        response = supabase.schema("public").table("transactions") \
             .select("id") \
+            .eq("user_id", user_id) \
             .in_("isin", isins) \
             .in_("date", dates) \
             .execute()
@@ -155,7 +157,7 @@ def get_existing_ids_for_bulk(isins, dates):
 def save_transaction(transaction_data):
     """Inserts a new transaction record into the database."""
     # Insert data into the transactions table [cite: 80]
-    return supabase.table("transactions").insert(transaction_data).execute()
+    return supabase.schema("public").table("transactions").insert(transaction_data).execute()
 
 def save_transactions_bulk(payload_list):
     """
@@ -166,7 +168,7 @@ def save_transactions_bulk(payload_list):
     try:
         # The .insert() method accepts a list of objects for bulk insertion.
         # This is significantly faster than inserting row by row.
-        response = supabase.table("transactions").insert(payload_list).execute()
+        response = supabase.schema("public").table("transactions").insert(payload_list).execute()
         
         # You can optionally return the response if you need to 
         # verify the inserted data.
@@ -178,24 +180,24 @@ def save_transactions_bulk(payload_list):
 
 
 
-def get_import_settings(username, account_code):
+def get_import_settings(user_id, account_code):
     """Fetches saved mapping for a specific user and account."""
-    response = supabase.table("user_import_settings")\
+    response = supabase.schema("public").table("user_import_settings")\
         .select("mapping_config")\
-        .eq("username", username)\
+        .eq("user_id", user_id)\
         .eq("account_code", account_code)\
         .execute()
     return response.data[0]["mapping_config"] if response.data else None
 
-def save_import_settings(username, account_code, config):
+def save_import_settings(user_id, account_code, config):
     """Saves or updates the mapping configuration."""
     payload = {
-        "username": username,
+        "user_id": user_id,
         "account_code": account_code,
         "mapping_config": config
     }
     # upsert handles both insert and update based on primary key
-    supabase.table("user_import_settings").upsert(payload).execute()
+    supabase.schema("public").table("user_import_settings").upsert(payload).execute()
 
 
 
