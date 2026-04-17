@@ -343,7 +343,7 @@ def render_import_preview_screen():
         unique_dates = [pd.to_datetime(d).date().isoformat() for d in final_sel[map_date].unique()]
 
         with st.status("Analyzing existing records and preparing batch...", expanded=True) as status:
-            existing_ids = get_existing_ids_for_bulk(unique_isins, unique_dates)
+            existing_ids = get_existing_ids_for_bulk(user_id, unique_isins, unique_dates)
             local_counters = {}
             for eid in existing_ids:
                 try:
