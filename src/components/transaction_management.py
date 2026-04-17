@@ -121,7 +121,7 @@ def render_import_preview_screen():
 
     df_raw = st.session_state["imported_df"]
     csv_columns = [c for c in df_raw.columns if c != "import_row"]
-    user = st.session_state.get("user_name", "System")
+    user = st.session_state.get("user_id", "System")
 
     # --- NAVIGATION AT TOP ---
     if st.button("⬅ Back to Upload"):
@@ -381,7 +381,7 @@ def render_import_preview_screen():
 
                     # Optimized: Use extract_code helper for type mapping
                     payload_batch.append({
-                        "username": user,
+                        "user_id": user_id,
                         "id": generated_id,
                         "account_code": acc_code,
                         "isin": isin_val,
@@ -576,7 +576,7 @@ def render_transaction_form():
             
             # Generate the unique transaction ID
             current_count = get_next_transaction_count(
-                st.session_state["user_name"], 
+                st.session_state["user_id"], 
                 clean_isin, 
                 db_date_str
             )
@@ -584,7 +584,7 @@ def render_transaction_form():
 
             # Construct the database payload
             new_payload = {
-                "username": st.session_state["user_name"],
+                "user_id": st.session_state["user_id"],
                 "id": generated_id,
                 "account_code": extract_code(account_selection),
                 "isin": clean_isin,
