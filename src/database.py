@@ -100,9 +100,41 @@ def get_all_assets_with_labels():
 
 
 def get_all_transactions():
-    user_id = st.session_state.get('user_id') 
-    response = supabase.schema("public").table("transactions").select("*").eq("user_id", user_id).execute()
-    return response.data
+    user_id = st.session_state.get('user_id')
+    if not user_id:
+        return []
+
+    # Alle Spalten der Haupttabelle plus die Joins explizit aufgelistet
+    columns = (
+        "user_id, "
+        "id, "
+        "account_code, "
+        "isin, "
+        "date, "
+        "type_code, "
+        "quantity, "
+        "settle_amount, "
+        "settle_currency, "
+        "settle_fxrate, "
+        "amount_eur, "
+        "created_at, "
+        "updated_at, "
+        # Joins zu den Views im public-Schema
+        "ref_transaction_type!fk_ref_type(label), "
+        "ref_currencies!fk_transaction_ref_currency(label), "
+        "asset_static_data!fk_transaction_isin(name)"
+    )
+    
+    try:
+        response = supabase.schema("public") \
+            .table("transactions") \
+            .select(columns) \
+            .eq("user_id", user_id) \
+            .execute()
+        return response.data
+    except Exception as e:
+        st.error(f"Error fetching transactions: {e}")
+        return []
 
 def get_asset_ref_options():
     """Fetches all assets in 'ISIN (Name)' format for dropdowns."""
