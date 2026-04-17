@@ -459,6 +459,12 @@ def render_list_view():
     processed_data = []
     for row in raw_data:
         processed_row = row.copy()
+        
+        # Account Label extrahieren
+        acc_info = row.get("accounts")
+        # Falls eine Beschreibung da ist, nimm diese, sonst den Code
+        processed_row["account_label"] = acc_info.get("description") if acc_info and acc_info.get("description") else row.get("account_code")
+
         # Labels aus den Joins extrahieren
         processed_row["type_label"] = row.get("ref_transaction_type", {}).get("label") if row.get("ref_transaction_type") else row.get("type_code")
         processed_row["asset_name"] = row.get("asset_static_data", {}).get("name") if row.get("asset_static_data") else row.get("isin")
@@ -480,7 +486,7 @@ def render_list_view():
     # --- 5. COLUMN ORDERING & DISPLAY ---
     # Define a logical sequence for the columns to be displayed
     preferred_order = [
-        "date", "account_code", "isin", "asset_name", "type_label", 
+        "date", "account_label", "isin", "asset_name", "type_label", 
         "quantity", "settle_amount", "settle_currency", 
         "settle_fxrate", "amount_eur",
         "created_at", "updated_at", "id"
@@ -499,7 +505,7 @@ def render_list_view():
         hide_index=True,
         column_config={
             "date": st.column_config.DateColumn("Trade Date", format="DD.MM.YYYY"),
-            "account_code": st.column_config.TextColumn("Account"),
+            "account_label": st.column_config.TextColumn("Account"),
             "isin": st.column_config.TextColumn("ISIN"),
             "asset_name": st.column_config.TextColumn("Name"),
             "type_label": st.column_config.TextColumn("Type"),
