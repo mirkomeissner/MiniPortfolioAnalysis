@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS shared.asset_static_data (
     name TEXT NOT NULL,
     currency VARCHAR(3),
     ticker TEXT,
-    price_source TEXT,
-    instrument_type TEXT,
+    price_source_code TEXT,
+    instrument_type_code TEXT,
     asset_class_code TEXT,
     region_code TEXT,
     sector_code TEXT,
@@ -32,8 +32,8 @@ CREATE TABLE IF NOT EXISTS shared.asset_static_data (
     updated_by TEXT,
 
     CONSTRAINT fk_static_currency FOREIGN KEY (currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL,
-    CONSTRAINT fk_static_price_source FOREIGN KEY (price_source) REFERENCES shared.ref_price_source(code) ON DELETE SET NULL,
-    CONSTRAINT fk_static_instrument_type FOREIGN KEY (instrument_type) REFERENCES shared.ref_instrument_type(code) ON DELETE SET NULL,
+    CONSTRAINT fk_static_price_source FOREIGN KEY (price_source_code) REFERENCES shared.ref_price_source(code) ON DELETE SET NULL,
+    CONSTRAINT fk_static_instrument_type FOREIGN KEY (instrument_type_code) REFERENCES shared.ref_instrument_type(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_asset_class FOREIGN KEY (asset_class_code) REFERENCES shared.ref_asset_class(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_region FOREIGN KEY (region_code) REFERENCES shared.ref_region(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_sector FOREIGN KEY (sector_code) REFERENCES shared.ref_sector(code) ON DELETE SET NULL
