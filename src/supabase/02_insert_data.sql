@@ -1,4 +1,4 @@
-INSERT INTO ref_asset_class (code, label)
+INSERT INTO shared.ref_asset_class (code, label)
 VALUES 
   ('LIQ', 'Liquidity'),
   ('BON', 'Bonds & Bond Funds'),
@@ -7,7 +7,7 @@ VALUES
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 
-INSERT INTO ref_region (code, label)
+INSERT INTO shared.ref_region (code, label)
 VALUES 
   ('GLO',  'Global / World'),
   ('DEV',  'Developed Markets'),
@@ -22,7 +22,7 @@ VALUES
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 
-INSERT INTO ref_sector (code, label)
+INSERT INTO shared.ref_sector (code, label)
 VALUES 
   ('10', 'Energy'), ('15', 'Materials'), ('20', 'Industrials'),
   ('25', 'Consumer Discretionary'), ('30', 'Consumer Staples'),
@@ -31,7 +31,7 @@ VALUES
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 
-INSERT INTO ref_price_source (code, label)
+INSERT INTO shared.ref_price_source (code, label)
 VALUES 
   ('YFN', 'YFINANCE'),
   ('GFN', 'GOOGLEFINANCE'),
@@ -39,7 +39,7 @@ VALUES
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 
-INSERT INTO ref_instrument_type (code, label)
+INSERT INTO shared.ref_instrument_type (code, label)
 VALUES 
   ('STO', 'Stock'),
   ('BON', 'Bond'),
@@ -49,7 +49,7 @@ VALUES
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 
-INSERT INTO ref_transaction_type (code, label)
+INSERT INTO shared.ref_transaction_type (code, label)
 VALUES 
   ('B', 'Buy'), 
   ('S', 'Sell'), 
@@ -60,7 +60,7 @@ ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 
 
-insert into ref_currencies (code, label)
+insert into shared.ref_currencies (code, label)
 values 
 -- G10 Currencies (Most Traded)
   ('USD', 'US Dollar'),
@@ -121,19 +121,7 @@ values
 on conflict (code) do update set label = EXCLUDED.label;
 
 
-
-INSERT INTO accounts (username, account_code, description)
-VALUES 
-    ('mirko', 'SMB', 'Smartbroker'),
-    ('mirko', 'ING', 'ING-DiBa'),
-    ('mirko', 'CON', 'Consorsbank'),
-    ('anja' , 'SMB', 'Smartbroker'),
-    ('anja' , 'DKB', 'DKB')
-ON CONFLICT (username, account_code) DO UPDATE SET description = EXCLUDED.description;
-
-
-
-INSERT INTO country_region_mapping (country, region_code) VALUES
+INSERT INTO shared.country_region_mapping (country, region_code) VALUES
     ('United States', 'USA'),
     ('Canada', 'NAM'),
     ('Bermuda', 'NAM'),
@@ -192,3 +180,28 @@ INSERT INTO country_region_mapping (country, region_code) VALUES
     ('Nigeria', 'MEAF')
 ON CONFLICT (country) DO UPDATE SET region_code = EXCLUDED.region_code;
 
+
+
+
+
+
+
+
+
+-- Insert users into public.users
+-- The ID (UUID) is generated automatically
+INSERT INTO public.users (username, email)
+VALUES 
+    ('mirko', NULL),
+    ('anja', NULL);
+
+-- Insert accounts using the UUIDs from the users table
+INSERT INTO public.accounts (user_id, account_code, description)
+VALUES 
+    ((SELECT id FROM public.users WHERE username = 'mirko'), 'SMB', 'Smartbroker'),
+    ((SELECT id FROM public.users WHERE username = 'mirko'), 'ING', 'ING-DiBa'),
+    ((SELECT id FROM public.users WHERE username = 'mirko'), 'CON', 'Consorsbank'),
+    ((SELECT id FROM public.users WHERE username = 'anja'),  'SMB', 'Smartbroker'),
+    ((SELECT id FROM public.users WHERE username = 'anja'),  'DKB', 'DKB')
+ON CONFLICT (user_id, account_code) 
+DO UPDATE SET description = EXCLUDED.description;
