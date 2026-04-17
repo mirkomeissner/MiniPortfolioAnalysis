@@ -328,7 +328,7 @@ def render_import_preview_screen():
         
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
-                asset_payloads = [{"isin": m_isin, "name": m_isin, "created_by": user_id, "updated_by": user_id} for m_isin in missing_isins]
+                asset_payloads = [{"isin": m_isin, "name": m_isin, "created_by": user_id, "updated_by": None} for m_isin in missing_isins]
                 try:
                     save_asset_static_data(asset_payloads) 
                     st.write(f"✅ Created {len(asset_payloads)} assets.")
