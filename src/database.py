@@ -65,8 +65,8 @@ def get_all_assets_with_labels():
             "ref_region(label), "
             "ref_sector(label), "
             "closed_on, created_at, "
-            "created_by:users!fk_static_created_by(username), "
-            "updated_by:users!fk_static_updated_by(username), "
+            "created_by:public_users!fk_static_created_by(username), "
+            "updated_by:public_users!fk_static_updated_by(username), "
             "updated_at"
         )
         
