@@ -1,4 +1,7 @@
 -- --- CLEANUP SCRIPT ---
+-- Drop views from shared to public
+DROP VIEW IF EXISTS shared.users;
+
 -- Drop tables in public schema
 DROP TABLE IF EXISTS public.daily_holdings;
 DROP TABLE IF EXISTS public.user_import_settings;
