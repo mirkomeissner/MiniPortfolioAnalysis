@@ -119,7 +119,7 @@ def get_all_transactions():
         "amount_eur, "
         "created_at, "
         "updated_at, "
-        # Joins zu den Views im public-Schema
+        "accounts!fk_accounts(description), "
         "ref_transaction_type!fk_ref_type(label), "
         "asset_static_data!fk_transaction_isin(name)"
     )
