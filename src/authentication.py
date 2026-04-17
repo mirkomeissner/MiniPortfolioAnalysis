@@ -36,7 +36,12 @@ def set_user_password(user_id, password):
 def create_new_user(username, password):
     """Helper to create a new user in both tables."""
     # 1. Create entry in public.users
-    user_res = supabase.table("users").insert({"username": username}).execute()
+    try:
+        user_res = supabase.table("users").insert({"username": username}).execute()
+    except Exception as e:
+        st.error(f"Details: {e}") # Das zeigt dir den echten Grund (z.B. "null value in column 'password' violates not-null constraint")
+        raise e
+        
     if user_res.data:
         new_id = user_res.data[0]["id"]
         # 2. Create entry in public.user_secrets
