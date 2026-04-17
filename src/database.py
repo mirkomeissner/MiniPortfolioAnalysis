@@ -60,8 +60,11 @@ def get_all_assets_with_labels():
         # Added updated_at and updated_by to the query strings
         columns = (
             "isin, name, currency, ticker, industry, country, "
-            "ref_price_source(label), ref_instrument_type(label), "
-            "ref_asset_class(label), ref_region(label), ref_sector(label), "
+            "price_source_code:ref_price_source(label), "
+            "instrument_type_code:ref_instrument_type(label), "
+            "asset_class_code:ref_asset_class(label), "
+            "region_code:ref_region(label), "
+            "sector_code:ref_sector(label), "
             "closed_on, created_at, created_by, updated_at, updated_by"
         )
         
