@@ -52,19 +52,18 @@ def get_missing_isins(isins: list) -> list:
         return []
 
 
-
 def get_all_assets_with_labels():
     """Fetches full asset records including joined reference labels."""
     flattened_data = []
     try:
-        # Added updated_at and updated_by to the query strings
+        # REMOVED the aliases (the "xxx_code:" part) to keep default names
         columns = (
             "isin, name, currency, ticker, industry, country, "
-            "price_source_code:ref_price_source(label), "
-            "instrument_type_code:ref_instrument_type(label), "
-            "asset_class_code:ref_asset_class(label), "
-            "region_code:ref_region(label), "
-            "sector_code:ref_sector(label), "
+            "ref_price_source(label), "
+            "ref_instrument_type(label), "
+            "ref_asset_class(label), "
+            "ref_region(label), "
+            "ref_sector(label), "
             "closed_on, created_at, created_by, updated_at, updated_by"
         )
         
@@ -72,6 +71,7 @@ def get_all_assets_with_labels():
         
         if query.data:
             for row in query.data:
+                # Now row.get("ref_instrument_type") will actually find data
                 flattened_data.append({
                     "ISIN": row.get("isin"),
                     "Name": row.get("name"),
@@ -94,6 +94,7 @@ def get_all_assets_with_labels():
         st.error(f"Error fetching assets: {e}")
         
     return flattened_data
+
 
 def get_all_transactions():
     user_id = st.session_state.get('user_id') 
