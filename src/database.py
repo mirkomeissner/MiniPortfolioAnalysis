@@ -91,7 +91,7 @@ def get_all_assets_with_labels():
                     "Created At": row.get("created_at"),
                     "Created By": row.get("created_by", {}).get("username") if row.get("created_by") else "Unknown",
                     "Updated At": row.get("updated_at"),
-                    "Updated By": row.get("updated_by", {}).get("username") if row.get("updated_by") else "Unknown"
+                    "Updated By": row.get("updated_by", {}).get("username") if row.get("updated_by") 
                 })
     except Exception as e:
         st.error(f"Error fetching assets: {e}")
