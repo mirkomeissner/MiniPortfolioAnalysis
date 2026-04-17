@@ -6,6 +6,8 @@ GRANT USAGE ON SCHEMA shared TO anon, authenticated, service_role;
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
 GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+GRANT INSERT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+GRANT UPDATE ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
 
 -- --- create user table first ---
 
