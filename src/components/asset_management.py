@@ -147,9 +147,8 @@ def render_edit_view():
         ticker = col2.text_input("Ticker", value=asset["Ticker"])
         currency = col2.text_input("Currency", value=asset["Currency"])
         
-        # REPLACEMENT 2: We no longer need the local 'def get_index' here!
-        # We use 'get_option_index' from our utils instead.
-
+        # Hinweis: Die Keys hier (z.B. asset["Asset Class"]) müssen 
+        # exakt so heißen wie im flattened_data dict der database.py!
         asset_class = col1.selectbox("Asset Class", st.session_state['opt_asset'], 
                                      index=get_option_index(st.session_state['opt_asset'], asset["Asset Class"]))
         
@@ -169,7 +168,6 @@ def render_edit_view():
         country = col1.text_input("Country", value=asset["Country"])
 
         if st.form_submit_button("Save Changes", type="primary"):
-            # REPLACEMENT 3: Using 'extract_code' instead of '.split(" (")[0]'
             updated_payload = {
                 "name": name,
                 "ticker": ticker,
@@ -177,8 +175,8 @@ def render_edit_view():
                 "asset_class_code": extract_code(asset_class),
                 "region_code": extract_code(region),
                 "sector_code": extract_code(sector),
-                "instrument_type": extract_code(instr_type),
-                "price_source": extract_code(source),
+                "instrument_type_code": extract_code(instr_type), # Korrigiert: _code
+                "price_source_code": extract_code(source),       # Korrigiert: _code
                 "industry": industry,
                 "country": country,
                 "updated_at": datetime.now().isoformat(),
@@ -186,9 +184,11 @@ def render_edit_view():
             }
             update_asset_static_data(isin, updated_payload)
             st.success("Asset updated successfully!")
-            st.cache_data.clear()
+            # WICHTIG: Cache leeren, damit die Liste die neuen Daten zeigt
+            st.cache_data.clear() 
             st.session_state["view"] = "list"
             st.rerun()
+
 
 
 
