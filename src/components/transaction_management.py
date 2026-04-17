@@ -121,7 +121,7 @@ def render_import_preview_screen():
 
     df_raw = st.session_state["imported_df"]
     csv_columns = [c for c in df_raw.columns if c != "import_row"]
-    user = st.session_state.get("user_id", "System")
+    user_id = st.session_state.get("user_id", "System")
 
     # --- NAVIGATION AT TOP ---
     if st.button("⬅ Back to Upload"):
@@ -141,7 +141,7 @@ def render_import_preview_screen():
         acc_code = extract_code(selected_account_full)
     
     # --- INFO DISPLAY FOR LOADED SETTINGS ---
-    raw_config = get_import_settings(user, acc_code)
+    raw_config = get_import_settings(user_id, acc_code)
     if raw_config:
         st.info(f"💡 Import settings loaded for account **{acc_code}**.")
         saved_config = raw_config
@@ -325,7 +325,8 @@ def render_import_preview_screen():
         
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
-                asset_payloads = [{"isin": m_isin, "name": m_isin, "created_by": user} for m_isin in missing_isins]
+                user_id = st.session_state.get("user_id")
+                asset_payloads = [{"isin": m_isin, "name": m_isin, "created_by": user_id} for m_isin in missing_isins]
                 try:
                     save_asset_static_data(asset_payloads) 
                     st.write(f"✅ Created {len(asset_payloads)} assets.")
