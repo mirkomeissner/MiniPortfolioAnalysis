@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS shared.ref_transaction_type (code TEXT PRIMARY KEY, l
 CREATE TABLE IF NOT EXISTS shared.ref_currencies (code CHAR(3) PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
 
 CREATE OR REPLACE VIEW public.ref_transaction_type AS SELECT code, label FROM shared.ref_transaction_type;
-CREATE OR REPLACE VIEW public.ref_currencies AS SELECT code, label FROM shared.ref_currencies;
 
 -- Global asset static data
 CREATE TABLE IF NOT EXISTS shared.asset_static_data (
