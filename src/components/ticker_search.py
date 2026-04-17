@@ -59,20 +59,23 @@ def map_yahoo_to_asset_class(quote_type, symbol_name=""):
 def handle_save_request(row, isin):
     # Wir nutzen hier die extract_code Funktion aus deinen utils
     # um sicherzustellen, dass nur 'EQU' statt 'EQU (Equity)' gespeichert wird.
+    # Wir ziehen die UUID des Users, da dein neues Schema UUID erwartet
+    current_user_id = st.session_state.get('user_id')
     
     asset_entry = {
         "isin": isin,
         "name": row["Name"],
         "currency": row["Currency"],
         "ticker": row["Ticker"],
-        "price_source_code": "YFN",                # Korrigiert: _code
-        "instrument_type_code": extract_code(row["InstrumentType"]), # Korrigiert: _code + extract_code
+        "price_source_code": "YFN", 
+        "instrument_type_code": extract_code(row["InstrumentType"]),
         "asset_class_code": extract_code(row["AssetClass"]),
         "region_code": extract_code(row["Region"]),
         "sector_code": extract_code(row["Sector_GICS"]),
         "industry": row["Industry"],
         "country": row["Country"],
-        "created_by": st.session_state.get('user_name', 'System')
+        "created_by": current_user_id,
+        "updated_by": current_user_id
     }
 
     try:
@@ -165,7 +168,7 @@ def ticker_search_view():
             "Currency": st.column_config.TextColumn("Currency"),
             "Industry": st.column_config.TextColumn("Industry"),
             "Sector Raw": st.column_config.TextColumn("Sector Raw", disabled=True),
-            "Sector GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics'], required=True),
+            "Sector_GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics'], required=True),
             "Country": st.column_config.TextColumn("Country"),
             "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
             "Type Raw": st.column_config.TextColumn("Type Raw", disabled=True),
