@@ -75,7 +75,7 @@ def handle_save_request(row, isin):
         "industry": row["Industry"],
         "country": row["Country"],
         "created_by": current_user_id,
-        "updated_by": current_user_id
+        "updated_by": None
     }
 
     try:
