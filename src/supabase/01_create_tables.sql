@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS shared.ref_instrument_type (code TEXT PRIMARY KEY, la
 CREATE TABLE IF NOT EXISTS shared.ref_transaction_type (code TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS shared.ref_currencies (code CHAR(3) PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
 
+CREATE OR REPLACE VIEW public.ref_transaction_type AS SELECT code, label FROM shared.ref_transaction_type;
+CREATE OR REPLACE VIEW public.ref_currencies AS SELECT code, label FROM shared.ref_currencies;
+
 -- Global asset static data
 CREATE TABLE IF NOT EXISTS shared.asset_static_data (
     isin VARCHAR(12) PRIMARY KEY,
@@ -67,6 +70,9 @@ CREATE TABLE IF NOT EXISTS shared.asset_static_data (
     CONSTRAINT fk_static_created_by FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL,
     CONSTRAINT fk_static_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id) ON DELETE SET NULL
 );
+
+
+CREATE OR REPLACE VIEW public.asset_static_data AS SELECT isin, name FROM shared.asset_static_data;
 
 -- Mapping for countries to regions
 CREATE TABLE IF NOT EXISTS shared.country_region_mapping (
