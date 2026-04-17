@@ -64,7 +64,10 @@ def get_all_assets_with_labels():
             "ref_asset_class(label), "
             "ref_region(label), "
             "ref_sector(label), "
-            "closed_on, created_at, created_by, updated_at, updated_by"
+            "closed_on, created_at, "
+            "created_by:users!fk_static_created_by(username), "
+            "updated_by:users!fk_static_updated_by(username), "
+            "updated_at"
         )
         
         query = supabase.schema("shared").table("asset_static_data").select(columns).execute()
@@ -86,9 +89,9 @@ def get_all_assets_with_labels():
                     "Price Source": row.get("ref_price_source", {}).get("label") if row.get("ref_price_source") else None,
                     "Closed On": row.get("closed_on"),
                     "Created At": row.get("created_at"),
-                    "Created By": row.get("created_by"),
+                    "Created By": row.get("created_by", {}).get("username") if row.get("created_by") else "Unknown",
                     "Updated At": row.get("updated_at"),
-                    "Updated By": row.get("updated_by")
+                    "Updated By": row.get("updated_by", {}).get("username") if row.get("updated_by") else "Unknown"
                 })
     except Exception as e:
         st.error(f"Error fetching assets: {e}")
