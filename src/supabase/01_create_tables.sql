@@ -9,6 +9,18 @@ GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA shared TO anon, authenticated, s
 ALTER ROLE anon SET search_path TO public, shared;
 ALTER ROLE authenticated SET search_path TO public, shared;
 
+-- --- create user table first ---
+
+-- Central User Table (Profile Data)
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE, -- Optional / Nullable
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+
 -- --- SHARED SCHEMA TABLES (Global / Non-user specific) ---
 
 CREATE TABLE IF NOT EXISTS shared.ref_asset_class (code TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
@@ -89,15 +101,6 @@ CREATE INDEX idx_exchange_rates_date ON shared.exchange_rates(rate_date);
 
 
 -- --- PUBLIC SCHEMA TABLES (User specific) ---
-
--- Central User Table (Profile Data)
-CREATE TABLE IF NOT EXISTS public.users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    username TEXT UNIQUE NOT NULL,
-    email TEXT UNIQUE, -- Optional / Nullable
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
 
 -- Separate Table for Sensitive Auth Data
 CREATE TABLE IF NOT EXISTS public.user_secrets (
