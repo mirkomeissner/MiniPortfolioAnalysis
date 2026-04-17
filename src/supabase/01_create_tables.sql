@@ -3,11 +3,9 @@ CREATE SCHEMA IF NOT EXISTS shared;
 CREATE SCHEMA IF NOT EXISTS public;
 
 GRANT USAGE ON SCHEMA shared TO anon, authenticated, service_role;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA shared TO anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
-ALTER ROLE anon SET search_path TO public, shared;
-ALTER ROLE authenticated SET search_path TO public, shared;
+GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
 
 -- --- create user table first ---
 
@@ -19,6 +17,10 @@ CREATE TABLE IF NOT EXISTS public.users (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE OR REPLACE VIEW shared.users AS SELECT id, username FROM public.users;
+
+
 
 
 -- --- SHARED SCHEMA TABLES (Global / Non-user specific) ---
