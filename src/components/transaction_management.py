@@ -450,14 +450,22 @@ def render_list_view():
             st.rerun()
 
     # --- 2. DATA RETRIEVAL ---
-    data = get_all_transactions()
+    raw_data = get_all_transactions()
     if not data:
         st.info("No records found in transactions.")
         return
 
     # Convert Supabase response to DataFrame
-    df = pd.DataFrame(data)
-    
+    processed_data = []
+    for row in raw_data:
+        processed_row = row.copy()
+        # Labels aus den Joins extrahieren
+        processed_row["type_label"] = row.get("ref_transaction_type", {}).get("label") if row.get("ref_transaction_type") else row.get("type_code")
+        processed_row["asset_name"] = row.get("asset_static_data", {}).get("name") if row.get("asset_static_data") else row.get("isin")
+        processed_data.append(processed_row)
+
+    df = pd.DataFrame(processed_data)
+        
     # --- 3. ADVANCED FILTERING ---
     # apply_advanced_filters handles date conversion and multi-rule logic
     filtered_df = apply_advanced_filters(df, session_prefix="trans_list")
@@ -472,7 +480,7 @@ def render_list_view():
     # --- 5. COLUMN ORDERING & DISPLAY ---
     # Define a logical sequence for the columns to be displayed
     preferred_order = [
-        "date", "account_code", "isin", "type_code", 
+        "date", "account_code", "isin", "asset_name", "type_label", 
         "quantity", "settle_amount", "settle_currency", 
         "settle_fxrate", "amount_eur",
         "created_at", "updated_at", "id"
@@ -493,7 +501,8 @@ def render_list_view():
             "date": st.column_config.DateColumn("Trade Date", format="DD.MM.YYYY"),
             "account_code": st.column_config.TextColumn("Account"),
             "isin": st.column_config.TextColumn("ISIN"),
-            "type_code": st.column_config.TextColumn("Type"),
+            "asset_name": st.column_config.TextColumn("Name"),
+            "type_label": st.column_config.TextColumn("Type"),
             "quantity": st.column_config.NumberColumn("Quantity", format="%.4f"),
             "settle_amount": st.column_config.NumberColumn("Settle Amount", format="%.2f"),
             "settle_currency": st.column_config.TextColumn("Curr"),
