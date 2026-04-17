@@ -2,6 +2,13 @@
 CREATE SCHEMA IF NOT EXISTS shared;
 CREATE SCHEMA IF NOT EXISTS public;
 
+GRANT USAGE ON SCHEMA shared TO anon, authenticated, service_role;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA shared TO anon, authenticated, service_role;
+
+ALTER ROLE anon SET search_path TO public, shared;
+ALTER ROLE authenticated SET search_path TO public, shared;
+
 -- --- SHARED SCHEMA TABLES (Global / Non-user specific) ---
 
 CREATE TABLE IF NOT EXISTS shared.ref_asset_class (code TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
