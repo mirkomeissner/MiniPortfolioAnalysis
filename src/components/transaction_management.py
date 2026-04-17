@@ -325,7 +325,6 @@ def render_import_preview_screen():
         
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
-                user_id = st.session_state.get("user_id")
                 asset_payloads = [{"isin": m_isin, "name": m_isin, "created_by": user_id} for m_isin in missing_isins]
                 try:
                     save_asset_static_data(asset_payloads) 
@@ -411,7 +410,7 @@ def render_import_preview_screen():
                     status.update(label="Import failed.", state="error")
 
         # 4. FINALIZE & SAVE SETTINGS
-        save_import_settings(user, acc_code, {
+        save_import_settings(user_id, acc_code, {
             "type_column": type_column, "type_mapping": type_mapping,
             "map_isin": map_isin, "map_date": map_date, "map_qty": map_qty,
             "map_settle_amt": map_s_amt, "map_settle_curr": map_s_cur, 
