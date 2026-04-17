@@ -54,7 +54,7 @@ VALUES
   ('B', 'Buy'), 
   ('S', 'Sell'), 
   ('TRFIN', 'Transfer-In'), 
-  ('STRFOUT', 'Transfer-Out'), 
+  ('TRFOUT', 'Transfer-Out'), 
   ('SPLIT', 'Split')
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
