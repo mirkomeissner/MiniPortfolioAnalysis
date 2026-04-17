@@ -451,7 +451,7 @@ def render_list_view():
 
     # --- 2. DATA RETRIEVAL ---
     raw_data = get_all_transactions()
-    if not data:
+    if not raw_data:
         st.info("No records found in transactions.")
         return
 
