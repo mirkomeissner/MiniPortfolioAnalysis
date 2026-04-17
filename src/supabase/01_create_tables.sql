@@ -34,16 +34,18 @@ CREATE TABLE IF NOT EXISTS shared.asset_static_data (
     country TEXT,
     closed_on DATE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    created_by TEXT,
+    created_by UUID,
     updated_at TIMESTAMPTZ,
-    updated_by TEXT,
+    updated_by UUID,
 
     CONSTRAINT fk_static_currency FOREIGN KEY (currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_price_source FOREIGN KEY (price_source_code) REFERENCES shared.ref_price_source(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_instrument_type FOREIGN KEY (instrument_type_code) REFERENCES shared.ref_instrument_type(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_asset_class FOREIGN KEY (asset_class_code) REFERENCES shared.ref_asset_class(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_region FOREIGN KEY (region_code) REFERENCES shared.ref_region(code) ON DELETE SET NULL,
-    CONSTRAINT fk_static_sector FOREIGN KEY (sector_code) REFERENCES shared.ref_sector(code) ON DELETE SET NULL
+    CONSTRAINT fk_static_sector FOREIGN KEY (sector_code) REFERENCES shared.ref_sector(code) ON DELETE SET NULL,
+    CONSTRAINT fk_static_created_by FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_static_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id) ON DELETE SET NULL
 );
 
 -- Mapping for countries to regions
