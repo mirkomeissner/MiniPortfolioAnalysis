@@ -1,27 +1,26 @@
--- ==========================================
--- RESET SCRIPT: drop all tables
--- ==========================================
+-- --- CLEANUP SCRIPT ---
+-- Drop tables in public schema
+DROP TABLE IF EXISTS public.daily_holdings;
+DROP TABLE IF EXISTS public.user_import_settings;
+DROP TABLE IF EXISTS public.transactions;
+DROP TABLE IF EXISTS public.accounts;
+DROP TABLE IF EXISTS public.user_secrets; 
+DROP TABLE IF EXISTS public.users;
 
--- 1. Drop "child" tables first (those that depend on other tables)
-DROP TABLE IF EXISTS daily_holdings CASCADE;
-DROP TABLE IF EXISTS asset_prices CASCADE;
-DROP TABLE IF EXISTS exchange_rates CASCADE;
-DROP TABLE IF EXISTS transactions CASCADE;
-DROP TABLE IF EXISTS user_import_settings CASCADE;
-DROP TABLE IF EXISTS country_region_mapping CASCADE;
+-- Drop tables in shared schema
+DROP TABLE IF EXISTS shared.exchange_rates;
+DROP TABLE IF EXISTS shared.asset_prices;
+DROP TABLE IF EXISTS shared.country_region_mapping;
+DROP TABLE IF EXISTS shared.asset_static_data;
+DROP TABLE IF EXISTS shared.ref_transaction_type;
+DROP TABLE IF EXISTS shared.ref_currencies;
+DROP TABLE IF EXISTS shared.ref_instrument_type;
+DROP TABLE IF EXISTS shared.ref_price_source;
+DROP TABLE IF EXISTS shared.ref_sector;
+DROP TABLE IF EXISTS shared.ref_region;
+DROP TABLE IF EXISTS shared.ref_asset_class;
 
--- 2. Drop "parent" tables
-DROP TABLE IF EXISTS asset_static_data CASCADE;
-DROP TABLE IF EXISTS accounts CASCADE;
-DROP TABLE IF EXISTS user_profiles CASCADE;
-
--- 3. Drop reference tables (Lookup tables)
-DROP TABLE IF EXISTS ref_transaction_type CASCADE;
-DROP TABLE IF EXISTS ref_asset_class CASCADE;
-DROP TABLE IF EXISTS ref_region CASCADE;
-DROP TABLE IF EXISTS ref_sector CASCADE;
-DROP TABLE IF EXISTS ref_price_source CASCADE;
-DROP TABLE IF EXISTS ref_instrument_type CASCADE;
-
--- Optional: Reset functions or views if you created any
--- DROP VIEW IF EXISTS portfolio_valuation_view;
+-- Drop schemas
+DROP SCHEMA IF EXISTS shared;
+-- Usually you don't drop public in Supabase, but for a clean state:
+-- DROP SCHEMA IF EXISTS public CASCADE;
