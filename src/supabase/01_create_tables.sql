@@ -32,10 +32,18 @@ CREATE TABLE IF NOT EXISTS ref_instrument_type (
   label TEXT NOT NULL
 );
 
+
+create table if not exists ref_currencies (
+  code char(3) primary key,
+  label text not null,      
+  created_at timestamptz default now()
+);
+
+
 CREATE TABLE IF NOT EXISTS asset_static_data (
   isin VARCHAR(12) PRIMARY KEY,
   name TEXT NOT NULL,
-  currency VARCHAR(3),
+  currency VARCHAR(3) REFERENCES ref_currencies(code),
   ticker TEXT,
 
   price_source TEXT REFERENCES ref_price_source(code),
@@ -91,6 +99,10 @@ CREATE TABLE IF NOT EXISTS transactions (
     
     CONSTRAINT fk_ref_type
         FOREIGN KEY (type_code) REFERENCES ref_transaction_type(code)
+        ON DELETE SET NULL,
+
+    CONSTRAINT fk_transaction_ref_currency
+        FOREIGN KEY (settle_currency) REFERENCES ref_currencies(code) 
         ON DELETE SET NULL,
 
     CONSTRAINT fk_transaction_isin

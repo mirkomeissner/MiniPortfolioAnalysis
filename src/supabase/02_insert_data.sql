@@ -50,8 +50,75 @@ ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 
 INSERT INTO ref_transaction_type (code, label)
-VALUES ('B', 'Buy'), ('S', 'Sell')
+VALUES 
+  ('B', 'Buy'), 
+  ('S', 'Sell'), 
+  ('TRFIN', 'Transfer-In'), 
+  ('STRFOUT', 'Transfer-Out'), 
+  ('SPLIT', 'Split')
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
+
+
+
+insert into ref_currencies (code, label)
+values 
+-- G10 Currencies (Most Traded)
+  ('USD', 'US Dollar'),
+  ('EUR', 'Euro'),
+  ('JPY', 'Japanese Yen'),
+  ('GBP', 'British Pound'),
+  ('GBX', 'Pence Sterling'), -- British minor unit (1/100 of GBP), often used in stock markets
+  ('CHF', 'Swiss Franc'),
+  ('AUD', 'Australian Dollar'),
+  ('CAD', 'Canadian Dollar'),
+  ('NZD', 'New Zealand Dollar'),
+  ('SEK', 'Swedish Krona'),
+  ('NOK', 'Norwegian Krone'),
+
+  -- European Currencies
+  ('DKK', 'Danish Krone'),
+  ('PLN', 'Polish Zloty'),
+  ('CZK', 'Czech Koruna'),
+  ('HUF', 'Hungarian Forint'),
+  ('RON', 'Romanian Leu'),
+  ('BGN', 'Bulgarian Lev'),
+  ('ISK', 'Icelandic Krona'),
+
+  -- Asian & Pacific Currencies
+  ('CNY', 'Chinese Yuan'),
+  ('HKD', 'Hong Kong Dollar'),
+  ('SGD', 'Singapore Dollar'),
+  ('KRW', 'South Korean Won'),
+  ('INR', 'Indian Rupee'),
+  ('THB', 'Thai Baht'),
+  ('IDR', 'Indonesian Rupiah'),
+  ('MYR', 'Malaysian Ringgit'),
+  ('PHP', 'Philippine Peso'),
+  ('TWD', 'New Taiwan Dollar'),
+  ('VND', 'Vietnamese Dong'),
+
+  -- Middle East & Africa
+  ('ILS', 'Israeli New Shekel'),
+  ('TRY', 'Turkish Lira'),
+  ('AED', 'UAE Dirham'),
+  ('SAR', 'Saudi Riyal'),
+  ('QAR', 'Qatari Rial'),
+  ('ZAR', 'South African Rand'),
+  ('EGP', 'Egyptian Pound'),
+
+  -- Americas
+  ('MXN', 'Mexican Peso'),
+  ('BRL', 'Brazilian Real'),
+  ('ARS', 'Argentine Peso'),
+  ('CLP', 'Chilean Peso'),
+  ('COP', 'Colombian Peso'),
+  ('PEN', 'Peruvian Sol'),
+
+  -- Others / Commodities
+  ('XAU', 'Gold (Troy Ounce)'),
+  ('XAG', 'Silver (Troy Ounce)'),
+  ('XPT', 'Platinum (Troy Ounce)')
+on conflict (code) do update set label = EXCLUDED.label;
 
 
 
