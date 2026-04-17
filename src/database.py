@@ -89,7 +89,7 @@ def get_all_assets_with_labels():
                     "Price Source": row.get("ref_price_source", {}).get("label") if row.get("ref_price_source") else None,
                     "Closed On": row.get("closed_on"),
                     "Created At": row.get("created_at"),
-                    "Created By": row.get("created_by", {}).get("username") if row.get("created_by") else "Unknown",
+                    "Created By": row.get("created_by", {}).get("username") if row.get("created_by") else None,
                     "Updated At": row.get("updated_at"),
                     "Updated By": row.get("updated_by", {}).get("username") if row.get("updated_by") else None
                 })
