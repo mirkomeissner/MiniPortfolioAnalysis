@@ -55,20 +55,21 @@ def map_yahoo_to_asset_class(quote_type, symbol_name=""):
 
 # --- 2. helper functions for UI ---
 
-def handle_save_request(row, isin):
-    def clean_code(val):
-        return val.split(" (")[0] if val and " (" in str(val) else val
 
+def handle_save_request(row, isin):
+    # Wir nutzen hier die extract_code Funktion aus deinen utils
+    # um sicherzustellen, dass nur 'EQU' statt 'EQU (Equity)' gespeichert wird.
+    
     asset_entry = {
         "isin": isin,
         "name": row["Name"],
         "currency": row["Currency"],
         "ticker": row["Ticker"],
-        "price_source": "YFN",
-        "instrument_type": clean_code(row["InstrumentType"]),
-        "asset_class_code": clean_code(row["AssetClass"]),
-        "region_code": clean_code(row["Region"]),
-        "sector_code": clean_code(row["Sector_GICS"]),
+        "price_source_code": "YFN",                # Korrigiert: _code
+        "instrument_type_code": extract_code(row["InstrumentType"]), # Korrigiert: _code + extract_code
+        "asset_class_code": extract_code(row["AssetClass"]),
+        "region_code": extract_code(row["Region"]),
+        "sector_code": extract_code(row["Sector_GICS"]),
         "industry": row["Industry"],
         "country": row["Country"],
         "created_by": st.session_state.get('user_name', 'System')
@@ -77,11 +78,16 @@ def handle_save_request(row, isin):
     try:
         save_asset_static_data(asset_entry)
         st.success(f"✅ {row['Ticker']} saved successfully!")
+        
+        # WICHTIG: Cache leeren, damit das neue Asset sofort in der Liste erscheint
         st.cache_data.clear()
+        
+        # Zurück zur Listenansicht
         st.session_state["view"] = "list" 
         st.rerun() 
     except Exception as e:
         st.error(f"Error saving data: {e}")
+
 
 def ticker_search_view():
     st.subheader("🔍 Search New Asset via ISIN")
