@@ -159,11 +159,11 @@ def ticker_search_view():
         st.subheader("1. Review & Edit Data")
         
         # Consistent column order: Raw columns placed before editable ones
-        if "Volume (Shares)" in df.columns:
+        if "Volume (avg 7d)" in df.columns:
             df = df.sort_values(by="Volume (avg 7d)", ascending=False)
             # cols = ["Volume (avg 7d)", "Ticker", "ISIN", "Price", "Currency", "Sector Raw", "Sector_GICS", "Type Raw", "InstrumentType"]
-            remaining_cols = [c for c in df.columns if c not in cols]
-            df = df[cols + remaining_cols]
+            # remaining_cols = [c for c in df.columns if c not in cols]
+            # df = df[cols + remaining_cols]
 
         column_config = {
             "ISIN": st.column_config.TextColumn("ISIN (Edit if empty)", disabled=False),
