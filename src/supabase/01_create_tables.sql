@@ -41,6 +41,16 @@ CREATE TABLE IF NOT EXISTS shared.ref_currencies (code CHAR(3) PRIMARY KEY, labe
 
 CREATE OR REPLACE VIEW public.ref_transaction_type AS SELECT code, label FROM shared.ref_transaction_type;
 
+CREATE TABLE IF NOT EXISTS shared.ref_transaction_logic (
+    transaction_type_code TEXT PRIMARY KEY,
+    quantity_sign SMALLINT, -- +1: abs(), -1: -abs(), 0: force NULL, NULL: as is
+    amount_sign SMALLINT,   -- +1: abs(), -1: -abs(), 0: force NULL, NULL: as is
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT fk_logic_transaction_type FOREIGN KEY (transaction_type_code) REFERENCES shared.ref_transaction_type(code) ON DELETE CASCADE
+);
+
+
+
 -- Global asset static data
 CREATE TABLE IF NOT EXISTS shared.asset_static_data (
     isin VARCHAR(12) PRIMARY KEY,
