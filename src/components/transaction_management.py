@@ -381,10 +381,10 @@ def render_import_preview_screen():
 
                     # Get transaction type code
                     type_label_full = type_mapping[row[type_column]]
-                    type_code = extract_code(type_label_full)
+                    transaction_type_code = extract_code(type_label_full)
                     
                     # Fetch logic rules from session state (loaded from shared.ref_transaction_logic)
-                    logic = st.session_state.get("type_logic_map", {}).get(type_code, {})
+                    logic = st.session_state.get("type_logic_map", {}).get(transaction_type_code, {})
                     q_logic = logic.get("quantity_sign") # 1, -1, 0, or None
                     a_logic = logic.get("amount_sign")   # 1, -1, 0, or None
 
@@ -446,7 +446,7 @@ def render_import_preview_screen():
                         "account_code": acc_code,
                         "isin": isin_val,
                         "date": db_date,
-                        "type_code": type_code,
+                        "transaction_type_code": transaction_type_code,
                         "quantity": qty,
                         "settle_amount": s_amount,
                         "settle_currency": s_curr,
@@ -523,7 +523,7 @@ def render_list_view():
         processed_row["account_label"] = acc_info.get("description") if acc_info and acc_info.get("description") else row.get("account_code")
 
         # Labels aus den Joins extrahieren
-        processed_row["type_label"] = row.get("ref_transaction_type", {}).get("label") if row.get("ref_transaction_type") else row.get("type_code")
+        processed_row["type_label"] = row.get("ref_transaction_type", {}).get("label") if row.get("ref_transaction_type") else row.get("transaction_type_code")
         processed_row["asset_name"] = row.get("asset_static_data", {}).get("name") if row.get("asset_static_data") else row.get("isin")
         processed_data.append(processed_row)
 
@@ -664,7 +664,7 @@ def render_transaction_form():
                 "account_code": extract_code(account_selection),
                 "isin": clean_isin,
                 "date": db_date_str,
-                "type_code": extract_code(type_selection),
+                "transaction_type_code": extract_code(type_selection),
                 "quantity": quantity,
                 "settle_amount": s_amount,
                 "settle_currency": s_curr,
