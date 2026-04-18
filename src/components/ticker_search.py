@@ -97,32 +97,46 @@ def ticker_search_view():
     st.subheader("🔍 Search New Asset")
     ensure_reference_data()
 
-    search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. AU000000DRO2")
+    # Flexible search input for ISIN, Ticker, or Name
+    search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. Apple, AAPL or AU000000DRO2")
     
     if st.button("Search Asset") and search_input:
         with st.spinner("Fetching data from Yahoo Finance..."):
             try:
+                # 1. Execute search via Yahoo API
                 search_results = yf.Search(search_input).quotes
                 if not search_results:
-                    st.warning("No results found.")
+                    st.warning("No results found for this search term.")
                 else:
                     raw_data = []
                     for res in search_results:
                         symbol = res.get("symbol")
                         t = yf.Ticker(symbol)
-                        info = t.info
                         
-                        # --- Improved ISIN detection ---
-                        found_isin = info.get("isin") or res.get("isin")
+                        # 2. Trigger history call FIRST (via volume helper) 
+                        # This often populates the hidden ISIN field in the ticker object
+                        avg_vol_7d = get_average_volume_7d(t)
                         
-                        # If Yahoo doesn't return an ISIN but the user's input looks like one, 
-                        # we map it to the results found.
+                        # 3. Comprehensive ISIN extraction
+                        # Priority: Ticker Property > Ticker Info > Search Result Metadata
+                        found_isin = t.isin if isinstance(t.isin, str) and len(t.isin) == 12 else None
+                        
+                        if not found_isin or found_isin == '-':
+                            info = t.info
+                            found_isin = info.get("isin") or res.get("isin")
+                        else:
+                            info = t.info # Ensure info is loaded if t.isin was successful
+
+                        # 4. Logical Mapping: If user searched for ISIN but Yahoo returned None, 
+                        # we can safely assume the found ticker belongs to that ISIN
                         if (not found_isin or found_isin == '-') and len(search_input) == 12:
                             found_isin = search_input.upper()
                         
+                        # Final fallback to symbol to avoid empty fields
                         if not found_isin or found_isin == '-':
                             found_isin = symbol
                         
+                        # Extract metadata for the table
                         name = info.get("longName") or res.get("longname") or "Unknown"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
                         raw_sector = info.get("sector", "Unknown")
@@ -139,8 +153,6 @@ def ticker_search_view():
                         
                         i_code = map_yahoo_to_instrument_type(raw_type, name)
                         type_val = next((s for s in st.session_state['opt_type'] if s.startswith(i_code)), i_code)
-
-                        avg_vol_7d = get_average_volume_7d(t)
 
                         raw_data.append({
                             "ISIN": found_isin,
@@ -166,13 +178,15 @@ def ticker_search_view():
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
         
+        # Sort by volume and order columns (Volume, Ticker, ISIN first)
         if "Volume 7 days" in df.columns:
             df = df.sort_values(by="Volume 7 days", ascending=False, na_position="last")
-            ordered_cols = ["Volume 7 days", "Ticker", "ISIN"] + [col for col in df.columns if col not in ["Volume 7 days", "Ticker", "ISIN"]]
+            cols = ["Volume 7 days", "Ticker", "ISIN"]
+            ordered_cols = cols + [c for c in df.columns if c not in cols]
             df = df[ordered_cols]
 
         column_config = {
-            "ISIN": st.column_config.TextColumn("ISIN", disabled=False), # Enabled for manual override
+            "ISIN": st.column_config.TextColumn("ISIN", disabled=False), # Editable in case Yahoo fails
             "Volume 7 days": st.column_config.NumberColumn("Volume 7 days", disabled=True),
             "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
             "Name": st.column_config.TextColumn("Name"),
@@ -204,10 +218,11 @@ def ticker_search_view():
 
         if selected_ticker:
             selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
+            
             if st.button("Save to Database", type="primary", use_container_width=True):
+                # Using the ISIN from the edited dataframe row
                 handle_save_request(selected_row, selected_row["ISIN"])
 
-        
 
 
 
