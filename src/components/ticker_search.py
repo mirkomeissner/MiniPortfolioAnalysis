@@ -97,6 +97,7 @@ def ticker_search_view():
     st.subheader("🔍 Search New Asset")
     ensure_reference_data()
 
+    # Flexible search input
     search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. AU000000DRO2 or Apple")
     
     if st.button("Search Asset") and search_input:
@@ -125,12 +126,12 @@ def ticker_search_view():
                         
                         # --- CURRENCY & PRICE ---
                         currency = info.get("currency", "Unknown")
-                        # currentPrice is the standard field for most assets
                         current_price = info.get("currentPrice") or info.get("navPrice") or info.get("regularMarketPrice")
                         
                         # --- METADATA ---
                         name = info.get("longName") or res.get("longname") or "Unknown"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
+                        raw_sector = info.get("sector", "Unknown")
                         
                         raw_data.append({
                             "ISIN": found_isin,
@@ -141,9 +142,11 @@ def ticker_search_view():
                             "Exchange": info.get("exchange", "Unknown"),
                             "Volume (Shares)": get_average_volume_7d(t),
                             "Industry": info.get("industry", "Unknown"),
-                            "Sector_GICS": next((s for s in st.session_state['opt_gics'] if s.startswith(str(map_yahoo_to_ref(info.get("sector", ""))))), "Unknown"),
+                            "Sector Raw": raw_sector, # Back in the data
+                            "Sector_GICS": next((s for s in st.session_state['opt_gics'] if s.startswith(str(map_yahoo_to_ref(raw_sector)))) , "Unknown"),
                             "Country": info.get("country", "Unknown"),
                             "Region": next((s for s in st.session_state['opt_region'] if s.startswith(st.session_state['db_region_map'].get(info.get("country"), "GLO"))), "GLO"),
+                            "Type Raw": raw_type, # Back in the data
                             "InstrumentType": next((s for s in st.session_state['opt_type'] if s.startswith(map_yahoo_to_instrument_type(raw_type, name))), "STO"),
                             "AssetClass": next((s for s in st.session_state['opt_asset'] if s.startswith(map_yahoo_to_asset_class(raw_type, name))), "EQU")
                         })
@@ -155,22 +158,25 @@ def ticker_search_view():
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
         
-        # Optimized column order
+        # Consistent column order: Raw columns placed before editable ones
         if "Volume (Shares)" in df.columns:
             df = df.sort_values(by="Volume (Shares)", ascending=False)
-            cols = ["Volume (Shares)", "Ticker", "ISIN", "Price", "Currency"]
-            df = df[cols + [c for c in df.columns if c not in cols]]
+            cols = ["Volume (Shares)", "Ticker", "ISIN", "Price", "Currency", "Sector Raw", "Sector_GICS", "Type Raw", "InstrumentType"]
+            remaining_cols = [c for c in df.columns if c not in cols]
+            df = df[cols + remaining_cols]
 
         column_config = {
             "ISIN": st.column_config.TextColumn("ISIN (Edit if empty)", disabled=False),
             "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
-            "Price": st.column_config.NumberColumn("Current Price", format="%.2f", disabled=True),
-            "Currency": st.column_config.TextColumn("Currency", disabled=True),
+            "Price": st.column_config.NumberColumn("Price", format="%.2f", disabled=True),
+            "Currency": st.column_config.TextColumn("Curr", disabled=True),
             "Volume (Shares)": st.column_config.NumberColumn("Vol (7d Avg)", disabled=True),
-            "Sector_GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics']),
-            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region']),
-            "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type']),
-            "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'])
+            "Sector Raw": st.column_config.TextColumn("Sector Raw", disabled=True),
+            "Sector_GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics'], required=True),
+            "Type Raw": st.column_config.TextColumn("Type Raw", disabled=True),
+            "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type'], required=True),
+            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
+            "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'], required=True)
         }
 
         edited_df = st.data_editor(df, column_config=column_config, use_container_width=True, hide_index=True, key="ticker_editor")
@@ -185,6 +191,7 @@ def ticker_search_view():
                 st.error("Please enter a valid ISIN in the table above before saving.")
             else:
                 handle_save_request(row, row["ISIN"])
+
 
     
 
