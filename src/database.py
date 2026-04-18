@@ -227,6 +227,33 @@ def get_import_settings(user_id, account_code):
         .execute()
     return response.data[0]["mapping_config"] if response.data else None
 
+
+@st.cache_data(ttl=600)
+def get_transaction_type_logic():
+    """
+    Fetches the sign logic (1, -1, 0, NULL) for each transaction type 
+    from the shared schema.
+    """
+    try:
+        # Explicitly target the 'shared' schema
+        res = supabase.schema("shared").table("ref_transaction_logic") \
+            .select("transaction_type_code, quantity_sign, amount_sign") \
+            .execute()
+        
+        # We transform the list into a dictionary for O(1) lookup speed in the loop
+        if res.data:
+            return {
+                item['transaction_type_code']: {
+                    'quantity_sign': item['quantity_sign'],
+                    'amount_sign': item['amount_sign']
+                } for item in res.data
+            }
+        return {}
+    except Exception as e:
+        st.error(f"Error loading transaction logic from shared schema: {e}")
+        return {}
+
+
 def save_import_settings(user_id, account_code, config):
     """Saves or updates the mapping configuration."""
     payload = {
