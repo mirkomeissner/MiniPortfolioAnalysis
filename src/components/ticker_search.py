@@ -92,6 +92,7 @@ def handle_save_request(row, isin):
         st.error(f"Error saving data: {e}")
 
 
+
 def ticker_search_view():
     st.subheader("🔍 Search New Asset")
     ensure_reference_data()
@@ -106,7 +107,6 @@ def ticker_search_view():
                     st.warning("No results found.")
                 else:
                     raw_data = []
-                    # Determine if the input ITSELF is a valid ISIN
                     input_is_isin = len(search_input) == 12 and search_input[0:2].isalpha()
                     
                     for res in search_results:
@@ -119,28 +119,33 @@ def ticker_search_view():
                         if input_is_isin:
                             found_isin = search_input.upper()
                         else:
-                            # Try to get it from Yahoo, but only if it's NOT the symbol itself
                             y_isin = res.get('isin') or info.get('isin')
                             if y_isin and y_isin != symbol and y_isin != '-':
                                 found_isin = y_isin
+                        
+                        # --- CURRENCY & PRICE ---
+                        currency = info.get("currency", "Unknown")
+                        # currentPrice is the standard field for most assets
+                        current_price = info.get("currentPrice") or info.get("navPrice") or info.get("regularMarketPrice")
                         
                         # --- METADATA ---
                         name = info.get("longName") or res.get("longname") or "Unknown"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
                         
                         raw_data.append({
-                            "ISIN": found_isin, # Will be empty if Yahoo has no data, allowing manual entry
+                            "ISIN": found_isin,
                             "Ticker": symbol,
                             "Name": name,
+                            "Price": current_price,
+                            "Currency": currency,
                             "Exchange": info.get("exchange", "Unknown"),
-                            "Currency": info.get("currency", "Unknown"),
+                            "Volume (Shares)": get_average_volume_7d(t),
                             "Industry": info.get("industry", "Unknown"),
                             "Sector_GICS": next((s for s in st.session_state['opt_gics'] if s.startswith(str(map_yahoo_to_ref(info.get("sector", ""))))), "Unknown"),
                             "Country": info.get("country", "Unknown"),
                             "Region": next((s for s in st.session_state['opt_region'] if s.startswith(st.session_state['db_region_map'].get(info.get("country"), "GLO"))), "GLO"),
                             "InstrumentType": next((s for s in st.session_state['opt_type'] if s.startswith(map_yahoo_to_instrument_type(raw_type, name))), "STO"),
-                            "AssetClass": next((s for s in st.session_state['opt_asset'] if s.startswith(map_yahoo_to_asset_class(raw_type, name))), "EQU"),
-                            "Volume 7 days": get_average_volume_7d(t)
+                            "AssetClass": next((s for s in st.session_state['opt_asset'] if s.startswith(map_yahoo_to_asset_class(raw_type, name))), "EQU")
                         })
                     st.session_state["search_results_df"] = pd.DataFrame(raw_data)
             except Exception as e:
@@ -150,17 +155,18 @@ def ticker_search_view():
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
         
-        # Sort by volume
-        if "Volume 7 days" in df.columns:
-            df = df.sort_values(by="Volume 7 days", ascending=False)
-            cols = ["Volume 7 days", "Ticker", "ISIN"]
+        # Optimized column order
+        if "Volume (Shares)" in df.columns:
+            df = df.sort_values(by="Volume (Shares)", ascending=False)
+            cols = ["Volume (Shares)", "Ticker", "ISIN", "Price", "Currency"]
             df = df[cols + [c for c in df.columns if c not in cols]]
 
-        # IMPORTANT: ISIN is now editable (disabled=False)
         column_config = {
-            "ISIN": st.column_config.TextColumn("ISIN (Edit if empty)", disabled=False, help="Enter ISIN manually if Yahoo missed it"),
+            "ISIN": st.column_config.TextColumn("ISIN (Edit if empty)", disabled=False),
             "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
-            "Volume 7 days": st.column_config.NumberColumn("Volume 7 days", disabled=True),
+            "Price": st.column_config.NumberColumn("Current Price", format="%.2f", disabled=True),
+            "Currency": st.column_config.TextColumn("Currency", disabled=True),
+            "Volume (Shares)": st.column_config.NumberColumn("Vol (7d Avg)", disabled=True),
             "Sector_GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics']),
             "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region']),
             "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type']),
@@ -180,6 +186,7 @@ def ticker_search_view():
             else:
                 handle_save_request(row, row["ISIN"])
 
+    
 
 
     
