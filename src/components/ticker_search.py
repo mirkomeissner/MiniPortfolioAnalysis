@@ -91,7 +91,6 @@ def handle_save_request(row, isin):
     except Exception as e:
         st.error(f"Error saving data: {e}")
 
-
 def ticker_search_view():
     st.subheader("🔍 Search New Asset")
     ensure_reference_data()
@@ -101,36 +100,53 @@ def ticker_search_view():
     if st.button("Search Asset") and search_input:
         with st.spinner("Fetching data from Yahoo Finance..."):
             try:
-                search_results = yf.Search(search_input).quotes
+                # 1. Broad Search
+                search = yf.Search(search_input, max_results=8)
+                search_results = search.quotes
+                
                 if not search_results:
-                    st.warning("No results found for this search term.")
+                    st.warning("No results found.")
                 else:
                     raw_data = []
                     for res in search_results:
                         symbol = res.get("symbol")
                         t = yf.Ticker(symbol)
+                        info = t.info
                         
-                        # --- ISIN FETCH LOGIC ---
-                        # 1. Try dedicated .isin property (most reliable but extra request)
-                        # 2. Try .info dictionary
-                        # 3. Try search result dictionary
-                        # 4. Fallback to symbol
-                        try:
-                            found_isin = t.isin
-                        except:
-                            found_isin = None
-                            
+                        # --- ROBUST ISIN EXTRACTION ---
+                        # We try 4 different ways to find the ISIN
+                        found_isin = None
+                        
+                        # Way A: Check if the search result itself has it (often hidden here)
+                        found_isin = res.get('isin')
+                        
+                        # Way B: Check the ticker property directly
+                        if not found_isin:
+                            try:
+                                found_isin = t.isin
+                                if isinstance(found_isin, dict): # Sometimes returns a dict
+                                    found_isin = None 
+                            except:
+                                found_isin = None
+
+                        # Way C: Check the info dictionary
                         if not found_isin or found_isin == '-':
-                            info = t.info
-                            found_isin = info.get("isin") or res.get("isin") or symbol
-                        else:
-                            info = t.info # We still need info for the other fields
+                            found_isin = info.get("isin")
+
+                        # Way D: Final Fallback - use the search input if it looks like an ISIN
+                        if (not found_isin or found_isin == '-') and len(search_input) == 12:
+                             # If user typed an ISIN and we found a matching ticker, it's likely this ISIN
+                            found_isin = search_input.upper()
                         
+                        # If all fails, use the Ticker (so the app doesn't crash)
+                        if not found_isin or found_isin == '-':
+                            found_isin = symbol
+
+                        # --- REST OF YOUR LOGIC ---
                         name = info.get("longName") or res.get("longname") or "Unknown"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
                         raw_sector = info.get("sector", "Unknown")
                         
-                        # Mapping to Internal Codes
                         a_code = map_yahoo_to_asset_class(raw_type, name)
                         asset_val = next((s for s in st.session_state['opt_asset'] if s.startswith(a_code)), a_code)
                         
@@ -165,6 +181,7 @@ def ticker_search_view():
             except Exception as e:
                 st.error(f"Search failed: {e}")
 
+    # ... (Rest of your UI code: sorting, data_editor, and save button) ...
     if "search_results_df" in st.session_state:
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
@@ -175,7 +192,7 @@ def ticker_search_view():
             df = df[ordered_cols]
 
         column_config = {
-            "ISIN": st.column_config.TextColumn("ISIN", disabled=True),
+            "ISIN": st.column_config.TextColumn("ISIN", disabled=False), # Set to False so you can manually fix if needed
             "Volume 7 days": st.column_config.NumberColumn("Volume 7 days", disabled=True),
             "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
             "Name": st.column_config.TextColumn("Name"),
@@ -207,11 +224,12 @@ def ticker_search_view():
 
         if selected_ticker:
             selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
-            
             if st.button("Save to Database", type="primary", use_container_width=True):
                 handle_save_request(selected_row, selected_row["ISIN"])
 
-    
+
+
+
 
     
 
