@@ -92,88 +92,55 @@ def handle_save_request(row, isin):
         st.error(f"Error saving data: {e}")
 
 
-
 def ticker_search_view():
     st.subheader("🔍 Search New Asset")
     ensure_reference_data()
 
-    # Flexible search input
     search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. AU000000DRO2 or Apple")
     
     if st.button("Search Asset") and search_input:
         with st.spinner("Fetching data from Yahoo Finance..."):
             try:
-                # 1. Broad Search via Yahoo API
-                search = yf.Search(search_input, max_results=8)
-                search_results = search.quotes
-                
+                search_results = yf.Search(search_input).quotes
                 if not search_results:
                     st.warning("No results found.")
                 else:
                     raw_data = []
+                    # Determine if the input ITSELF is a valid ISIN
+                    input_is_isin = len(search_input) == 12 and search_input[0:2].isalpha()
+                    
                     for res in search_results:
                         symbol = res.get("symbol")
                         t = yf.Ticker(symbol)
-                        
-                        # Trigger history to wake up metadata and get volume
-                        avg_vol_7d = get_average_volume_7d(t)
                         info = t.info
-
-                        # --- ROBUST ISIN EXTRACTION LOGIC ---
-                        found_isin = None
                         
-                        # STEP A: If user entered a valid ISIN, we trust it 100% 
-                        # (ISINs are 12 chars, starting with 2 letters)
-                        if len(search_input) == 12 and search_input[0:2].isalpha():
+                        # --- CLEAN ISIN LOGIC ---
+                        found_isin = ""
+                        if input_is_isin:
                             found_isin = search_input.upper()
+                        else:
+                            # Try to get it from Yahoo, but only if it's NOT the symbol itself
+                            y_isin = res.get('isin') or info.get('isin')
+                            if y_isin and y_isin != symbol and y_isin != '-':
+                                found_isin = y_isin
                         
-                        # STEP B: If not an ISIN search, try to get it from Yahoo's metadata
-                        if not found_isin:
-                            # Try the search result object first
-                            found_isin = res.get('isin')
-                            # Then try the ticker object (property or info)
-                            if not found_isin or found_isin == '-':
-                                try:
-                                    found_isin = t.isin if isinstance(t.isin, str) else info.get('isin')
-                                except:
-                                    found_isin = info.get('isin')
-
-                        # STEP C: Final fallback to Symbol
-                        if not found_isin or found_isin == '-':
-                            found_isin = symbol
-
-                        # --- METADATA MAPPING ---
+                        # --- METADATA ---
                         name = info.get("longName") or res.get("longname") or "Unknown"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
-                        raw_sector = info.get("sector", "Unknown")
                         
-                        a_code = map_yahoo_to_asset_class(raw_type, name)
-                        asset_val = next((s for s in st.session_state['opt_asset'] if s.startswith(a_code)), a_code)
-                        
-                        g_code = map_yahoo_to_ref(raw_sector)
-                        gics_val = next((s for s in st.session_state['opt_gics'] if s.startswith(str(g_code))), str(g_code))
-                        
-                        r_code = st.session_state['db_region_map'].get(info.get("country"), "GLO")
-                        reg_val = next((s for s in st.session_state['opt_region'] if s.startswith(r_code)), r_code)
-                        
-                        i_code = map_yahoo_to_instrument_type(raw_type, name)
-                        type_val = next((s for s in st.session_state['opt_type'] if s.startswith(i_code)), i_code)
-
                         raw_data.append({
-                            "ISIN": found_isin,
-                            "Volume 7 days": avg_vol_7d,
+                            "ISIN": found_isin, # Will be empty if Yahoo has no data, allowing manual entry
                             "Ticker": symbol,
                             "Name": name,
                             "Exchange": info.get("exchange", "Unknown"),
                             "Currency": info.get("currency", "Unknown"),
                             "Industry": info.get("industry", "Unknown"),
-                            "Sector Raw": raw_sector,
-                            "Sector_GICS": gics_val,
+                            "Sector_GICS": next((s for s in st.session_state['opt_gics'] if s.startswith(str(map_yahoo_to_ref(info.get("sector", ""))))), "Unknown"),
                             "Country": info.get("country", "Unknown"),
-                            "Region": reg_val,
-                            "Type Raw": raw_type,
-                            "InstrumentType": type_val,
-                            "AssetClass": asset_val
+                            "Region": next((s for s in st.session_state['opt_region'] if s.startswith(st.session_state['db_region_map'].get(info.get("country"), "GLO"))), "GLO"),
+                            "InstrumentType": next((s for s in st.session_state['opt_type'] if s.startswith(map_yahoo_to_instrument_type(raw_type, name))), "STO"),
+                            "AssetClass": next((s for s in st.session_state['opt_asset'] if s.startswith(map_yahoo_to_asset_class(raw_type, name))), "EQU"),
+                            "Volume 7 days": get_average_volume_7d(t)
                         })
                     st.session_state["search_results_df"] = pd.DataFrame(raw_data)
             except Exception as e:
@@ -183,51 +150,35 @@ def ticker_search_view():
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
         
-        # Sort and order columns
+        # Sort by volume
         if "Volume 7 days" in df.columns:
-            df = df.sort_values(by="Volume 7 days", ascending=False, na_position="last")
+            df = df.sort_values(by="Volume 7 days", ascending=False)
             cols = ["Volume 7 days", "Ticker", "ISIN"]
-            ordered_cols = cols + [c for c in df.columns if c not in cols]
-            df = df[ordered_cols]
+            df = df[cols + [c for c in df.columns if c not in cols]]
 
+        # IMPORTANT: ISIN is now editable (disabled=False)
         column_config = {
-            "ISIN": st.column_config.TextColumn("ISIN", disabled=False), # Enabled so you can correct it manually
-            "Volume 7 days": st.column_config.NumberColumn("Volume 7 days", disabled=True),
+            "ISIN": st.column_config.TextColumn("ISIN (Edit if empty)", disabled=False, help="Enter ISIN manually if Yahoo missed it"),
             "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
-            "Name": st.column_config.TextColumn("Name"),
-            "Exchange": st.column_config.TextColumn("Exchange"),
-            "Currency": st.column_config.TextColumn("Currency"),
-            "Industry": st.column_config.TextColumn("Industry"),
-            "Sector Raw": st.column_config.TextColumn("Sector Raw", disabled=True),
-            "Sector_GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics'], required=True),
-            "Country": st.column_config.TextColumn("Country"),
-            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
-            "Type Raw": st.column_config.TextColumn("Type Raw", disabled=True),
-            "InstrumentType": st.column_config.SelectboxColumn("Instrument Type", options=st.session_state['opt_type'], required=True),
-            "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'], required=True)
+            "Volume 7 days": st.column_config.NumberColumn("Volume 7 days", disabled=True),
+            "Sector_GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics']),
+            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region']),
+            "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type']),
+            "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'])
         }
 
-        edited_df = st.data_editor(
-            df,
-            column_config=column_config,
-            use_container_width=True,
-            hide_index=True,
-            key="ticker_editor"
-        )
+        edited_df = st.data_editor(df, column_config=column_config, use_container_width=True, hide_index=True, key="ticker_editor")
 
         st.markdown("---")
-        st.subheader("2. Select Ticker for Import")
-        
-        ticker_options = edited_df["Ticker"].tolist()
-        selected_ticker = st.selectbox("Which ticker would you like to save?", options=ticker_options)
+        st.subheader("2. Save Selection")
+        selected_ticker = st.selectbox("Select ticker to save:", options=edited_df["Ticker"].tolist())
 
-        if selected_ticker:
-            selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
-            if st.button("Save to Database", type="primary", use_container_width=True):
-                # We use the ISIN directly from the table row
-                handle_save_request(selected_row, selected_row["ISIN"])
-        
-
+        if selected_ticker and st.button("Save to Database", type="primary"):
+            row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
+            if not row["ISIN"] or len(row["ISIN"]) < 5:
+                st.error("Please enter a valid ISIN in the table above before saving.")
+            else:
+                handle_save_request(row, row["ISIN"])
 
 
 
