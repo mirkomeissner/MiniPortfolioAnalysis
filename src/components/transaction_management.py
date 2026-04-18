@@ -164,40 +164,9 @@ def render_import_preview_screen():
 
     # --- SECTION 2: ADVANCED FILTERING ---
     st.subheader("2. Filter Rows")
-    with st.expander("🛠 Advanced Query Builder", expanded=False):
-        logic_mode = st.radio("Logic Mode", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True)
-        fc1, fc2 = st.columns([1, 4])
-        if fc1.button("➕ Add Rule"):
-            st.session_state["import_filter_rules"].append({"column": csv_columns[0], "value": []})
-            st.rerun()
-        if fc2.button("🗑 Clear All"):
-            st.session_state["import_filter_rules"] = []
-            st.rerun()
-
-        active_filters = []
-        for i, rule in enumerate(st.session_state["import_filter_rules"]):
-            r1, r2, r3 = st.columns([2, 3, 0.5])
-            sel_col = r1.selectbox(f"Col {i}", csv_columns, 
-                                   index=csv_columns.index(rule["column"]) if rule["column"] in csv_columns else 0,
-                                   key=f"fcol_{i}")
-            st.session_state["import_filter_rules"][i]["column"] = sel_col
-            opts = sorted(df_raw[sel_col].dropna().unique().astype(str).tolist())
-            sel_val = r2.multiselect(f"Values {i}", opts, 
-                                     default=rule["value"] if all(v in opts for v in rule["value"]) else [],
-                                     key=f"fval_{i}")
-            st.session_state["import_filter_rules"][i]["value"] = sel_val
-            if sel_val: active_filters.append(df_raw[sel_col].astype(str).isin(sel_val))
-            if r3.button("❌", key=f"frem_{i}"):
-                st.session_state["import_filter_rules"].pop(i)
-                st.rerun()
-
-    filtered_df = df_raw.copy()
-    if active_filters:
-        mask = active_filters[0]
-        for m in active_filters[1:]:
-            mask = (mask & m) if logic_mode == "Match ALL (AND)" else (mask | m)
-        filtered_df = df_raw[mask]
-
+    
+    filtered_df = apply_advanced_filters(df_raw, session_prefix="import_preview")
+    
     # DATA EDITOR
     edited_df = st.data_editor(
         filtered_df,
