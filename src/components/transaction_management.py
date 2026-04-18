@@ -397,10 +397,15 @@ def render_import_preview_screen():
                         else:                 qty = raw_qty
                         
                         # Amount Logic: 1=Positive, -1=Negative, 0=NULL, None=As Is
-                        if a_logic == 1:      s_amount = abs(raw_amt)
-                        elif a_logic == -1:   s_amount = -abs(raw_amt)
-                        elif a_logic == 0:    s_amount = None
-                        else:                 s_amount = raw_amt
+                        if a_logic == 1:      
+                            s_amount = abs(raw_amt)
+                        elif a_logic == -1:   
+                            s_amount = -abs(raw_amt)
+                        elif a_logic == 0:    
+                            s_amount = None                  
+                            s_curr = None
+                        else:                 
+                            s_amount = raw_amt
                     else:
                         qty = raw_qty
                         s_amount = raw_amt
@@ -409,7 +414,7 @@ def render_import_preview_screen():
                     amt_eur = None
                     settle_fx = None
                     
-                    # Only calculate currency values if s_amount is not forced to NULL
+                    # Calculation only proceeds if s_amount is not None
                     if s_amount is not None:
                         if s_curr == "EUR":
                             amt_eur = s_amount
@@ -418,13 +423,12 @@ def render_import_preview_screen():
                             # 1. Check for manual EUR column in CSV
                             if map_eur != "<Not in CSV>" and pd.notna(row[map_eur]):
                                 val_eur = abs(float(row[map_eur]))
-                                # Force EUR sign to follow Settle Amount sign
                                 amt_eur = -val_eur if s_amount < 0 else val_eur
                             # 2. Fallback to FX Rate column
                             elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]) and float(row[map_fx]) != 0:
                                 amt_eur = s_amount / float(row[map_fx])
                             
-                            # Derive missing FX rate for database consistency
+                            # Derive FX rate
                             if amt_eur and amt_eur != 0:
                                 settle_fx = abs(s_amount / amt_eur)
                             elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]):
