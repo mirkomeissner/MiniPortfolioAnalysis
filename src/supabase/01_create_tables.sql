@@ -2,17 +2,6 @@
 CREATE SCHEMA IF NOT EXISTS shared;
 CREATE SCHEMA IF NOT EXISTS public;
 
-GRANT USAGE ON SCHEMA shared TO anon, authenticated, service_role;
-GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
-
-GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
-GRANT INSERT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
-GRANT UPDATE ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
-
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT INSERT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT UPDATE ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-
 -- --- create user table first ---
 
 -- Central User Table (Profile Data)
@@ -40,6 +29,16 @@ CREATE TABLE IF NOT EXISTS shared.ref_transaction_type (code TEXT PRIMARY KEY, l
 CREATE TABLE IF NOT EXISTS shared.ref_currencies (code CHAR(3) PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
 
 CREATE OR REPLACE VIEW public.ref_transaction_type AS SELECT code, label FROM shared.ref_transaction_type;
+
+CREATE TABLE IF NOT EXISTS shared.ref_transaction_logic (
+    transaction_type_code TEXT PRIMARY KEY,
+    quantity_sign SMALLINT, -- +1: abs(), -1: -abs(), 0: force NULL, NULL: as is
+    amount_sign SMALLINT,   -- +1: abs(), -1: -abs(), 0: force NULL, NULL: as is
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT fk_logic_transaction_type FOREIGN KEY (transaction_type_code) REFERENCES shared.ref_transaction_type(code) ON DELETE CASCADE
+);
+
+
 
 -- Global asset static data
 CREATE TABLE IF NOT EXISTS shared.asset_static_data (
@@ -140,7 +139,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     account_code TEXT NOT NULL,
     isin VARCHAR(12),
     date DATE DEFAULT CURRENT_DATE,
-    type_code TEXT,
+    transaction_type_code TEXT,
     quantity NUMERIC(20, 8),
     settle_amount NUMERIC(20, 8),
     settle_currency VARCHAR(3),
@@ -151,7 +150,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     
     PRIMARY KEY (user_id, id),
     CONSTRAINT fk_transactions_user FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE,
-    CONSTRAINT fk_ref_type FOREIGN KEY (type_code) REFERENCES shared.ref_transaction_type(code) ON DELETE SET NULL,
+    CONSTRAINT fk_ref_type FOREIGN KEY (transaction_type_code) REFERENCES shared.ref_transaction_type(code) ON DELETE SET NULL,
     CONSTRAINT fk_transaction_ref_currency FOREIGN KEY (settle_currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL,
     CONSTRAINT fk_transaction_isin FOREIGN KEY (isin) REFERENCES shared.asset_static_data(isin) ON DELETE SET NULL,
     CONSTRAINT fk_accounts FOREIGN KEY (user_id, account_code) REFERENCES public.accounts(user_id, account_code) ON DELETE CASCADE
@@ -179,3 +178,18 @@ CREATE TABLE IF NOT EXISTS public.daily_holdings (
     CONSTRAINT fk_daily_holdings_isin FOREIGN KEY (isin) REFERENCES shared.asset_static_data(isin) ON DELETE CASCADE
 );
 CREATE INDEX idx_daily_holdings_lookup ON public.daily_holdings(user_id, holding_date);
+
+
+
+-- --- GRANTS ---
+
+GRANT USAGE ON SCHEMA shared TO anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+
+GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+GRANT INSERT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+GRANT UPDATE ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT INSERT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT UPDATE ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;

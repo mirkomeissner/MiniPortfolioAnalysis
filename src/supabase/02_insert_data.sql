@@ -58,6 +58,15 @@ VALUES
   ('SPLIT', 'Split')
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
+INSERT INTO shared.ref_transaction_logic (transaction_type_code, quantity_sign, amount_sign) VALUES
+('B',       1, -1),  -- Qty pos, Amount neg
+('S',      -1,  1),  -- Qty neg, Amount pos
+('TRFIN',   1,  0),  -- Qty pos, Amount NULL
+('TRFOUT', -1,  0),  -- Qty neg, Amount NULL
+('SPLIT', NULL, 0)   -- Qty AS IS, Amount NULL
+ON CONFLICT (transaction_type_code) DO UPDATE 
+SET quantity_sign = EXCLUDED.quantity_sign, 
+    amount_sign = EXCLUDED.amount_sign;
 
 
 insert into shared.ref_currencies (code, label)

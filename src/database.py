@@ -111,7 +111,7 @@ def get_all_transactions():
         "account_code, "
         "isin, "
         "date, "
-        "type_code, "
+        "transaction_type_code, "
         "quantity, "
         "settle_amount, "
         "settle_currency, "
@@ -226,6 +226,30 @@ def get_import_settings(user_id, account_code):
         .eq("account_code", account_code)\
         .execute()
     return response.data[0]["mapping_config"] if response.data else None
+
+
+@st.cache_data(ttl=600)
+def get_transaction_type_logic():
+    try:
+        res = supabase.schema("shared").table("ref_transaction_logic") \
+            .select("transaction_type_code, quantity_sign, amount_sign") \
+            .execute()
+                
+        if res.data:
+            result_map = {
+                item['transaction_type_code']: {
+                    'quantity_sign': item['quantity_sign'],
+                    'amount_sign': item['amount_sign']
+                } for item in res.data
+            }
+            return result_map
+            
+        return {}
+    except Exception as e:
+        # Hier ist st.error okay, da Fehler nicht gecached werden sollten
+        st.error(f"Error loading transaction logic from shared schema: {e}")
+        return {}
+
 
 def save_import_settings(user_id, account_code, config):
     """Saves or updates the mapping configuration."""

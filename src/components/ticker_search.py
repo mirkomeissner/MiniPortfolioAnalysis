@@ -92,58 +92,63 @@ def handle_save_request(row, isin):
         st.error(f"Error saving data: {e}")
 
 
+
 def ticker_search_view():
-    st.subheader("🔍 Search New Asset via ISIN")
+    st.subheader("🔍 Search New Asset")
     ensure_reference_data()
 
-    isin_input = st.text_input("Enter ISIN", placeholder="e.g. US0378331005")
+    # Flexible search input
+    search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. AU000000DRO2 or Apple")
     
-    if st.button("Search Ticker") and isin_input:
+    if st.button("Search Asset") and search_input:
         with st.spinner("Fetching data from Yahoo Finance..."):
             try:
-                search_results = yf.Search(isin_input).quotes
+                search_results = yf.Search(search_input).quotes
                 if not search_results:
-                    st.warning("No results found for this ISIN.")
+                    st.warning("No results found.")
                 else:
                     raw_data = []
+                    input_is_isin = len(search_input) == 12 and search_input[0:2].isalpha()
+                    
                     for res in search_results:
                         symbol = res.get("symbol")
                         t = yf.Ticker(symbol)
                         info = t.info
                         
+                        # --- CLEAN ISIN LOGIC ---
+                        found_isin = ""
+                        if input_is_isin:
+                            found_isin = search_input.upper()
+                        else:
+                            y_isin = res.get('isin') or info.get('isin')
+                            if y_isin and y_isin != symbol and y_isin != '-':
+                                found_isin = y_isin
+                        
+                        # --- CURRENCY & PRICE ---
+                        currency = info.get("currency", "Unknown")
+                        current_price = info.get("currentPrice") or info.get("navPrice") or info.get("regularMarketPrice")
+                        
+                        # --- METADATA ---
                         name = info.get("longName") or res.get("longname") or "Unknown"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
                         raw_sector = info.get("sector", "Unknown")
                         
-                        # Mapping to Internal Codes
-                        a_code = map_yahoo_to_asset_class(raw_type, name)
-                        asset_val = next((s for s in st.session_state['opt_asset'] if s.startswith(a_code)), a_code)
-                        
-                        g_code = map_yahoo_to_ref(raw_sector)
-                        gics_val = next((s for s in st.session_state['opt_gics'] if s.startswith(str(g_code))), str(g_code))
-                        
-                        r_code = st.session_state['db_region_map'].get(info.get("country"), "GLO")
-                        reg_val = next((s for s in st.session_state['opt_region'] if s.startswith(r_code)), r_code)
-                        
-                        i_code = map_yahoo_to_instrument_type(raw_type, name)
-                        type_val = next((s for s in st.session_state['opt_type'] if s.startswith(i_code)), i_code)
-
-                        avg_vol_7d = get_average_volume_7d(t)
-
                         raw_data.append({
-                            "Volume 7 days": avg_vol_7d,
+                            "Volume (avg 7d)": get_average_volume_7d(t),
+                            "ISIN": found_isin,
                             "Ticker": symbol,
                             "Name": name,
+                            "Price": current_price,
+                            "Currency": currency,
                             "Exchange": info.get("exchange", "Unknown"),
-                            "Currency": info.get("currency", "Unknown"),
                             "Industry": info.get("industry", "Unknown"),
-                            "Sector Raw": raw_sector,
-                            "Sector_GICS": gics_val,
+                            "Sector Raw": raw_sector, # Back in the data
+                            "Sector_GICS": next((s for s in st.session_state['opt_gics'] if s.startswith(str(map_yahoo_to_ref(raw_sector)))) , "Unknown"),
                             "Country": info.get("country", "Unknown"),
-                            "Region": reg_val,
-                            "Type Raw": raw_type,
-                            "InstrumentType": type_val,
-                            "AssetClass": asset_val
+                            "Region": next((s for s in st.session_state['opt_region'] if s.startswith(st.session_state['db_region_map'].get(info.get("country"), "GLO"))), "GLO"),
+                            "Type Raw": raw_type, # Back in the data
+                            "InstrumentType": next((s for s in st.session_state['opt_type'] if s.startswith(map_yahoo_to_instrument_type(raw_type, name))), "STO"),
+                            "AssetClass": next((s for s in st.session_state['opt_asset'] if s.startswith(map_yahoo_to_asset_class(raw_type, name))), "EQU")
                         })
                     st.session_state["search_results_df"] = pd.DataFrame(raw_data)
             except Exception as e:
@@ -152,49 +157,43 @@ def ticker_search_view():
     if "search_results_df" in st.session_state:
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
+        st.info("The ISIN is mandatory for saving. If the field is empty, please enter it manually in the table below.")
         
-        # Sort and ensure the volume column is first
-        if "Volume 7 days" in df.columns:
-            df = df.sort_values(by="Volume 7 days", ascending=False, na_position="last")
-            ordered_cols = ["Volume 7 days"] + [col for col in df.columns if col != "Volume 7 days"]
-            df = df[ordered_cols]
+        # Consistent column order: Raw columns placed before editable ones
+        if "Volume (avg 7d)" in df.columns:
+            df = df.sort_values(by="Volume (avg 7d)", ascending=False)
 
-        # --- COLUMN CONFIGURATION ---
         column_config = {
-            "Volume 7 days": st.column_config.NumberColumn("Volume 7 days", disabled=True),
+            "ISIN": st.column_config.TextColumn("ISIN (Edit if empty)", disabled=False),
             "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
-            "Name": st.column_config.TextColumn("Name"),
-            "Exchange": st.column_config.TextColumn("Exchange"),
-            "Currency": st.column_config.TextColumn("Currency"),
-            "Industry": st.column_config.TextColumn("Industry"),
+            "Price": st.column_config.NumberColumn("Price", format="%.2f", disabled=True),
+            "Currency": st.column_config.TextColumn("Curr", disabled=True),
+            "Volume (avg 7d)": st.column_config.NumberColumn("Vol (7d Avg)", disabled=True),
             "Sector Raw": st.column_config.TextColumn("Sector Raw", disabled=True),
             "Sector_GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics'], required=True),
-            "Country": st.column_config.TextColumn("Country"),
-            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
             "Type Raw": st.column_config.TextColumn("Type Raw", disabled=True),
-            "InstrumentType": st.column_config.SelectboxColumn("Instrument Type", options=st.session_state['opt_type'], required=True),
+            "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type'], required=True),
+            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
             "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'], required=True)
         }
 
-        edited_df = st.data_editor(
-            df,
-            column_config=column_config,
-            use_container_width=True,
-            hide_index=True,
-            key="ticker_editor"
-        )
+        edited_df = st.data_editor(df, column_config=column_config, use_container_width=True, hide_index=True, key="ticker_editor")
 
         st.markdown("---")
-        st.subheader("2. Select Ticker for Import")
-        
-        # User selection based on edited data
-        ticker_options = edited_df["Ticker"].tolist()
-        selected_ticker = st.selectbox("Which ticker would you like to save?", options=ticker_options)
+        st.subheader("2. Save Selection")
+        selected_ticker = st.selectbox("Select ticker to save:", options=edited_df["Ticker"].tolist())
 
-        if selected_ticker:
-            # We pull the row from the EDITED dataframe so manual changes are preserved
-            selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
-            
-            if st.button("Save to Database", type="primary", use_container_width=True):
-                handle_save_request(selected_row, isin_input)
+        if selected_ticker and st.button("Save to Database", type="primary"):
+            row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
+            if not row["ISIN"] or len(row["ISIN"]) < 5:
+                st.error("Please enter a valid ISIN in the table above before saving.")
+            else:
+                handle_save_request(row, row["ISIN"])
+
+
+    
+
+
+    
+
 

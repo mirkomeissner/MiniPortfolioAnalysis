@@ -283,7 +283,7 @@ def render_import_preview_screen():
 
     st.divider()
 
-    # --- NEW SECTION 5: SMART INVERSION LOGIC ---
+    # --- SMART INVERSION LOGIC ---
     st.subheader("5. Smart Data Processing")
     st.markdown("Automated value adjustment based on transaction direction.")
     
@@ -349,7 +349,6 @@ def render_import_preview_screen():
                 asset_payloads = [{"isin": m_isin, "name": m_isin, "created_by": user_id, "updated_by": None} for m_isin in missing_isins]
                 try:
                     save_asset_static_data(asset_payloads) 
-                    st.write(f"✅ Created {len(asset_payloads)} assets.")
                 except Exception as e:
                     if "duplicate" not in str(e).lower(): st.error(f"Asset provisioning error: {e}")
                 status.update(label="Asset provisioning complete!", state="complete")
@@ -367,54 +366,78 @@ def render_import_preview_screen():
                 try:
                     parts = eid.split("_")
                     if len(parts) >= 3:
-                        isin_part, date_part, count_val = parts[0], parts[1], int(parts[2])
-                        db_date_fmt = f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:]}"
-                        key = (isin_part, db_date_fmt)
-                        local_counters[key] = max(local_counters.get(key, 0), count_val + 1)
+                        key = (parts[0], f"{parts[1][:4]}-{parts[1][4:6]}-{parts[1][6:]}")
+                        local_counters[key] = max(local_counters.get(key, 0), int(parts[2]) + 1)
                 except: continue
 
             for i, (idx, row) in enumerate(final_sel.iterrows()):
                 try:
+                    # Basic extraction from CSV
                     s_curr = str(row[map_s_cur]).upper().strip()[:3]
-                    s_amount = float(row[map_s_amt])
-                    qty = float(row[map_qty])
-                    raw_date = pd.to_datetime(row[map_date])
-                    db_date = raw_date.date().isoformat()
+                    raw_qty = float(row[map_qty])
+                    raw_amt = float(row[map_s_amt])
+                    db_date = pd.to_datetime(row[map_date]).date().isoformat()
                     isin_val = str(row[map_isin]).strip()
 
-                    # --- SMART INVERSION LOGIC ---
+                    # Get transaction type code
                     type_label_full = type_mapping[row[type_column]]
-                    type_code = extract_code(type_label_full)
+                    transaction_type_code = extract_code(type_label_full)
                     
-                    # Check if smart_invert is active and it's an outflow (Sell or Transfer Out)
-                    is_outflow = type_code in ["SELL", "XOUT"] or "sell" in type_label_full.lower() or "transfer out" in type_label_full.lower()
-                    
-                    if smart_invert and is_outflow:
-                        s_amount = -abs(s_amount)
-                        qty = -abs(qty)
+                    # Fetch logic rules from session state (loaded from shared.ref_transaction_logic)
+                    logic = st.session_state.get("type_logic_map", {}).get(transaction_type_code, {})
+                    q_logic = logic.get("quantity_sign") # 1, -1, 0, or None
+                    a_logic = logic.get("amount_sign")   # 1, -1, 0, or None
 
-                    # Currency logic (using potentially inverted s_amount)
+                    # --- APPLY SMART DIRECTION LOGIC (if enabled) ---
+                    if smart_invert:
+                        # Quantity Logic: 1=Positive, -1=Negative, 0=NULL, None=As Is
+                        if q_logic == 1:      qty = abs(raw_qty)
+                        elif q_logic == -1:   qty = -abs(raw_qty)
+                        elif q_logic == 0:    qty = None
+                        else:                 qty = raw_qty
+                        
+                        # Amount Logic: 1=Positive, -1=Negative, 0=NULL, None=As Is
+                        if a_logic == 1:      
+                            s_amount = abs(raw_amt)
+                        elif a_logic == -1:   
+                            s_amount = -abs(raw_amt)
+                        elif a_logic == 0:    
+                            s_amount = None                  
+                            s_curr = None
+                        else:                 
+                            s_amount = raw_amt
+                    else:
+                        qty = raw_qty
+                        s_amount = raw_amt
+
+                    # --- CURRENCY & EUR CALCULATION ---
                     amt_eur = None
-                    if s_curr == "EUR": 
-                        amt_eur = s_amount
-                    elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]): 
-                        val_eur = float(row[map_eur])
-                        amt_eur = -abs(val_eur) if (smart_invert and is_outflow) else val_eur
-                    elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]) and float(row[map_fx]) != 0:
-                        amt_eur = s_amount / float(row[map_fx])
-
                     settle_fx = None
-                    if s_curr == "EUR": 
-                        settle_fx = 1.0
-                    elif amt_eur and amt_eur != 0: 
-                        settle_fx = abs(s_amount / amt_eur)
-                    elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]): 
-                        settle_fx = float(row[map_fx])
+                    
+                    # Calculation only proceeds if s_amount is not None
+                    if s_amount is not None:
+                        if s_curr == "EUR":
+                            amt_eur = s_amount
+                            settle_fx = 1.0
+                        else:
+                            # 1. Check for manual EUR column in CSV
+                            if map_eur != "<Not in CSV>" and pd.notna(row[map_eur]):
+                                val_eur = abs(float(row[map_eur]))
+                                amt_eur = -val_eur if s_amount < 0 else val_eur
+                            # 2. Fallback to FX Rate column
+                            elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]) and float(row[map_fx]) != 0:
+                                amt_eur = s_amount / float(row[map_fx])
+                            
+                            # Derive FX rate
+                            if amt_eur and amt_eur != 0:
+                                settle_fx = abs(s_amount / amt_eur)
+                            elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]):
+                                settle_fx = float(row[map_fx])
 
-                    # Optimized ID Generation
+                    # ID Generation Logic
                     key = (isin_val, db_date)
                     current_idx = local_counters.get(key, 0)
-                    generated_id = f"{isin_val}_{raw_date.strftime('%Y%m%d')}_{current_idx:03d}"
+                    generated_id = f"{isin_val}_{db_date.replace('-','')}_{current_idx:03d}"
                     local_counters[key] = current_idx + 1
 
                     payload_batch.append({
@@ -423,7 +446,7 @@ def render_import_preview_screen():
                         "account_code": acc_code,
                         "isin": isin_val,
                         "date": db_date,
-                        "type_code": type_code,
+                        "transaction_type_code": transaction_type_code,
                         "quantity": qty,
                         "settle_amount": s_amount,
                         "settle_currency": s_curr,
@@ -437,14 +460,11 @@ def render_import_preview_screen():
 
             # 3. EXECUTE BULK INSERT
             if payload_batch:
-                status.update(label=f"Uploading {len(payload_batch)} records...", state="running")
                 try:
                     save_transactions_bulk(payload_batch)
                     success_count = len(payload_batch)
-                    status.update(label=f"Successfully imported {success_count} transactions!", state="complete")
                 except Exception as e:
                     st.error(f"Database Error: {e}")
-                    status.update(label="Import failed.", state="error")
 
         # 4. FINALIZE & SAVE SETTINGS
         save_import_settings(user_id, acc_code, {
@@ -503,7 +523,7 @@ def render_list_view():
         processed_row["account_label"] = acc_info.get("description") if acc_info and acc_info.get("description") else row.get("account_code")
 
         # Labels aus den Joins extrahieren
-        processed_row["type_label"] = row.get("ref_transaction_type", {}).get("label") if row.get("ref_transaction_type") else row.get("type_code")
+        processed_row["type_label"] = row.get("ref_transaction_type", {}).get("label") if row.get("ref_transaction_type") else row.get("transaction_type_code")
         processed_row["asset_name"] = row.get("asset_static_data", {}).get("name") if row.get("asset_static_data") else row.get("isin")
         processed_data.append(processed_row)
 
@@ -644,7 +664,7 @@ def render_transaction_form():
                 "account_code": extract_code(account_selection),
                 "isin": clean_isin,
                 "date": db_date_str,
-                "type_code": extract_code(type_selection),
+                "transaction_type_code": extract_code(type_selection),
                 "quantity": quantity,
                 "settle_amount": s_amount,
                 "settle_currency": s_curr,
