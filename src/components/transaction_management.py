@@ -283,6 +283,24 @@ def render_import_preview_screen():
 
     st.divider()
 
+    # --- NEW SECTION 5: SMART INVERSION LOGIC ---
+    st.subheader("5. Smart Data Processing")
+    st.markdown("Automated value adjustment based on transaction direction.")
+    
+    with st.container(border=True):
+        col_smart1, col_smart2 = st.columns([3, 1])
+        with col_smart1:
+            st.write("**Auto-Invert Outflows**")
+            st.caption("""
+                If enabled, the system checks the transaction type. If it is a **'Sell'** or **'Transfer Out'**, 
+                Quantity and all Amounts will be forced to negative values (inverted if positive in CSV).
+            """)
+        with col_smart2:
+            # We load the previous setting if available, default to True
+            s_invert = saved_config.get("smart_invert", True)
+            smart_invert = st.checkbox("Enable Inversion", value=s_invert, key="smart_invert_toggle")
+
+    
     # --- SECTION 5: DRY-RUN & EXECUTION ---
     if st.button("🚀 Start Import", type="primary", use_container_width=True):
         # Sync manual edits from the data editor
@@ -359,22 +377,39 @@ def render_import_preview_screen():
                 try:
                     s_curr = str(row[map_s_cur]).upper().strip()[:3]
                     s_amount = float(row[map_s_amt])
+                    qty = float(row[map_qty])
                     raw_date = pd.to_datetime(row[map_date])
                     db_date = raw_date.date().isoformat()
                     isin_val = str(row[map_isin]).strip()
 
-                    # Currency logic
+                    # --- SMART INVERSION LOGIC ---
+                    type_label_full = type_mapping[row[type_column]]
+                    type_code = extract_code(type_label_full)
+                    
+                    # Check if smart_invert is active and it's an outflow (Sell or Transfer Out)
+                    is_outflow = type_code in ["SELL", "XOUT"] or "sell" in type_label_full.lower() or "transfer out" in type_label_full.lower()
+                    
+                    if smart_invert and is_outflow:
+                        s_amount = -abs(s_amount)
+                        qty = -abs(qty)
+
+                    # Currency logic (using potentially inverted s_amount)
                     amt_eur = None
-                    if s_curr == "EUR": amt_eur = s_amount
-                    elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]): amt_eur = float(row[map_eur])
+                    if s_curr == "EUR": 
+                        amt_eur = s_amount
+                    elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]): 
+                        val_eur = float(row[map_eur])
+                        amt_eur = -abs(val_eur) if (smart_invert and is_outflow) else val_eur
                     elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]) and float(row[map_fx]) != 0:
                         amt_eur = s_amount / float(row[map_fx])
 
                     settle_fx = None
-                    if s_curr == "EUR": settle_fx = 1.0
-                    elif map_eur != "<Not in CSV>" and pd.notna(row[map_eur]) and float(row[map_eur]) != 0:
-                        settle_fx = s_amount / float(row[map_eur])
-                    elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]): settle_fx = float(row[map_fx])
+                    if s_curr == "EUR": 
+                        settle_fx = 1.0
+                    elif amt_eur and amt_eur != 0: 
+                        settle_fx = abs(s_amount / amt_eur)
+                    elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]): 
+                        settle_fx = float(row[map_fx])
 
                     # Optimized ID Generation
                     key = (isin_val, db_date)
@@ -382,15 +417,14 @@ def render_import_preview_screen():
                     generated_id = f"{isin_val}_{raw_date.strftime('%Y%m%d')}_{current_idx:03d}"
                     local_counters[key] = current_idx + 1
 
-                    # Optimized: Use extract_code helper for type mapping
                     payload_batch.append({
                         "user_id": user_id,
                         "id": generated_id,
                         "account_code": acc_code,
                         "isin": isin_val,
                         "date": db_date,
-                        "type_code": extract_code(type_mapping[row[type_column]]),
-                        "quantity": float(row[map_qty]),
+                        "type_code": type_code,
+                        "quantity": qty,
                         "settle_amount": s_amount,
                         "settle_currency": s_curr,
                         "settle_fxrate": settle_fx,
@@ -417,7 +451,8 @@ def render_import_preview_screen():
             "type_column": type_column, "type_mapping": type_mapping,
             "map_isin": map_isin, "map_date": map_date, "map_qty": map_qty,
             "map_settle_amt": map_s_amt, "map_settle_curr": map_s_cur, 
-            "map_amt_eur": map_eur, "map_settle_fx": map_fx
+            "map_amt_eur": map_eur, "map_settle_fx": map_fx,
+            "smart_invert": smart_invert
         })
         
         st.success(f"Import complete: {success_count} transactions saved.")
