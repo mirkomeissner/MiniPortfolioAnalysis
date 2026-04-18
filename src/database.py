@@ -230,26 +230,28 @@ def get_import_settings(user_id, account_code):
 
 @st.cache_data(ttl=600)
 def get_transaction_type_logic():
-    """
-    Fetches the sign logic (1, -1, 0, NULL) for each transaction type 
-    from the shared schema.
-    """
     try:
-        # Explicitly target the 'shared' schema
         res = supabase.schema("shared").table("ref_transaction_logic") \
             .select("transaction_type_code, quantity_sign, amount_sign") \
             .execute()
         
-        # We transform the list into a dictionary for O(1) lookup speed in the loop
+        # --- DEBUG MESSAGE FOR TERMINAL ---
+        print(f"DEBUG: DB Response Data: {res.data}")
+        
         if res.data:
-            return {
+            result_map = {
                 item['transaction_type_code']: {
                     'quantity_sign': item['quantity_sign'],
                     'amount_sign': item['amount_sign']
                 } for item in res.data
             }
+            # --- DEBUG MESSAGE FOR TERMINAL ---
+            print(f"DEBUG: Transformed Map: {result_map}")
+            return result_map
+            
         return {}
     except Exception as e:
+        # Hier ist st.error okay, da Fehler nicht gecached werden sollten
         st.error(f"Error loading transaction logic from shared schema: {e}")
         return {}
 
