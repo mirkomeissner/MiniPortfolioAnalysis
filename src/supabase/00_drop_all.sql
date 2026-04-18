@@ -14,6 +14,7 @@ DROP TABLE IF EXISTS shared.exchange_rates;
 DROP TABLE IF EXISTS shared.asset_prices;
 DROP TABLE IF EXISTS shared.country_region_mapping;
 DROP TABLE IF EXISTS shared.asset_static_data;
+DROP TABLE IF EXISTS shared.ref_transaction_logic;
 DROP TABLE IF EXISTS shared.ref_transaction_type;
 DROP TABLE IF EXISTS shared.ref_currencies;
 DROP TABLE IF EXISTS shared.ref_instrument_type;
