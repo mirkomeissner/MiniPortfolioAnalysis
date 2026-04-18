@@ -91,23 +91,27 @@ def handle_save_request(row, isin):
     except Exception as e:
         st.error(f"Error saving data: {e}")
 
-
 def ticker_search_view():
-    st.subheader("🔍 Search New Asset via ISIN")
+    st.subheader("🔍 Search New Asset")
     ensure_reference_data()
 
-    isin_input = st.text_input("Enter ISIN", placeholder="e.g. US0378331005")
+    # Changed label and placeholder to indicate flexible search
+    search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. Apple, AAPL or US0378331005")
     
-    if st.button("Search Ticker") and isin_input:
+    if st.button("Search Asset") and search_input:
         with st.spinner("Fetching data from Yahoo Finance..."):
             try:
-                search_results = yf.Search(isin_input).quotes
+                # yf.Search handles ISIN, Ticker, and Name automatically
+                search_results = yf.Search(search_input).quotes
                 if not search_results:
-                    st.warning("No results found for this ISIN.")
+                    st.warning("No results found for this search term.")
                 else:
                     raw_data = []
                     for res in search_results:
                         symbol = res.get("symbol")
+                        # Extract the actual ISIN from search results if available
+                        found_isin = res.get("isin") or symbol
+                        
                         t = yf.Ticker(symbol)
                         info = t.info
                         
@@ -131,6 +135,7 @@ def ticker_search_view():
                         avg_vol_7d = get_average_volume_7d(t)
 
                         raw_data.append({
+                            "ISIN": found_isin, # Added to preserve the real ISIN
                             "Volume 7 days": avg_vol_7d,
                             "Ticker": symbol,
                             "Name": name,
@@ -153,14 +158,13 @@ def ticker_search_view():
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
         
-        # Sort and ensure the volume column is first
         if "Volume 7 days" in df.columns:
             df = df.sort_values(by="Volume 7 days", ascending=False, na_position="last")
             ordered_cols = ["Volume 7 days"] + [col for col in df.columns if col != "Volume 7 days"]
             df = df[ordered_cols]
 
-        # --- COLUMN CONFIGURATION ---
         column_config = {
+            "ISIN": st.column_config.TextColumn("ISIN", disabled=True),
             "Volume 7 days": st.column_config.NumberColumn("Volume 7 days", disabled=True),
             "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
             "Name": st.column_config.TextColumn("Name"),
@@ -187,14 +191,13 @@ def ticker_search_view():
         st.markdown("---")
         st.subheader("2. Select Ticker for Import")
         
-        # User selection based on edited data
         ticker_options = edited_df["Ticker"].tolist()
         selected_ticker = st.selectbox("Which ticker would you like to save?", options=ticker_options)
 
         if selected_ticker:
-            # We pull the row from the EDITED dataframe so manual changes are preserved
             selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
             
             if st.button("Save to Database", type="primary", use_container_width=True):
-                handle_save_request(selected_row, isin_input)
+                # Pass the ISIN from the selected row instead of the raw search input
+                handle_save_request(selected_row, selected_row["ISIN"])
 
