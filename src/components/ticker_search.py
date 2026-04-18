@@ -91,17 +91,18 @@ def handle_save_request(row, isin):
     except Exception as e:
         st.error(f"Error saving data: {e}")
 
+
+
 def ticker_search_view():
     st.subheader("🔍 Search New Asset")
     ensure_reference_data()
 
-    # Changed label and placeholder to indicate flexible search
+    # Flexible search input for ISIN, Ticker, or Name
     search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. Apple, AAPL or US0378331005")
     
     if st.button("Search Asset") and search_input:
         with st.spinner("Fetching data from Yahoo Finance..."):
             try:
-                # yf.Search handles ISIN, Ticker, and Name automatically
                 search_results = yf.Search(search_input).quotes
                 if not search_results:
                     st.warning("No results found for this search term.")
@@ -109,7 +110,7 @@ def ticker_search_view():
                     raw_data = []
                     for res in search_results:
                         symbol = res.get("symbol")
-                        # Extract the actual ISIN from search results if available
+                        # Preserve actual ISIN or fallback to symbol
                         found_isin = res.get("isin") or symbol
                         
                         t = yf.Ticker(symbol)
@@ -135,7 +136,7 @@ def ticker_search_view():
                         avg_vol_7d = get_average_volume_7d(t)
 
                         raw_data.append({
-                            "ISIN": found_isin, # Added to preserve the real ISIN
+                            "ISIN": found_isin,
                             "Volume 7 days": avg_vol_7d,
                             "Ticker": symbol,
                             "Name": name,
@@ -158,9 +159,10 @@ def ticker_search_view():
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
         
+        # Updated column ordering: Volume first, then Ticker, then ISIN
         if "Volume 7 days" in df.columns:
             df = df.sort_values(by="Volume 7 days", ascending=False, na_position="last")
-            ordered_cols = ["Volume 7 days"] + [col for col in df.columns if col != "Volume 7 days"]
+            ordered_cols = ["Volume 7 days", "Ticker", "ISIN"] + [col for col in df.columns if col not in ["Volume 7 days", "Ticker", "ISIN"]]
             df = df[ordered_cols]
 
         column_config = {
@@ -198,6 +200,8 @@ def ticker_search_view():
             selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
             
             if st.button("Save to Database", type="primary", use_container_width=True):
-                # Pass the ISIN from the selected row instead of the raw search input
+                # Pass the validated ISIN from the selected row
                 handle_save_request(selected_row, selected_row["ISIN"])
+
+
 
