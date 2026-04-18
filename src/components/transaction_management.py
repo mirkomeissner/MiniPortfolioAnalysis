@@ -335,7 +335,6 @@ def render_import_preview_screen():
                 st.rerun()
 
     # --- ACTUAL IMPORT PHASE ---
-    st.write("### Debug Logic Map:", st.session_state.get("type_logic_map"))
     if st.session_state.get("import_confirmed"):
         st.session_state["import_confirmed"] = False
         final_sel = st.session_state["imported_df"].loc[filtered_df.index]
