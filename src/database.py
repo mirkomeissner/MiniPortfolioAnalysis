@@ -234,10 +234,7 @@ def get_transaction_type_logic():
         res = supabase.schema("shared").table("ref_transaction_logic") \
             .select("transaction_type_code, quantity_sign, amount_sign") \
             .execute()
-        
-        # --- DEBUG MESSAGE FOR TERMINAL ---
-        print(f"DEBUG: DB Response Data: {res.data}")
-        
+                
         if res.data:
             result_map = {
                 item['transaction_type_code']: {
@@ -245,8 +242,6 @@ def get_transaction_type_logic():
                     'amount_sign': item['amount_sign']
                 } for item in res.data
             }
-            # --- DEBUG MESSAGE FOR TERMINAL ---
-            print(f"DEBUG: Transformed Map: {result_map}")
             return result_map
             
         return {}
