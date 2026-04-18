@@ -3,7 +3,8 @@ from src.database import (
     get_account_ref_options, 
     get_asset_ref_options, 
     get_ref_options,  
-    get_country_region_map
+    get_country_region_map,
+    get_transaction_type_logic
 )
 
 def extract_code(label: str) -> str:
@@ -52,6 +53,7 @@ def ensure_reference_data():
             
             # 3. Hilfs-Maps
             st.session_state['db_region_map'] = get_country_region_map()
+            st.session_state['type_logic_map'] = get_transaction_type_logic()
             
             # Flag setzen
             st.session_state['ref_data_loaded'] = True
