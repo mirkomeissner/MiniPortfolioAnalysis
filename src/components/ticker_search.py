@@ -134,13 +134,13 @@ def ticker_search_view():
                         raw_sector = info.get("sector", "Unknown")
                         
                         raw_data.append({
+                            "Volume (avg 7d)": get_average_volume_7d(t),
                             "ISIN": found_isin,
                             "Ticker": symbol,
                             "Name": name,
                             "Price": current_price,
                             "Currency": currency,
                             "Exchange": info.get("exchange", "Unknown"),
-                            "Volume (avg 7d)": get_average_volume_7d(t),
                             "Industry": info.get("industry", "Unknown"),
                             "Sector Raw": raw_sector, # Back in the data
                             "Sector_GICS": next((s for s in st.session_state['opt_gics'] if s.startswith(str(map_yahoo_to_ref(raw_sector)))) , "Unknown"),
@@ -157,6 +157,7 @@ def ticker_search_view():
     if "search_results_df" in st.session_state:
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
+        st.info("The ISIN is mandatory for saving. If the field is empty, please enter it manually in the table below.")
         
         # Consistent column order: Raw columns placed before editable ones
         if "Volume (avg 7d)" in df.columns:
