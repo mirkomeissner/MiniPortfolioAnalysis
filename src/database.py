@@ -111,7 +111,7 @@ def get_all_transactions():
         "account_code, "
         "isin, "
         "date, "
-        "type_code, "
+        "transaction_type_code, "
         "quantity, "
         "settle_amount, "
         "settle_currency, "
