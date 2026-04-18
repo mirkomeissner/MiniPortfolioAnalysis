@@ -97,7 +97,7 @@ def ticker_search_view():
     st.subheader("🔍 Search New Asset")
     ensure_reference_data()
 
-    # Flexible search input for ISIN, Ticker, or Name
+    # Flexible search input
     search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. Apple, AAPL or US0378331005")
     
     if st.button("Search Asset") and search_input:
@@ -110,11 +110,12 @@ def ticker_search_view():
                     raw_data = []
                     for res in search_results:
                         symbol = res.get("symbol")
-                        # Preserve actual ISIN or fallback to symbol
-                        found_isin = res.get("isin") or symbol
-                        
                         t = yf.Ticker(symbol)
                         info = t.info
+                        
+                        # FIX: Get the ISIN from the Ticker info object for better reliability
+                        # Fallback to symbol only if Yahoo really provides no ISIN
+                        found_isin = info.get("isin") or res.get("isin") or symbol
                         
                         name = info.get("longName") or res.get("longname") or "Unknown"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
@@ -159,7 +160,7 @@ def ticker_search_view():
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
         
-        # Updated column ordering: Volume first, then Ticker, then ISIN
+        # Consistent column ordering
         if "Volume 7 days" in df.columns:
             df = df.sort_values(by="Volume 7 days", ascending=False, na_position="last")
             ordered_cols = ["Volume 7 days", "Ticker", "ISIN"] + [col for col in df.columns if col not in ["Volume 7 days", "Ticker", "ISIN"]]
@@ -200,8 +201,8 @@ def ticker_search_view():
             selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
             
             if st.button("Save to Database", type="primary", use_container_width=True):
-                # Pass the validated ISIN from the selected row
                 handle_save_request(selected_row, selected_row["ISIN"])
 
+    
 
 
