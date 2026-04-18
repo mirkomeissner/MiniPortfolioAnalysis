@@ -2,17 +2,6 @@
 CREATE SCHEMA IF NOT EXISTS shared;
 CREATE SCHEMA IF NOT EXISTS public;
 
-GRANT USAGE ON SCHEMA shared TO anon, authenticated, service_role;
-GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
-
-GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
-GRANT INSERT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
-GRANT UPDATE ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
-
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT INSERT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT UPDATE ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-
 -- --- create user table first ---
 
 -- Central User Table (Profile Data)
@@ -189,3 +178,18 @@ CREATE TABLE IF NOT EXISTS public.daily_holdings (
     CONSTRAINT fk_daily_holdings_isin FOREIGN KEY (isin) REFERENCES shared.asset_static_data(isin) ON DELETE CASCADE
 );
 CREATE INDEX idx_daily_holdings_lookup ON public.daily_holdings(user_id, holding_date);
+
+
+
+-- --- GRANTS ---
+
+GRANT USAGE ON SCHEMA shared TO anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+
+GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+GRANT INSERT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+GRANT UPDATE ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT INSERT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT UPDATE ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
