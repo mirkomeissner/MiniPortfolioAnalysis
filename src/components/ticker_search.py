@@ -98,12 +98,12 @@ def ticker_search_view():
     ensure_reference_data()
 
     # Flexible search input
-    search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. Apple, AAPL or AU000000DRO2")
+    search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. AU000000DRO2 or Apple")
     
     if st.button("Search Asset") and search_input:
         with st.spinner("Fetching data from Yahoo Finance..."):
             try:
-                # 1. Broad Search
+                # 1. Broad Search via Yahoo API
                 search = yf.Search(search_input, max_results=8)
                 search_results = search.quotes
                 
@@ -115,33 +115,34 @@ def ticker_search_view():
                         symbol = res.get("symbol")
                         t = yf.Ticker(symbol)
                         
-                        # Trigger history call (populates some metadata)
+                        # Trigger history to wake up metadata and get volume
                         avg_vol_7d = get_average_volume_7d(t)
                         info = t.info
 
-                        # --- DOUBLE SEARCH LOGIC FOR ISIN ---
-                        # Step A: Check initial search result and info
-                        found_isin = res.get('isin') or info.get('isin')
+                        # --- ROBUST ISIN EXTRACTION LOGIC ---
+                        found_isin = None
                         
-                        # Step B: If still missing, perform a targeted reverse search for the symbol
-                        if not found_isin or found_isin == '-':
-                            try:
-                                # We search specifically for the ticker to force Yahoo to return the linked ISIN
-                                reverse_search = yf.Search(symbol, max_results=1).quotes
-                                if reverse_search:
-                                    found_isin = reverse_search[0].get('isin')
-                            except:
-                                pass
-
-                        # Step C: If user typed an ISIN, use it as the definitive source
-                        if (not found_isin or found_isin == '-') and len(search_input) == 12:
+                        # STEP A: If user entered a valid ISIN, we trust it 100% 
+                        # (ISINs are 12 chars, starting with 2 letters)
+                        if len(search_input) == 12 and search_input[0:2].isalpha():
                             found_isin = search_input.upper()
                         
-                        # Step D: Final fallback to symbol
+                        # STEP B: If not an ISIN search, try to get it from Yahoo's metadata
+                        if not found_isin:
+                            # Try the search result object first
+                            found_isin = res.get('isin')
+                            # Then try the ticker object (property or info)
+                            if not found_isin or found_isin == '-':
+                                try:
+                                    found_isin = t.isin if isinstance(t.isin, str) else info.get('isin')
+                                except:
+                                    found_isin = info.get('isin')
+
+                        # STEP C: Final fallback to Symbol
                         if not found_isin or found_isin == '-':
                             found_isin = symbol
 
-                        # --- Metadata Extraction ---
+                        # --- METADATA MAPPING ---
                         name = info.get("longName") or res.get("longname") or "Unknown"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
                         raw_sector = info.get("sector", "Unknown")
@@ -182,6 +183,7 @@ def ticker_search_view():
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
         
+        # Sort and order columns
         if "Volume 7 days" in df.columns:
             df = df.sort_values(by="Volume 7 days", ascending=False, na_position="last")
             cols = ["Volume 7 days", "Ticker", "ISIN"]
@@ -189,7 +191,7 @@ def ticker_search_view():
             df = df[ordered_cols]
 
         column_config = {
-            "ISIN": st.column_config.TextColumn("ISIN", disabled=False),
+            "ISIN": st.column_config.TextColumn("ISIN", disabled=False), # Enabled so you can correct it manually
             "Volume 7 days": st.column_config.NumberColumn("Volume 7 days", disabled=True),
             "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
             "Name": st.column_config.TextColumn("Name"),
@@ -222,8 +224,8 @@ def ticker_search_view():
         if selected_ticker:
             selected_row = edited_df[edited_df["Ticker"] == selected_ticker].iloc[0]
             if st.button("Save to Database", type="primary", use_container_width=True):
+                # We use the ISIN directly from the table row
                 handle_save_request(selected_row, selected_row["ISIN"])
-
         
 
 
