@@ -91,19 +91,18 @@ def handle_save_request(row, isin):
     except Exception as e:
         st.error(f"Error saving data: {e}")
 
+
+
 def ticker_search_view():
     st.subheader("🔍 Search New Asset")
     ensure_reference_data()
 
-    search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. Apple, AAPL or US0378331005")
+    search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. AU000000DRO2")
     
     if st.button("Search Asset") and search_input:
         with st.spinner("Fetching data from Yahoo Finance..."):
             try:
-                # 1. Broad Search
-                search = yf.Search(search_input, max_results=8)
-                search_results = search.quotes
-                
+                search_results = yf.Search(search_input).quotes
                 if not search_results:
                     st.warning("No results found.")
                 else:
@@ -113,40 +112,22 @@ def ticker_search_view():
                         t = yf.Ticker(symbol)
                         info = t.info
                         
-                        # --- ROBUST ISIN EXTRACTION ---
-                        # We try 4 different ways to find the ISIN
-                        found_isin = None
+                        # --- Improved ISIN detection ---
+                        found_isin = info.get("isin") or res.get("isin")
                         
-                        # Way A: Check if the search result itself has it (often hidden here)
-                        found_isin = res.get('isin')
-                        
-                        # Way B: Check the ticker property directly
-                        if not found_isin:
-                            try:
-                                found_isin = t.isin
-                                if isinstance(found_isin, dict): # Sometimes returns a dict
-                                    found_isin = None 
-                            except:
-                                found_isin = None
-
-                        # Way C: Check the info dictionary
-                        if not found_isin or found_isin == '-':
-                            found_isin = info.get("isin")
-
-                        # Way D: Final Fallback - use the search input if it looks like an ISIN
+                        # If Yahoo doesn't return an ISIN but the user's input looks like one, 
+                        # we map it to the results found.
                         if (not found_isin or found_isin == '-') and len(search_input) == 12:
-                             # If user typed an ISIN and we found a matching ticker, it's likely this ISIN
                             found_isin = search_input.upper()
                         
-                        # If all fails, use the Ticker (so the app doesn't crash)
                         if not found_isin or found_isin == '-':
                             found_isin = symbol
-
-                        # --- REST OF YOUR LOGIC ---
+                        
                         name = info.get("longName") or res.get("longname") or "Unknown"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
                         raw_sector = info.get("sector", "Unknown")
                         
+                        # Mapping to Internal Codes
                         a_code = map_yahoo_to_asset_class(raw_type, name)
                         asset_val = next((s for s in st.session_state['opt_asset'] if s.startswith(a_code)), a_code)
                         
@@ -181,7 +162,6 @@ def ticker_search_view():
             except Exception as e:
                 st.error(f"Search failed: {e}")
 
-    # ... (Rest of your UI code: sorting, data_editor, and save button) ...
     if "search_results_df" in st.session_state:
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
@@ -192,7 +172,7 @@ def ticker_search_view():
             df = df[ordered_cols]
 
         column_config = {
-            "ISIN": st.column_config.TextColumn("ISIN", disabled=False), # Set to False so you can manually fix if needed
+            "ISIN": st.column_config.TextColumn("ISIN", disabled=False), # Enabled for manual override
             "Volume 7 days": st.column_config.NumberColumn("Volume 7 days", disabled=True),
             "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
             "Name": st.column_config.TextColumn("Name"),
@@ -227,6 +207,7 @@ def ticker_search_view():
             if st.button("Save to Database", type="primary", use_container_width=True):
                 handle_save_request(selected_row, selected_row["ISIN"])
 
+        
 
 
 
