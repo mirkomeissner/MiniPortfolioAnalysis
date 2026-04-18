@@ -92,12 +92,10 @@ def handle_save_request(row, isin):
         st.error(f"Error saving data: {e}")
 
 
-
 def ticker_search_view():
     st.subheader("🔍 Search New Asset")
     ensure_reference_data()
 
-    # Flexible search input
     search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. Apple, AAPL or US0378331005")
     
     if st.button("Search Asset") and search_input:
@@ -111,11 +109,22 @@ def ticker_search_view():
                     for res in search_results:
                         symbol = res.get("symbol")
                         t = yf.Ticker(symbol)
-                        info = t.info
                         
-                        # FIX: Get the ISIN from the Ticker info object for better reliability
-                        # Fallback to symbol only if Yahoo really provides no ISIN
-                        found_isin = info.get("isin") or res.get("isin") or symbol
+                        # --- ISIN FETCH LOGIC ---
+                        # 1. Try dedicated .isin property (most reliable but extra request)
+                        # 2. Try .info dictionary
+                        # 3. Try search result dictionary
+                        # 4. Fallback to symbol
+                        try:
+                            found_isin = t.isin
+                        except:
+                            found_isin = None
+                            
+                        if not found_isin or found_isin == '-':
+                            info = t.info
+                            found_isin = info.get("isin") or res.get("isin") or symbol
+                        else:
+                            info = t.info # We still need info for the other fields
                         
                         name = info.get("longName") or res.get("longname") or "Unknown"
                         raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
@@ -160,7 +169,6 @@ def ticker_search_view():
         df = st.session_state["search_results_df"]
         st.subheader("1. Review & Edit Data")
         
-        # Consistent column ordering
         if "Volume 7 days" in df.columns:
             df = df.sort_values(by="Volume 7 days", ascending=False, na_position="last")
             ordered_cols = ["Volume 7 days", "Ticker", "ISIN"] + [col for col in df.columns if col not in ["Volume 7 days", "Ticker", "ISIN"]]
@@ -202,6 +210,8 @@ def ticker_search_view():
             
             if st.button("Save to Database", type="primary", use_container_width=True):
                 handle_save_request(selected_row, selected_row["ISIN"])
+
+    
 
     
 
