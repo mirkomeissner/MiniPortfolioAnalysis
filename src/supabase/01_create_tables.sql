@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     account_code TEXT NOT NULL,
     isin VARCHAR(12),
     date DATE DEFAULT CURRENT_DATE,
-    type_code TEXT,
+    transaction_type_code TEXT,
     quantity NUMERIC(20, 8),
     settle_amount NUMERIC(20, 8),
     settle_currency VARCHAR(3),
@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     
     PRIMARY KEY (user_id, id),
     CONSTRAINT fk_transactions_user FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE,
-    CONSTRAINT fk_ref_type FOREIGN KEY (type_code) REFERENCES shared.ref_transaction_type(code) ON DELETE SET NULL,
+    CONSTRAINT fk_ref_type FOREIGN KEY (transaction_type_code) REFERENCES shared.ref_transaction_type(code) ON DELETE SET NULL,
     CONSTRAINT fk_transaction_ref_currency FOREIGN KEY (settle_currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL,
     CONSTRAINT fk_transaction_isin FOREIGN KEY (isin) REFERENCES shared.asset_static_data(isin) ON DELETE SET NULL,
     CONSTRAINT fk_accounts FOREIGN KEY (user_id, account_code) REFERENCES public.accounts(user_id, account_code) ON DELETE CASCADE
