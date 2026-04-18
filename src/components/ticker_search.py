@@ -140,7 +140,7 @@ def ticker_search_view():
                             "Price": current_price,
                             "Currency": currency,
                             "Exchange": info.get("exchange", "Unknown"),
-                            "Volume (Shares)": get_average_volume_7d(t),
+                            "Volume (avg 7d)": get_average_volume_7d(t),
                             "Industry": info.get("industry", "Unknown"),
                             "Sector Raw": raw_sector, # Back in the data
                             "Sector_GICS": next((s for s in st.session_state['opt_gics'] if s.startswith(str(map_yahoo_to_ref(raw_sector)))) , "Unknown"),
@@ -160,8 +160,8 @@ def ticker_search_view():
         
         # Consistent column order: Raw columns placed before editable ones
         if "Volume (Shares)" in df.columns:
-            df = df.sort_values(by="Volume (Shares)", ascending=False)
-            cols = ["Volume (Shares)", "Ticker", "ISIN", "Price", "Currency", "Sector Raw", "Sector_GICS", "Type Raw", "InstrumentType"]
+            df = df.sort_values(by="Volume (avg 7d)", ascending=False)
+            # cols = ["Volume (avg 7d)", "Ticker", "ISIN", "Price", "Currency", "Sector Raw", "Sector_GICS", "Type Raw", "InstrumentType"]
             remaining_cols = [c for c in df.columns if c not in cols]
             df = df[cols + remaining_cols]
 
@@ -170,7 +170,7 @@ def ticker_search_view():
             "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
             "Price": st.column_config.NumberColumn("Price", format="%.2f", disabled=True),
             "Currency": st.column_config.TextColumn("Curr", disabled=True),
-            "Volume (Shares)": st.column_config.NumberColumn("Vol (7d Avg)", disabled=True),
+            "Volume (avg 7d)": st.column_config.NumberColumn("Vol (7d Avg)", disabled=True),
             "Sector Raw": st.column_config.TextColumn("Sector Raw", disabled=True),
             "Sector_GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics'], required=True),
             "Type Raw": st.column_config.TextColumn("Type Raw", disabled=True),
