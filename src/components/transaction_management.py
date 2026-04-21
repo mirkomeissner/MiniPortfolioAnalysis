@@ -164,40 +164,9 @@ def render_import_preview_screen():
 
     # --- SECTION 2: ADVANCED FILTERING ---
     st.subheader("2. Filter Rows")
-    with st.expander("🛠 Advanced Query Builder", expanded=False):
-        logic_mode = st.radio("Logic Mode", ["Match ALL (AND)", "Match ANY (OR)"], horizontal=True)
-        fc1, fc2 = st.columns([1, 4])
-        if fc1.button("➕ Add Rule"):
-            st.session_state["import_filter_rules"].append({"column": csv_columns[0], "value": []})
-            st.rerun()
-        if fc2.button("🗑 Clear All"):
-            st.session_state["import_filter_rules"] = []
-            st.rerun()
-
-        active_filters = []
-        for i, rule in enumerate(st.session_state["import_filter_rules"]):
-            r1, r2, r3 = st.columns([2, 3, 0.5])
-            sel_col = r1.selectbox(f"Col {i}", csv_columns, 
-                                   index=csv_columns.index(rule["column"]) if rule["column"] in csv_columns else 0,
-                                   key=f"fcol_{i}")
-            st.session_state["import_filter_rules"][i]["column"] = sel_col
-            opts = sorted(df_raw[sel_col].dropna().unique().astype(str).tolist())
-            sel_val = r2.multiselect(f"Values {i}", opts, 
-                                     default=rule["value"] if all(v in opts for v in rule["value"]) else [],
-                                     key=f"fval_{i}")
-            st.session_state["import_filter_rules"][i]["value"] = sel_val
-            if sel_val: active_filters.append(df_raw[sel_col].astype(str).isin(sel_val))
-            if r3.button("❌", key=f"frem_{i}"):
-                st.session_state["import_filter_rules"].pop(i)
-                st.rerun()
-
-    filtered_df = df_raw.copy()
-    if active_filters:
-        mask = active_filters[0]
-        for m in active_filters[1:]:
-            mask = (mask & m) if logic_mode == "Match ALL (AND)" else (mask | m)
-        filtered_df = df_raw[mask]
-
+    
+    filtered_df = apply_advanced_filters(df_raw, session_prefix="import_preview")
+    
     # DATA EDITOR
     edited_df = st.data_editor(
         filtered_df,
@@ -527,53 +496,60 @@ def render_list_view():
         processed_row["asset_name"] = row.get("asset_static_data", {}).get("name") if row.get("asset_static_data") else row.get("isin")
         processed_data.append(processed_row)
 
+    # --- 3. DATA PREPARATION (RENAME & REORDER) ---
     df = pd.DataFrame(processed_data)
-        
-    # --- 3. ADVANCED FILTERING ---
-    # apply_advanced_filters handles date conversion and multi-rule logic
+
+    # Dictionary für die Anzeige-Namen (Mapping von DB-Feld auf User-Label)
+    column_mapping = {
+        "date": "Trade Date",
+        "account_label": "Account",
+        "isin": "ISIN",
+        "asset_name": "Name",
+        "type_label": "Type",
+        "quantity": "Quantity",
+        "settle_amount": "Settle Amount",
+        "settle_currency": "Settle Curr",
+        "settle_fxrate": "FX Rate",
+        "amount_eur": "Amount (EUR)",
+        "created_at": "Created At",
+        "updated_at": "Updated At",
+        "id": "Internal ID"
+    }
+
+    # 1. Spalten umbenennen
+    df = df.rename(columns=column_mapping)
+
+    # 2. In die gewünschte Reihenfolge bringen (nur Spalten, die auch existieren)
+    preferred_order = list(column_mapping.values())
+    existing_cols = [c for c in preferred_order if c in df.columns]
+    df = df[existing_cols]
+
+    # 3. Sortierung (muss jetzt den neuen Namen "Created At" nutzen)
+    if "Created At" in df.columns:
+        df["Created At"] = pd.to_datetime(df["Created At"])
+        df = df.sort_values(by="Created At", ascending=False)
+
+    # --- 4. ADVANCED FILTERING ---
+    # Jetzt sieht der Query Builder automatisch "Trade Date", "Account", etc.
     filtered_df = apply_advanced_filters(df, session_prefix="trans_list")
 
-    # --- 4. DATA PROCESSING & SORTING ---
-    # Ensure created_at is datetime for accurate chronological sorting
-    if 'created_at' in filtered_df.columns:
-        filtered_df['created_at'] = pd.to_datetime(filtered_df['created_at'])
-        # Default Sort: Show most recently created records first
-        filtered_df = filtered_df.sort_values(by='created_at', ascending=False)
-
-    # --- 5. COLUMN ORDERING & DISPLAY ---
-    # Define a logical sequence for the columns to be displayed
-    preferred_order = [
-        "date", "account_label", "isin", "asset_name", "type_label", 
-        "quantity", "settle_amount", "settle_currency", 
-        "settle_fxrate", "amount_eur",
-        "created_at", "updated_at", "id"
-    ]
+    # --- 5. DATA DISPLAY ---
+    st.write(f"Showing **{len(filtered_df)}** transactions.")
     
-    # Filter preferred_order to only include columns that actually exist in the dataframe
-    existing_cols = [c for c in preferred_order if c in filtered_df.columns]
-    display_df = filtered_df[existing_cols]
-
-    st.write(f"Showing **{len(display_df)}** transactions.")
-    
-    # Render the main data table with specific column configurations
+    # Da die Spalten schon umbenannt sind, brauchen wir in der column_config 
+    # nur noch die Formatierungen (Zahlen/Daten), aber keine Labels mehr.
     st.dataframe(
-        display_df,
+        filtered_df,
         use_container_width=True,
         hide_index=True,
         column_config={
-            "date": st.column_config.DateColumn("Trade Date", format="DD.MM.YYYY"),
-            "account_label": st.column_config.TextColumn("Account"),
-            "isin": st.column_config.TextColumn("ISIN"),
-            "asset_name": st.column_config.TextColumn("Name"),
-            "type_label": st.column_config.TextColumn("Type"),
-            "quantity": st.column_config.NumberColumn("Quantity", format="%.4f"),
-            "settle_amount": st.column_config.NumberColumn("Settle Amount", format="%.2f"),
-            "settle_currency": st.column_config.TextColumn("Curr"),
-            "settle_fxrate": st.column_config.NumberColumn("FX Rate", format="%.6f"),
-            "amount_eur": st.column_config.NumberColumn("Amount (EUR)", format="%.2f"),
-            "created_at": st.column_config.DatetimeColumn("Created At", format="DD.MM.YYYY, HH:mm"),
-            "updated_at": st.column_config.DatetimeColumn("Updated At", format="DD.MM.YYYY, HH:mm"),
-            "id": st.column_config.TextColumn("Internal ID"),
+            "Trade Date": st.column_config.DateColumn(format="DD.MM.YYYY"),
+            "Quantity": st.column_config.NumberColumn(format="%.4f"),
+            "Settle Amount": st.column_config.NumberColumn(format="%.2f"),
+            "FX Rate": st.column_config.NumberColumn(format="%.6f"),
+            "Amount (EUR)": st.column_config.NumberColumn(format="%.2f"),
+            "Created At": st.column_config.DatetimeColumn(format="DD.MM.YYYY, HH:mm"),
+            "Updated At": st.column_config.DatetimeColumn(format="DD.MM.YYYY, HH:mm"),
         }
     )
 
