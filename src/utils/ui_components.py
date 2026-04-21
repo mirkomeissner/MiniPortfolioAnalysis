@@ -133,7 +133,7 @@ def yfinance_search_component(search_input, session_key_prefix="search", allow_i
     results_key = f"{session_key_prefix}_results_df"
     editor_key = f"{session_key_prefix}_editor"
     
-    if st.button("Search Asset") and search_input:
+    if st.button("yfinance search") and search_input:
         with st.spinner("Fetching data from Yahoo Finance..."):
             try:
                 search_results = yf.Search(search_input).quotes
