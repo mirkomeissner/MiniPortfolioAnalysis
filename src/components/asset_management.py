@@ -103,11 +103,16 @@ def render_edit_view():
     isin = st.session_state.get("edit_isin")
     st.subheader(f"Edit Asset: {isin}")
     
-    if st.button("⬅ Cancel"):
-        st.session_state["view"] = "list"
-        st.rerun()
+    # 1. Spalten für die obere Button-Leiste definieren
+    # [1, 1, 4] bedeutet: zwei kleine Spalten für Buttons, eine große leere Spalte rechts
+    col_back, col_status, col_spacer = st.columns([1, 1.2, 4])
 
-    # 1. Load current data
+    with col_back:
+        if st.button("⬅ Cancel"):
+            st.session_state["view"] = "list"
+            st.rerun()
+
+    # 2. Daten laden (wie gehabt)
     all_data = get_all_assets_with_labels()
     asset = next((item for item in all_data if item["ISIN"] == isin), None)
 
@@ -115,33 +120,37 @@ def render_edit_view():
         st.error("Asset not found.")
         return
 
-    # --- CLOSE / REOPEN LOGIC ---
-    st.write("---")
     closed_val = asset.get("Closed On")
-    
-    if closed_val is None:
-        if st.button("🔒 Close Asset", help="Set the closing date to today", use_container_width=True):
-            update_asset_static_data(isin, {
-                "closed_on": datetime.now().date().isoformat(),
-                "updated_at": datetime.now().isoformat(),
-                "updated_by": st.session_state.get("user_name", "System")
-            })
-            st.success("Asset closed.")
-            st.cache_data.clear()
-            st.session_state["view"] = "list"
-            st.rerun()
-    else:
+
+    # 3. Status-Button in die zweite Spalte platzieren
+    with col_status:
+        if closed_val is None:
+            if st.button("🔒 Close Asset", help="Set the closing date to today"):
+                update_asset_static_data(isin, {
+                    "closed_on": datetime.now().date().isoformat(),
+                    "updated_at": datetime.now().isoformat(),
+                    "updated_by": st.session_state.get("user_name", "System")
+                })
+                st.success("Asset closed.")
+                st.cache_data.clear()
+                st.session_state["view"] = "list"
+                st.rerun()
+        else:
+            if st.button("🔓 Reopen Asset", help="Clear the closing date"):
+                update_asset_static_data(isin, {
+                    "closed_on": None,
+                    "updated_at": datetime.now().isoformat(),
+                    "updated_by": st.session_state.get("user_name", "System")
+                })
+                st.success("Asset reopened.")
+                st.cache_data.clear()
+                st.session_state["view"] = "list"
+                st.rerun()
+
+    # Den Warntext (falls geschlossen) kannst du darunter platzieren
+    if closed_val:
         st.warning(f"This asset was closed on {closed_val}")
-        if st.button("🔓 Reopen Asset", help="Clear the closing date", use_container_width=True):
-            update_asset_static_data(isin, {
-                "closed_on": None,
-                "updated_at": datetime.now().isoformat(),
-                "updated_by": st.session_state.get("user_name", "System")
-            })
-            st.success("Asset reopened.")
-            st.cache_data.clear()
-            st.session_state["view"] = "list"
-            st.rerun()
+
     st.write("---")
 
     # --- RELOAD FROM YAHOO FINANCE ---
