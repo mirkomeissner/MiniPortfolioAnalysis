@@ -145,9 +145,9 @@ def render_edit_view():
     st.write("---")
 
     # --- RELOAD FROM YAHOO FINANCE ---
-    search_input = st.text_input("Enter ISIN, Ticker or Name for reload", placeholder="e.g. AU000000DRO2 or Apple", key="reload_search_input")
+    # search_input = st.text_input("Enter ISIN, Ticker or Name for reload", placeholder="e.g. AU000000DRO2 or Apple", key="reload_search_input")
     
-    selected_row, edited_df = yfinance_search_component(search_input, session_key_prefix="reload", allow_isin_edit=False)
+    selected_row, edited_df = yfinance_search_component(search_input = isin, session_key_prefix="reload", allow_isin_edit=False)
     
     if selected_row is not None and edited_df is not None:
         if st.button("Update Asset with Reloaded Data", type="primary"):
