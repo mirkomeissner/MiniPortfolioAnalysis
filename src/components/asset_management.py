@@ -151,7 +151,7 @@ def render_edit_view():
     if closed_val:
         st.warning(f"This asset was closed on {closed_val}")
 
-    st.write("---")
+    # st.write("---")
 
     # --- RELOAD FROM YAHOO FINANCE ---
     # search_input = st.text_input("Enter ISIN, Ticker or Name for reload", placeholder="e.g. AU000000DRO2 or Apple", key="reload_search_input")
@@ -173,7 +173,7 @@ def render_edit_view():
             st.success("Form pre-filled with reloaded data. Please review and save below.")
             st.rerun()
 
-    st.write("---")
+    # st.write("---")
 
     # --- MAIN EDIT FORM ---
     # REPLACEMENT 1: Using our central loader instead of the long IF-block
