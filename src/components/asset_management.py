@@ -185,12 +185,12 @@ def render_edit_view():
         gap = "&nbsp;" * 6
 
         name = col1.text_input(f"Name{gap}:blue[(original: {asset['Name']})]", value=st.session_state.get("prefill_name", asset["Name"]))       
-        ticker = col2.text_input(f"Ticker{gap}:blue[(original: {asset['Ticker']})], value=st.session_state.get("prefill_ticker", asset["Ticker"]))
-        currency = col2.text_input(f"Currency{gap}:blue[(original: {asset['Currency']})], value=st.session_state.get("prefill_currency", asset["Currency"]))
+        ticker = col2.text_input(f"Ticker{gap}:blue[(original: {asset['Ticker']})]", value=st.session_state.get("prefill_ticker", asset["Ticker"]))
+        currency = col2.text_input(f"Currency{gap}:blue[(original: {asset['Currency']})]", value=st.session_state.get("prefill_currency", asset["Currency"]))
         
         # Hinweis: Die Keys hier (z.B. asset["Asset Class"]) müssen 
         # exakt so heißen wie im flattened_data dict der database.py!
-        asset_class = col1.selectbox(f"Asset Class{gap}:blue[(original: {asset['Asset Class']})], st.session_state['opt_asset'], 
+        asset_class = col1.selectbox(f"Asset Class{gap}:blue[(original: {asset['Asset Class']})]", st.session_state['opt_asset'], 
                                      index=get_option_index(st.session_state['opt_asset'], st.session_state.get("prefill_asset_class", asset["Asset Class"])))
         
         region = col2.selectbox("Region", st.session_state['opt_region'], 
