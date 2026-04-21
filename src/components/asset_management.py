@@ -184,8 +184,7 @@ def render_edit_view():
         col1.text_input("ISIN (Primary Key)", value=isin, disabled=True)
 
         name = col1.text_input("Name", value=st.session_state.get("prefill_name", asset["Name"]))
-        if name != asset["Name"]: col1.caption(f"⚠️ Geändert (Original: {asset['Name']})")
-        else: col1.caption(f"Unverändert")
+        col1.caption(f"Original: :blue[{asset['Name']}]")
         
         ticker = col2.text_input("Ticker", value=st.session_state.get("prefill_ticker", asset["Ticker"]))
         currency = col2.text_input("Currency", value=st.session_state.get("prefill_currency", asset["Currency"]))
