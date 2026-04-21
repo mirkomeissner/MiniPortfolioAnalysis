@@ -193,20 +193,20 @@ def render_edit_view():
         asset_class = col1.selectbox(f"Asset Class{gap}:blue[(original: {asset['Asset Class']})]", st.session_state['opt_asset'], 
                                      index=get_option_index(st.session_state['opt_asset'], st.session_state.get("prefill_asset_class", asset["Asset Class"])))
         
-        region = col2.selectbox("Region", st.session_state['opt_region'], 
+        region = col2.selectbox(f"Region{gap}:blue[(original: {asset['Region']})]", st.session_state['opt_region'], 
                                 index=get_option_index(st.session_state['opt_region'], st.session_state.get("prefill_region", asset["Region"])))
         
-        sector = col1.selectbox("Sector", st.session_state['opt_gics'], 
+        sector = col1.selectbox(f"Sector{gap}:blue[(original: {asset['Sector']})]", st.session_state['opt_gics'], 
                                 index=get_option_index(st.session_state['opt_gics'], st.session_state.get("prefill_sector", asset["Sector"])))
         
-        instr_type = col2.selectbox("Instrument Type", st.session_state['opt_type'], 
+        instr_type = col2.selectbox(f"Instrument Type{gap}:blue[(original: {asset['Instrument Type']})]", st.session_state['opt_type'], 
                                     index=get_option_index(st.session_state['opt_type'], st.session_state.get("prefill_instrument_type", asset["Type"])))
         
-        source = col1.selectbox("Price Source", st.session_state['opt_source'], 
+        source = col1.selectbox(f"Price Source{gap}:blue[(original: {asset['Price Source']})]", st.session_state['opt_source'], 
                                 index=get_option_index(st.session_state['opt_source'], asset["Price Source"]))
         
-        industry = col2.text_input("Industry", value=st.session_state.get("prefill_industry", asset["Industry"]))
-        country = col1.text_input("Country", value=st.session_state.get("prefill_country", asset["Country"]))
+        industry = col2.text_input(f"Industry{gap}:blue[(original: {asset['Industry']})]", value=st.session_state.get("prefill_industry", asset["Industry"]))
+        country = col1.text_input(f"Country{gap}:blue[(original: {asset['Country']})]", value=st.session_state.get("prefill_country", asset["Country"]))
 
         if st.form_submit_button("Save Changes", type="primary"):
             updated_payload = {
