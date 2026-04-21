@@ -13,77 +13,14 @@ from src.utils import (
     ensure_reference_data, 
     apply_advanced_filters
 )
+from src.utils.ui_components import yfinance_search_component
 from .ticker_search import ticker_search_view
 
 # --- HELPER FUNCTIONS FROM ticker_search.py ---
 
-def get_average_volume_7d(ticker):
-    """Return the average trading volume for the last 7 trading days."""
-    try:
-        history = ticker.history(period="14d", interval="1d")
-        if history is None or history.empty:
-            return None
-        volumes = history.get("Volume")
-        if volumes is None or volumes.dropna().empty:
-            return None
-        last7 = volumes.dropna().tail(7)
-        return int(last7.mean()) if not last7.empty else None
-    except Exception:
-        return None
+# Helper functions moved to ui_components.py
 
-def map_yahoo_to_ref(yahoo_sector):
-    """Mapping Yahoo Sectors to GICS Codes."""
-    mapping = {
-        "Technology": "45", "Financial Services": "40", "Healthcare": "35",
-        "Consumer Cyclical": "25", "Consumer Defensive": "30", "Basic Materials": "15",
-        "Energy": "10", "Industrials": "20", "Communication Services": "50",
-        "Utilities": "55", "Real Estate": "60"
-    }
-    return mapping.get(yahoo_sector)
-
-def map_yahoo_to_instrument_type(quote_type, symbol_name=""):
-    """Determine Instrumententype based on Yahoo Meta-Data."""
-    mapping = {
-        "EQUITY": "STO", "ETF": "ETF", "MUTUALFUND": "FUN", 
-        "BOND": "BON", "CURRENCY": "FX", "CRYPTOCURRENCY": "CRY"
-    }
-    res = mapping.get(str(quote_type).upper(), "STO")
-    # Sonderlogik für Zertifikate
-    if any(word in str(symbol_name).upper() for word in ["ZERTIFIKAT", "CERTIFICATE", "WARRANT"]):
-        return "CER"
-    return res
-
-def map_yahoo_to_asset_class(quote_type, symbol_name=""):
-    """Mapping Yahoo Types to Asset Classes."""
-    name_up = str(symbol_name).upper()
-    qt_up = str(quote_type).upper()
-    if qt_up == "CURRENCY" or "MONEY MARKET" in name_up: return "LIQ"
-    if qt_up == "BOND" or any(word in name_up for word in ["BOND", "RENTEN", "TREASURY"]): return "BON"
-    if qt_up in ["CRYPTOCURRENCY", "COMMODITY"] or any(word in name_up for word in ["GOLD", "REIT"]): return "ALT"
-    return "EQU"
-
-def handle_reload_save(row, isin):
-    updated_payload = {
-        "name": row["Name"],
-        "ticker": row["Ticker"],
-        "currency": row["Currency"],
-        "asset_class_code": extract_code(row["AssetClass"]),
-        "region_code": extract_code(row["Region"]),
-        "sector_code": extract_code(row["Sector_GICS"]),
-        "instrument_type_code": extract_code(row["InstrumentType"]),
-        "price_source_code": "YFN",
-        "industry": row["Industry"],
-        "country": row["Country"],
-        "updated_at": datetime.now().isoformat(),
-        "updated_by": st.session_state.get("user_name", "System")
-    }
-    update_asset_static_data(isin, updated_payload)
-    st.success("Asset updated with reloaded data!")
-    st.cache_data.clear()
-    if "reload_results_df" in st.session_state:
-        del st.session_state["reload_results_df"]
-    st.session_state["view"] = "list"
-    st.rerun()
+# handle_reload_save function removed - now pre-filling form instead of direct save
 
 def asset_table_view():
     # --- VIEW ROUTING ---
@@ -208,80 +145,24 @@ def render_edit_view():
     st.write("---")
 
     # --- RELOAD FROM YAHOO FINANCE ---
-    if st.button("Reload from Yahoo Finance"):
-        with st.spinner("Fetching data from Yahoo Finance..."):
-            try:
-                search_results = yf.Search(isin).quotes
-                if not search_results:
-                    st.error("No data found for this ISIN.")
-                else:
-                    raw_data = []
-                    for res in search_results:
-                        symbol = res.get("symbol")
-                        t = yf.Ticker(symbol)
-                        info = t.info
-                        
-                        found_isin = isin.upper()
-                        currency = info.get("currency", "Unknown")
-                        current_price = info.get("currentPrice") or info.get("navPrice") or info.get("regularMarketPrice")
-                        name = info.get("longName") or res.get("longname") or "Unknown"
-                        raw_type = res.get("quoteType") or info.get("quoteType") or "EQUITY"
-                        raw_sector = info.get("sector", "Unknown")
-                        
-                        raw_data.append({
-                            "Volume (avg 7d)": get_average_volume_7d(t),
-                            "ISIN": found_isin,
-                            "Ticker": symbol,
-                            "Name": name,
-                            "Price": current_price,
-                            "Currency": currency,
-                            "Exchange": info.get("exchange", "Unknown"),
-                            "Industry": info.get("industry", "Unknown"),
-                            "Sector Raw": raw_sector,
-                            "Sector_GICS": next((s for s in st.session_state['opt_gics'] if s.startswith(str(map_yahoo_to_ref(raw_sector)))), "Unknown"),
-                            "Country": info.get("country", "Unknown"),
-                            "Region": next((s for s in st.session_state['opt_region'] if s.startswith(st.session_state['db_region_map'].get(info.get("country"), "GLO"))), "GLO"),
-                            "Type Raw": raw_type,
-                            "InstrumentType": next((s for s in st.session_state['opt_type'] if s.startswith(map_yahoo_to_instrument_type(raw_type, name))), "STO"),
-                            "AssetClass": next((s for s in st.session_state['opt_asset'] if s.startswith(map_yahoo_to_asset_class(raw_type, name))), "EQU")
-                        })
-                    df = pd.DataFrame(raw_data)
-                    if "Volume (avg 7d)" in df.columns and not df.empty:
-                        df = df.sort_values(by="Volume (avg 7d)", ascending=False)
-                    st.session_state["reload_results_df"] = df
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Failed to fetch data: {e}")
-
-    if "reload_results_df" in st.session_state:
-        df = st.session_state["reload_results_df"]
-        st.subheader("1. Review & Edit Reloaded Data")
-        st.info("Review the data fetched from Yahoo Finance. Edit if necessary.")
-        
-        column_config = {
-            "ISIN": st.column_config.TextColumn("ISIN", disabled=True),
-            "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
-            "Price": st.column_config.NumberColumn("Price", format="%.2f", disabled=True),
-            "Currency": st.column_config.TextColumn("Curr", disabled=True),
-            "Volume (avg 7d)": st.column_config.NumberColumn("Vol (7d Avg)", disabled=True),
-            "Sector Raw": st.column_config.TextColumn("Sector Raw", disabled=True),
-            "Sector_GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics'], required=True),
-            "Type Raw": st.column_config.TextColumn("Type Raw", disabled=True),
-            "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type'], required=True),
-            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
-            "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'], required=True)
-        }
-        
-        edited_df = st.data_editor(df, column_config=column_config, use_container_width=True, hide_index=True, key="reload_editor")
-        
-        st.markdown("---")
-        st.subheader("2. Update Asset")
+    search_input = st.text_input("Enter ISIN, Ticker or Name for reload", placeholder="e.g. AU000000DRO2 or Apple", key="reload_search_input")
+    
+    selected_row, edited_df = yfinance_search_component(search_input, session_key_prefix="reload", allow_isin_edit=False)
+    
+    if selected_row is not None and edited_df is not None:
         if st.button("Update Asset with Reloaded Data", type="primary"):
-            if not edited_df.empty:
-                row = edited_df.iloc[0]
-                handle_reload_save(row, isin)
-            else:
-                st.error("No data to update.")
+            # Pre-fill the form fields with the selected data
+            st.session_state["prefill_name"] = selected_row["Name"]
+            st.session_state["prefill_ticker"] = selected_row["Ticker"]
+            st.session_state["prefill_currency"] = selected_row["Currency"]
+            st.session_state["prefill_asset_class"] = selected_row["AssetClass"]
+            st.session_state["prefill_region"] = selected_row["Region"]
+            st.session_state["prefill_sector"] = selected_row["Sector_GICS"]
+            st.session_state["prefill_instrument_type"] = selected_row["InstrumentType"]
+            st.session_state["prefill_industry"] = selected_row["Industry"]
+            st.session_state["prefill_country"] = selected_row["Country"]
+            st.success("Form pre-filled with reloaded data. Please review and save below.")
+            st.rerun()
 
     st.write("---")
 
@@ -292,29 +173,29 @@ def render_edit_view():
     with st.form("edit_form"):
         col1, col2 = st.columns(2)
         col1.text_input("ISIN (Primary Key)", value=isin, disabled=True)
-        name = col1.text_input("Name", value=asset["Name"])
-        ticker = col2.text_input("Ticker", value=asset["Ticker"])
-        currency = col2.text_input("Currency", value=asset["Currency"])
+        name = col1.text_input("Name", value=st.session_state.get("prefill_name", asset["Name"]))
+        ticker = col2.text_input("Ticker", value=st.session_state.get("prefill_ticker", asset["Ticker"]))
+        currency = col2.text_input("Currency", value=st.session_state.get("prefill_currency", asset["Currency"]))
         
         # Hinweis: Die Keys hier (z.B. asset["Asset Class"]) müssen 
         # exakt so heißen wie im flattened_data dict der database.py!
         asset_class = col1.selectbox("Asset Class", st.session_state['opt_asset'], 
-                                     index=get_option_index(st.session_state['opt_asset'], asset["Asset Class"]))
+                                     index=get_option_index(st.session_state['opt_asset'], st.session_state.get("prefill_asset_class", asset["Asset Class"])))
         
         region = col2.selectbox("Region", st.session_state['opt_region'], 
-                                index=get_option_index(st.session_state['opt_region'], asset["Region"]))
+                                index=get_option_index(st.session_state['opt_region'], st.session_state.get("prefill_region", asset["Region"])))
         
         sector = col1.selectbox("Sector", st.session_state['opt_gics'], 
-                                index=get_option_index(st.session_state['opt_gics'], asset["Sector"]))
+                                index=get_option_index(st.session_state['opt_gics'], st.session_state.get("prefill_sector", asset["Sector"])))
         
         instr_type = col2.selectbox("Instrument Type", st.session_state['opt_type'], 
-                                    index=get_option_index(st.session_state['opt_type'], asset["Type"]))
+                                    index=get_option_index(st.session_state['opt_type'], st.session_state.get("prefill_instrument_type", asset["Type"])))
         
         source = col1.selectbox("Price Source", st.session_state['opt_source'], 
                                 index=get_option_index(st.session_state['opt_source'], asset["Price Source"]))
         
-        industry = col2.text_input("Industry", value=asset["Industry"])
-        country = col1.text_input("Country", value=asset["Country"])
+        industry = col2.text_input("Industry", value=st.session_state.get("prefill_industry", asset["Industry"]))
+        country = col1.text_input("Country", value=st.session_state.get("prefill_country", asset["Country"]))
 
         if st.form_submit_button("Save Changes", type="primary"):
             updated_payload = {
@@ -335,6 +216,11 @@ def render_edit_view():
             st.success("Asset updated successfully!")
             # WICHTIG: Cache leeren, damit die Liste die neuen Daten zeigt
             st.cache_data.clear() 
+            # Clear prefill data
+            for key in ["prefill_name", "prefill_ticker", "prefill_currency", "prefill_asset_class", 
+                       "prefill_region", "prefill_sector", "prefill_instrument_type", "prefill_industry", "prefill_country"]:
+                if key in st.session_state:
+                    del st.session_state[key]
             st.session_state["view"] = "list"
             st.rerun()
 
