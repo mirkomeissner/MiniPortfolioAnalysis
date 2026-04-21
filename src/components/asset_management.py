@@ -182,7 +182,11 @@ def render_edit_view():
     with st.form("edit_form"):
         col1, col2 = st.columns(2)
         col1.text_input("ISIN (Primary Key)", value=isin, disabled=True)
+
         name = col1.text_input("Name", value=st.session_state.get("prefill_name", asset["Name"]))
+        if name != asset["Name"]: col1.caption(f"⚠️ Geändert (Original: {asset['Name']})")
+        else: col1.caption(f"Unverändert")
+        
         ticker = col2.text_input("Ticker", value=st.session_state.get("prefill_ticker", asset["Ticker"]))
         currency = col2.text_input("Currency", value=st.session_state.get("prefill_currency", asset["Currency"]))
         
