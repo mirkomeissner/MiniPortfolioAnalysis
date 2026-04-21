@@ -27,8 +27,13 @@ def save_asset_static_data(asset_data):
     return supabase.schema("shared").table("asset_static_data").insert(asset_data).execute()
 
 def update_asset_static_data(isin, updated_data):
-    """Updates an existing asset record by ISIN."""
-    return supabase.schema("shared").table("asset_static_data").update(updated_data).eq("isin", isin).execute()
+    try:
+        return supabase.schema("shared").table("asset_static_data").update(updated_data).eq("isin", isin).execute()
+    except Exception as e:
+        # Das wird den echten Datenbank-Fehler (z.B. "column does not exist") 
+        # in deinem Streamlit Fenster anzeigen
+        st.error(f"Datenbank-Details: {e}")
+        raise e
 
 def get_missing_isins(isins: list) -> list:
     """
