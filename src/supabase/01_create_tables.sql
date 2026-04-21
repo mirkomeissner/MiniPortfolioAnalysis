@@ -167,17 +167,63 @@ CREATE TABLE IF NOT EXISTS public.user_import_settings (
 );
 
 -- Daily snapshot of quantities per user, account, and asset
-CREATE TABLE IF NOT EXISTS public.daily_holdings (
+-- only increments the date if the holdings change
+CREATE TABLE IF NOT EXISTS public.incremental_holdings (
     user_id UUID NOT NULL,
     account_code TEXT NOT NULL,
-    isin VARCHAR(12) NOT NULL,
     holding_date DATE NOT NULL,
+    isin VARCHAR(12) NOT NULL,
     quantity NUMERIC(20, 8) NOT NULL,
-    PRIMARY KEY (user_id, account_code, isin, holding_date),
-    CONSTRAINT fk_daily_holdings_account FOREIGN KEY (user_id, account_code) REFERENCES public.accounts(user_id, account_code) ON DELETE CASCADE,
-    CONSTRAINT fk_daily_holdings_isin FOREIGN KEY (isin) REFERENCES shared.asset_static_data(isin) ON DELETE CASCADE
+    PRIMARY KEY (user_id, account_code, holding_date, isin),
+    CONSTRAINT fk_incremental_holdings_account FOREIGN KEY (user_id, account_code) REFERENCES public.accounts(user_id, account_code) ON DELETE CASCADE,
+    CONSTRAINT fk_incremental_holdings_isin FOREIGN KEY (isin) REFERENCES shared.asset_static_data(isin) ON DELETE CASCADE
 );
-CREATE INDEX idx_daily_holdings_lookup ON public.daily_holdings(user_id, holding_date);
+CREATE INDEX idx_holdings_lookup ON public.incremental_holdings (user_id, account_code, isin, holding_date DESC);
+
+
+-- view to create daily holdings by filling the gaps in incremental_holdings
+CREATE OR REPLACE VIEW public.daily_holdings AS
+WITH date_range AS (
+    -- 1. Wir ermitteln den Startpunkt und das Ende der Zeitreihe
+    SELECT 
+        min(holding_date) as start_date, 
+        CURRENT_DATE as end_date 
+    FROM public.incremental_holdings
+),
+all_days AS (
+    -- 2. Wir generieren jeden einzelnen Tag
+    SELECT generate_series(start_date, end_date, '1 day'::interval)::date AS day
+    FROM date_range
+),
+distinct_keys AS (
+    -- 3. Wir brauchen alle Kombinationen aus User, Account und ISIN, die existieren
+    SELECT DISTINCT user_id, account_code, isin 
+    FROM public.incremental_holdings
+)
+-- 4. Wir verbinden die Tage mit den Keys und suchen den letzten Stand
+SELECT 
+    k.user_id,
+    k.account_code,
+    d.day AS holding_date,
+    k.isin,
+    h.quantity
+FROM all_days d
+CROSS JOIN distinct_keys k -- Erzeugt für jeden Tag eine Zeile pro Asset
+LEFT JOIN LATERAL (
+    -- Dieser Teil sucht für jeden Tag den "aktuellsten" Eintrag in der echten Tabelle
+    SELECT ih.quantity
+    FROM public.incremental_holdings ih
+    WHERE ih.user_id = k.user_id
+      AND ih.account_code = k.account_code
+      AND ih.isin = k.isin
+      AND ih.holding_date <= d.day
+    ORDER BY ih.holding_date DESC
+    LIMIT 1
+) h ON TRUE
+WHERE h.quantity IS NOT NULL; -- Verhindert Zeilen für Assets vor ihrem ersten Kauf
+
+
+
 
 
 

@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import yfinance as yf
 from datetime import datetime
 from src.database import (
     get_all_assets_with_labels, 
@@ -12,7 +13,14 @@ from src.utils import (
     ensure_reference_data, 
     apply_advanced_filters
 )
+from src.utils.ui_components import yfinance_search_component
 from .ticker_search import ticker_search_view
+
+# --- HELPER FUNCTIONS FROM ticker_search.py ---
+
+# Helper functions moved to ui_components.py
+
+# handle_reload_save function removed - now pre-filling form instead of direct save
 
 def asset_table_view():
     # --- VIEW ROUTING ---
@@ -95,11 +103,16 @@ def render_edit_view():
     isin = st.session_state.get("edit_isin")
     st.subheader(f"Edit Asset: {isin}")
     
-    if st.button("⬅ Cancel"):
-        st.session_state["view"] = "list"
-        st.rerun()
+    # 1. Spalten für die obere Button-Leiste definieren
+    # [1, 1, 4] bedeutet: zwei kleine Spalten für Buttons, eine große leere Spalte rechts
+    col_back, col_status, col_spacer = st.columns([1, 1.2, 4])
 
-    # 1. Load current data
+    with col_back:
+        if st.button("⬅ Cancel"):
+            st.session_state["view"] = "list"
+            st.rerun()
+
+    # 2. Daten laden (wie gehabt)
     all_data = get_all_assets_with_labels()
     asset = next((item for item in all_data if item["ISIN"] == isin), None)
 
@@ -107,34 +120,60 @@ def render_edit_view():
         st.error("Asset not found.")
         return
 
-    # --- CLOSE / REOPEN LOGIC ---
-    st.write("---")
     closed_val = asset.get("Closed On")
-    
-    if closed_val is None:
-        if st.button("🔒 Close Asset", help="Set the closing date to today", use_container_width=True):
-            update_asset_static_data(isin, {
-                "closed_on": datetime.now().date().isoformat(),
-                "updated_at": datetime.now().isoformat(),
-                "updated_by": st.session_state.get("user_name", "System")
-            })
-            st.success("Asset closed.")
-            st.cache_data.clear()
-            st.session_state["view"] = "list"
-            st.rerun()
-    else:
+
+    # 3. Status-Button in die zweite Spalte platzieren
+    with col_status:
+        if closed_val is None:
+            if st.button("🔒 Close Asset", help="Set the closing date to today"):
+                update_asset_static_data(isin, {
+                    "closed_on": datetime.now().date().isoformat(),
+                    "updated_at": datetime.now().isoformat(),
+                    "updated_by": st.session_state.get("user_id")
+                })
+                st.success("Asset closed.")
+                st.cache_data.clear()
+                st.session_state["view"] = "list"
+                st.rerun()
+        else:
+            if st.button("🔓 Reopen Asset", help="Clear the closing date"):
+                update_asset_static_data(isin, {
+                    "closed_on": None,
+                    "updated_at": datetime.now().isoformat(),
+                    "updated_by": st.session_state.get("user_id")
+                })
+                st.success("Asset reopened.")
+                st.cache_data.clear()
+                st.session_state["view"] = "list"
+                st.rerun()
+
+    # Den Warntext (falls geschlossen) kannst du darunter platzieren
+    if closed_val:
         st.warning(f"This asset was closed on {closed_val}")
-        if st.button("🔓 Reopen Asset", help="Clear the closing date", use_container_width=True):
-            update_asset_static_data(isin, {
-                "closed_on": None,
-                "updated_at": datetime.now().isoformat(),
-                "updated_by": st.session_state.get("user_name", "System")
-            })
-            st.success("Asset reopened.")
-            st.cache_data.clear()
-            st.session_state["view"] = "list"
+
+    # st.write("---")
+
+    # --- RELOAD FROM YAHOO FINANCE ---
+    # search_input = st.text_input("Enter ISIN, Ticker or Name for reload", placeholder="e.g. AU000000DRO2 or Apple", key="reload_search_input")
+    
+    selected_row, edited_df = yfinance_search_component(search_input = isin, session_key_prefix="reload", allow_isin_edit=False)
+    
+    if selected_row is not None and edited_df is not None:
+        if st.button("Update Asset with Reloaded Data", type="primary"):
+            # Pre-fill the form fields with the selected data
+            st.session_state["prefill_name"] = selected_row["Name"]
+            st.session_state["prefill_ticker"] = selected_row["Ticker"]
+            st.session_state["prefill_currency"] = selected_row["Currency"]
+            st.session_state["prefill_asset_class"] = selected_row["AssetClass"]
+            st.session_state["prefill_region"] = selected_row["Region"]
+            st.session_state["prefill_sector"] = selected_row["Sector_GICS"]
+            st.session_state["prefill_instrument_type"] = selected_row["InstrumentType"]
+            st.session_state["prefill_industry"] = selected_row["Industry"]
+            st.session_state["prefill_country"] = selected_row["Country"]
+            st.success("Form pre-filled with reloaded data. Please review and save below.")
             st.rerun()
-    st.write("---")
+
+    # st.write("---")
 
     # --- MAIN EDIT FORM ---
     # REPLACEMENT 1: Using our central loader instead of the long IF-block
@@ -143,29 +182,31 @@ def render_edit_view():
     with st.form("edit_form"):
         col1, col2 = st.columns(2)
         col1.text_input("ISIN (Primary Key)", value=isin, disabled=True)
-        name = col1.text_input("Name", value=asset["Name"])
-        ticker = col2.text_input("Ticker", value=asset["Ticker"])
-        currency = col2.text_input("Currency", value=asset["Currency"])
+        gap = "&nbsp;" * 6
+
+        name = col1.text_input(f"Name{gap}:blue[(original: {asset['Name']})]", value=st.session_state.get("prefill_name", asset["Name"]))       
+        ticker = col2.text_input(f"Ticker{gap}:blue[(original: {asset['Ticker']})]", value=st.session_state.get("prefill_ticker", asset["Ticker"]))
+        currency = col2.text_input(f"Currency{gap}:blue[(original: {asset['Currency']})]", value=st.session_state.get("prefill_currency", asset["Currency"]))
         
         # Hinweis: Die Keys hier (z.B. asset["Asset Class"]) müssen 
         # exakt so heißen wie im flattened_data dict der database.py!
-        asset_class = col1.selectbox("Asset Class", st.session_state['opt_asset'], 
-                                     index=get_option_index(st.session_state['opt_asset'], asset["Asset Class"]))
+        asset_class = col1.selectbox(f"Asset Class{gap}:blue[(original: {asset['Asset Class']})]", st.session_state['opt_asset'], 
+                                     index=get_option_index(st.session_state['opt_asset'], st.session_state.get("prefill_asset_class", asset["Asset Class"])))
         
-        region = col2.selectbox("Region", st.session_state['opt_region'], 
-                                index=get_option_index(st.session_state['opt_region'], asset["Region"]))
+        region = col2.selectbox(f"Region{gap}:blue[(original: {asset['Region']})]", st.session_state['opt_region'], 
+                                index=get_option_index(st.session_state['opt_region'], st.session_state.get("prefill_region", asset["Region"])))
         
-        sector = col1.selectbox("Sector", st.session_state['opt_gics'], 
-                                index=get_option_index(st.session_state['opt_gics'], asset["Sector"]))
+        sector = col1.selectbox(f"Sector{gap}:blue[(original: {asset['Sector']})]", st.session_state['opt_gics'], 
+                                index=get_option_index(st.session_state['opt_gics'], st.session_state.get("prefill_sector", asset["Sector"])))
         
-        instr_type = col2.selectbox("Instrument Type", st.session_state['opt_type'], 
-                                    index=get_option_index(st.session_state['opt_type'], asset["Type"]))
+        instr_type = col2.selectbox(f"Instrument Type{gap}:blue[(original: {asset['Type']})]", st.session_state['opt_type'], 
+                                    index=get_option_index(st.session_state['opt_type'], st.session_state.get("prefill_instrument_type", asset["Type"])))
         
-        source = col1.selectbox("Price Source", st.session_state['opt_source'], 
+        source = col1.selectbox(f"Price Source{gap}:blue[(original: {asset['Price Source']})]", st.session_state['opt_source'], 
                                 index=get_option_index(st.session_state['opt_source'], asset["Price Source"]))
         
-        industry = col2.text_input("Industry", value=asset["Industry"])
-        country = col1.text_input("Country", value=asset["Country"])
+        industry = col2.text_input(f"Industry{gap}:blue[(original: {asset['Industry']})]", value=st.session_state.get("prefill_industry", asset["Industry"]))
+        country = col1.text_input(f"Country{gap}:blue[(original: {asset['Country']})]", value=st.session_state.get("prefill_country", asset["Country"]))
 
         if st.form_submit_button("Save Changes", type="primary"):
             updated_payload = {
@@ -180,12 +221,17 @@ def render_edit_view():
                 "industry": industry,
                 "country": country,
                 "updated_at": datetime.now().isoformat(),
-                "updated_by": st.session_state.get("user_name", "System")
+                "updated_by": st.session_state.get("user_id")
             }
             update_asset_static_data(isin, updated_payload)
             st.success("Asset updated successfully!")
             # WICHTIG: Cache leeren, damit die Liste die neuen Daten zeigt
             st.cache_data.clear() 
+            # Clear prefill data
+            for key in ["prefill_name", "prefill_ticker", "prefill_currency", "prefill_asset_class", 
+                       "prefill_region", "prefill_sector", "prefill_instrument_type", "prefill_industry", "prefill_country"]:
+                if key in st.session_state:
+                    del st.session_state[key]
             st.session_state["view"] = "list"
             st.rerun()
 
