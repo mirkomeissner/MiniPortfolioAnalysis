@@ -129,7 +129,7 @@ def render_edit_view():
                 update_asset_static_data(isin, {
                     "closed_on": datetime.now().date().isoformat(),
                     "updated_at": datetime.now().isoformat(),
-                    "updated_by": st.session_state.get("user_name", "System")
+                    "updated_by": st.session_state.get("user_id")
                 })
                 st.success("Asset closed.")
                 st.cache_data.clear()
@@ -140,7 +140,7 @@ def render_edit_view():
                 update_asset_static_data(isin, {
                     "closed_on": None,
                     "updated_at": datetime.now().isoformat(),
-                    "updated_by": st.session_state.get("user_name", "System")
+                    "updated_by": st.session_state.get("user_id")
                 })
                 st.success("Asset reopened.")
                 st.cache_data.clear()
@@ -221,7 +221,7 @@ def render_edit_view():
                 "industry": industry,
                 "country": country,
                 "updated_at": datetime.now().isoformat(),
-                "updated_by": st.session_state.get("user_name", "System")
+                "updated_by": st.session_state.get("user_id")
             }
             update_asset_static_data(isin, updated_payload)
             st.success("Asset updated successfully!")
