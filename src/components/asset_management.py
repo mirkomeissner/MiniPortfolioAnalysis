@@ -183,7 +183,7 @@ def render_edit_view():
         col1, col2 = st.columns(2)
         col1.text_input("ISIN (Primary Key)", value=isin, disabled=True)
 
-        name = col1.text_input("Name", value=st.session_state.get("prefill_name", asset["Name"]))
+        name = col1.text_input(f"Name (Original: {asset['Name']})", value=st.session_state.get("prefill_name", asset["Name"]))
         col1.caption(f"Original: :blue[{asset['Name']}]")
         
         ticker = col2.text_input("Ticker", value=st.session_state.get("prefill_ticker", asset["Ticker"]))
