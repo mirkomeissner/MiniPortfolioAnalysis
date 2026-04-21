@@ -199,7 +199,7 @@ def render_edit_view():
         sector = col1.selectbox(f"Sector{gap}:blue[(original: {asset['Sector']})]", st.session_state['opt_gics'], 
                                 index=get_option_index(st.session_state['opt_gics'], st.session_state.get("prefill_sector", asset["Sector"])))
         
-        instr_type = col2.selectbox(f"Instrument Type{gap}:blue[(original: {asset['Instrument Type']})]", st.session_state['opt_type'], 
+        instr_type = col2.selectbox(f"Instrument Type{gap}:blue[(original: {asset['Type']})]", st.session_state['opt_type'], 
                                     index=get_option_index(st.session_state['opt_type'], st.session_state.get("prefill_instrument_type", asset["Type"])))
         
         source = col1.selectbox(f"Price Source{gap}:blue[(original: {asset['Price Source']})]", st.session_state['opt_source'], 
