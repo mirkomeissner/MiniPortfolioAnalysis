@@ -9,6 +9,7 @@ class MockTicker:
         self.ticker_symbol = ticker_symbol
         # Hier kannst du beliebige Testdaten hinterlegen
         self.info = {
+            "isin": "DE000MOCK01",
             "longName": f"{ticker_symbol} Mock Corp",
             "currency": "EUR",
             "currentPrice": 123.45,
