@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
+from .yf_wrapper import my_yf
 
 def apply_advanced_filters(df: pd.DataFrame, session_prefix: str, custom_filter_logic: dict = None) -> pd.DataFrame:
     """
@@ -136,7 +136,7 @@ def yfinance_search_component(search_input, session_key_prefix="search", allow_i
     if st.button("yfinance search") and search_input:
         with st.spinner("Fetching data from Yahoo Finance..."):
             try:
-                search_results = yf.Search(search_input).quotes
+                search_results = my_yf.Search(search_input).quotes
                 if not search_results:
                     st.warning("No results found.")
                     return None, None
@@ -146,7 +146,7 @@ def yfinance_search_component(search_input, session_key_prefix="search", allow_i
                     
                     for res in search_results:
                         symbol = res.get("symbol")
-                        t = yf.Ticker(symbol)
+                        t = my_yf.Ticker(symbol)
                         info = t.info
                         
                         # --- CLEAN ISIN LOGIC ---
