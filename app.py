@@ -1,5 +1,5 @@
 import streamlit as st  
-from src.authentication import check_password  
+from src.authentication import check_password, user_settings_ui  
 from src.components import asset_table_view, transaction_table_view  
  
 st.set_page_config(page_title="Asset Manager", layout="wide")  
@@ -7,7 +7,7 @@ st.set_page_config(page_title="Asset Manager", layout="wide")
 if check_password():  
     st.sidebar.title(f"User: {st.session_state['user_name']}")  
     # English Navigation
-    menu = st.sidebar.radio("Navigation", ["Home", "Asset Data", "Transactions"])  
+    menu = st.sidebar.radio("Navigation", ["Home", "Asset Data", "Transactions", "User Settings"])  
      
     if st.sidebar.button("Logout"):  
         st.session_state["logged_in"] = False  
@@ -24,10 +24,6 @@ if check_password():
     if menu == "Home": 
         st.title("Welcome") 
         st.write(f"Hello **{st.session_state['user_name']}**, please use the sidebar to navigate.") 
-     
-        with st.expander("Security Settings"):
-            from src.authentication import change_password_ui
-            change_password_ui()
  
     elif menu == "Asset Data": 
         asset_table_view()  
@@ -35,4 +31,7 @@ if check_password():
     elif menu == "Transactions": 
         # The routing between 'list' and 'form' is handled inside this component
         transaction_table_view()
+    
+    elif menu == "User Settings":
+        user_settings_ui()
 

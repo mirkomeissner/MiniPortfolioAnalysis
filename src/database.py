@@ -269,3 +269,93 @@ def save_import_settings(user_id, account_code, config):
 
 
 
+# --- USER MANAGEMENT FUNCTIONS ---
+
+def get_user_profile(username):
+    """
+    Fetches the user profile and their password hash by joining 
+    public.users and public.user_secrets.
+    """
+    try:
+        res = supabase.table("users").select("id, username, user_secrets(password_hash)").eq("username", username).execute()
+        
+        if res.data:
+            data = res.data[0]
+            
+            # Handle the joined result: user_secrets might be a list, a dict, or None
+            secrets = data.get("user_secrets")
+            p_hash = None
+            
+            if isinstance(secrets, list) and len(secrets) > 0:
+                p_hash = secrets[0].get("password_hash")
+            elif isinstance(secrets, dict):
+                p_hash = secrets.get("password_hash")
+
+            return {
+                "id": data["id"],
+                "username": data["username"],
+                "password_hash": p_hash
+            }
+        return None
+    except Exception as e:
+        st.error(f"Error fetching user profile: {e}")
+        return None
+
+def set_user_password(user_id, password_hash):
+    """Updates or inserts the password hash in the user_secrets table."""
+    try:
+        supabase.table("user_secrets").upsert({
+            "user_id": user_id,
+            "password_hash": password_hash
+        }).execute()
+    except Exception as e:
+        st.error(f"Error updating password: {e}")
+        raise e
+
+def get_user_email(user_id):
+    """Fetches the current user's email address."""
+    try:
+        res = supabase.table("users").select("email").eq("id", user_id).execute()
+        if res.data:
+            return res.data[0].get("email")
+        return None
+    except Exception as e:
+        st.error(f"Error fetching user email: {e}")
+        return None
+
+def update_user_email(user_id, email):
+    """Updates the user's email address."""
+    try:
+        supabase.table("users").update({"email": email}).eq("id", user_id).execute()
+    except Exception as e:
+        st.error(f"Error updating email: {e}")
+        raise e
+
+def create_user(username):
+    """
+    Creates a new user in the 'users' table.
+    Returns the user_id (UUID) or None if creation fails.
+    """
+    try:
+        user_res = supabase.table("users").insert({"username": username}).execute()
+        if user_res.data:
+            return user_res.data[0]["id"]
+        return None
+    except Exception as e:
+        # Be specific about duplicate errors
+        if "23505" in str(e):
+            # This is a unique constraint violation, not a critical error
+            return None
+        st.error(f"Error creating user: {e}")
+        raise e
+
+def get_user_by_username(username):
+    """Fetches a user by username to check if they exist."""
+    try:
+        res = supabase.table("users").select("id").eq("username", username).execute()
+        if res.data:
+            return res.data[0]["id"]
+        return None
+    except Exception as e:
+        st.error(f"Error checking user existence: {e}")
+        return None

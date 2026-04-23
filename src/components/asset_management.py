@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
 from datetime import datetime
 from src.database import (
     get_all_assets_with_labels, 
@@ -10,10 +9,12 @@ from src.database import (
 from src.utils import (
     extract_code, 
     get_option_index, 
+    get_option_index_by_label,
+    get_selectbox_options_and_index,
     ensure_reference_data, 
-    apply_advanced_filters
+    apply_advanced_filters,
+    yfinance_search_component
 )
-from src.utils.ui_components import yfinance_search_component
 from .ticker_search import ticker_search_view
 
 # --- HELPER FUNCTIONS FROM ticker_search.py ---
@@ -190,34 +191,40 @@ def render_edit_view():
         
         # Hinweis: Die Keys hier (z.B. asset["Asset Class"]) müssen 
         # exakt so heißen wie im flattened_data dict der database.py!
-        asset_class = col1.selectbox(f"Asset Class{gap}:blue[(original: {asset['Asset Class']})]", st.session_state['opt_asset'], 
-                                     index=get_option_index(st.session_state['opt_asset'], st.session_state.get("prefill_asset_class", asset["Asset Class"])))
+        asset_class_options, asset_class_index = get_selectbox_options_and_index(st.session_state['opt_asset'], st.session_state.get("prefill_asset_class", asset["Asset Class"]))
+        asset_class = col1.selectbox(f"Asset Class{gap}:blue[(original: {asset['Asset Class']})]", asset_class_options, index=asset_class_index)
         
-        region = col2.selectbox(f"Region{gap}:blue[(original: {asset['Region']})]", st.session_state['opt_region'], 
-                                index=get_option_index(st.session_state['opt_region'], st.session_state.get("prefill_region", asset["Region"])))
+        region_options, region_index = get_selectbox_options_and_index(st.session_state['opt_region'], st.session_state.get("prefill_region", asset["Region"]))
+        region = col2.selectbox(f"Region{gap}:blue[(original: {asset['Region']})]", region_options, index=region_index)
         
-        sector = col1.selectbox(f"Sector{gap}:blue[(original: {asset['Sector']})]", st.session_state['opt_gics'], 
-                                index=get_option_index(st.session_state['opt_gics'], st.session_state.get("prefill_sector", asset["Sector"])))
+        sector_options, sector_index = get_selectbox_options_and_index(st.session_state['opt_gics'], st.session_state.get("prefill_sector", asset["Sector"]))
+        sector = col1.selectbox(f"Sector{gap}:blue[(original: {asset['Sector']})]", sector_options, index=sector_index)
         
-        instr_type = col2.selectbox(f"Instrument Type{gap}:blue[(original: {asset['Type']})]", st.session_state['opt_type'], 
-                                    index=get_option_index(st.session_state['opt_type'], st.session_state.get("prefill_instrument_type", asset["Type"])))
+        instr_type_options, instr_type_index = get_selectbox_options_and_index(st.session_state['opt_type'], st.session_state.get("prefill_instrument_type", asset["Type"]))
+        instr_type = col2.selectbox(f"Instrument Type{gap}:blue[(original: {asset['Type']})]", instr_type_options, index=instr_type_index)
         
-        source = col1.selectbox(f"Price Source{gap}:blue[(original: {asset['Price Source']})]", st.session_state['opt_source'], 
-                                index=get_option_index(st.session_state['opt_source'], asset["Price Source"]))
+        source_options, source_index = get_selectbox_options_and_index(st.session_state['opt_source'], asset["Price Source"])
+        source = col1.selectbox(f"Price Source{gap}:blue[(original: {asset['Price Source']})]", source_options, index=source_index)
         
         industry = col2.text_input(f"Industry{gap}:blue[(original: {asset['Industry']})]", value=st.session_state.get("prefill_industry", asset["Industry"]))
         country = col1.text_input(f"Country{gap}:blue[(original: {asset['Country']})]", value=st.session_state.get("prefill_country", asset["Country"]))
 
         if st.form_submit_button("Save Changes", type="primary"):
+            # Helper function to extract code or return None for null selections
+            def extract_code_or_none(selected_value):
+                if selected_value == "(None)":
+                    return None
+                return extract_code(selected_value)
+            
             updated_payload = {
                 "name": name,
                 "ticker": ticker,
                 "currency": currency,
-                "asset_class_code": extract_code(asset_class),
-                "region_code": extract_code(region),
-                "sector_code": extract_code(sector),
-                "instrument_type_code": extract_code(instr_type), # Korrigiert: _code
-                "price_source_code": extract_code(source),       # Korrigiert: _code
+                "asset_class_code": extract_code_or_none(asset_class),
+                "region_code": extract_code_or_none(region),
+                "sector_code": extract_code_or_none(sector),
+                "instrument_type_code": extract_code_or_none(instr_type),
+                "price_source_code": extract_code_or_none(source),
                 "industry": industry,
                 "country": country,
                 "updated_at": datetime.now().isoformat(),
