@@ -27,6 +27,36 @@ def get_option_index(options: list, current_code: str) -> int:
     except (StopIteration, AttributeError):
         return 0
 
+def get_option_index_by_label(options: list, current_label: str):
+    """
+    Finds the index of a label within a list of formatted options (e.g., finding 'Energy' in ['10 (Energy)', ...]).
+    For null/empty labels, returns 0 to select a placeholder option.
+    """
+    if not current_label:
+        return 0
+    try:
+        return next(i for i, s in enumerate(options) if f"({current_label})" in s)
+    except (StopIteration, AttributeError):
+        return 0
+
+def get_selectbox_options_and_index(options: list, current_label: str):
+    """
+    Returns options list and index for selectbox, always including a null option.
+    Adds a "(None)" option at the beginning for setting values to null.
+    """
+    # Always add (None) option at the beginning
+    enhanced_options = ["(None)"] + options
+
+    if not current_label:
+        return enhanced_options, 0
+
+    # Look for the current label in the original options (not the enhanced ones)
+    try:
+        index = next(i for i, s in enumerate(options) if f"({current_label})" in s)
+        return enhanced_options, index + 1  # +1 because (None) is at index 0
+    except (StopIteration, AttributeError):
+        return enhanced_options, 0
+
 def ensure_reference_data():
     """
     Zentrale Funktion, um sicherzustellen, dass ALLE Dropdown-Optionen
