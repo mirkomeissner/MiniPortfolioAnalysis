@@ -306,7 +306,7 @@ ON public.users FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 DO $$ 
 DECLARE 
     t text;
-    tables text[] := ARRAY['accounts', 'transactions', 'user_import_settings', 'incremental_holdings', 'user_secrets'];
+    tables text[] := ARRAY['accounts', 'transactions', 'user_import_settings', 'incremental_holdings'];
 BEGIN
     FOREACH t IN ARRAY tables LOOP
         EXECUTE format('DROP POLICY IF EXISTS "Users can only access their own %I" ON public.%I', t, t);
