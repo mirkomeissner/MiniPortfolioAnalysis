@@ -104,6 +104,12 @@ def render_edit_view():
     isin = st.session_state.get("edit_isin")
     st.subheader(f"Edit Asset: {isin}")
     
+    # Clear any previous yfinance search results for this session
+    reload_keys = ["reload_results_df", "reload_editor", "reload_ticker_select"]
+    for key in reload_keys:
+        if key in st.session_state:
+            del st.session_state[key]
+    
     # 1. Spalten für die obere Button-Leiste definieren
     # [1, 1, 4] bedeutet: zwei kleine Spalten für Buttons, eine große leere Spalte rechts
     col_back, col_status, col_spacer = st.columns([1, 1.2, 4])
