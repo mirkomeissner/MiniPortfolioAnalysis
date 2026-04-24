@@ -230,16 +230,17 @@ WHERE h.quantity IS NOT NULL; -- Verhindert Zeilen für Assets vor ihrem ersten 
 -- ==========================================================
 -- 3. ENABLING ROW LEVEL SECURITY (RLS)
 -- ==========================================================
--- This enables RLS for all tables in the shared schema
+
 DO $$ 
 DECLARE 
-    t text;
+    r RECORD;
 BEGIN
-    FOR t IN (SELECT table_name FROM information_schema.tables WHERE table_schema = 'shared' AND table_type = 'BASE TABLE') 
+    FOR r IN (SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema IN ('public', 'shared') AND table_type = 'BASE TABLE') 
     LOOP
-        EXECUTE format('ALTER TABLE shared.%I ENABLE ROW LEVEL SECURITY', t);
+        EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', r.table_schema, r.table_name);        
     END LOOP;
 END $$;
+
 
 -- ==========================================================
 -- 4. POLICIES (SHARED SCHEMA)
@@ -272,17 +273,72 @@ FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
 
 -- ==========================================================
+-- 5. POLICIES (PUBLIC SCHEMA)
+-- ==========================================================
+
+-- A: USERS Table (Special case: id instead of user_id)
+DROP POLICY IF EXISTS "Users can only see their own profile" ON public.users;
+CREATE POLICY "Users can only see their own profile" 
+ON public.users FOR SELECT USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can only update their own profile" ON public.users;
+CREATE POLICY "Users can only update their own profile" 
+ON public.users FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+
+-- B: All other tables (using user_id column)
+-- We'll do this for accounts, transactions, user_import_settings, incremental_holdings, user_secrets
+
+DO $$ 
+DECLARE 
+    t text;
+    tables text[] := ARRAY['accounts', 'transactions', 'user_import_settings', 'incremental_holdings', 'user_secrets'];
+BEGIN
+    FOREACH t IN ARRAY tables LOOP
+        EXECUTE format('DROP POLICY IF EXISTS "Users can only access their own %I" ON public.%I', t, t);
+        EXECUTE format('CREATE POLICY "Users can only access their own %I" ON public.%I 
+                        FOR ALL 
+                        USING (auth.uid() = user_id) 
+                        WITH CHECK (auth.uid() = user_id)', t, t);
+    END LOOP;
+END $$;
+
+
+
+-- ==========================================================
 -- 5. PERMISSIONS (GRANTS)
 -- ==========================================================
--- Grant schema usage
 
+-- A: SCHEMA USAGE
+-- Everyone needs to see the schema exists
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT USAGE ON SCHEMA shared TO anon, authenticated;
-GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
+-- B: SHARED SCHEMA (Read-only for most, contributor for authenticated)
+-- Granting SELECT to everyone (anon + authenticated)
 GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated;
-GRANT INSERT ON shared.asset_static_data TO authenticated;
-GRANT UPDATE ON shared.asset_static_data TO authenticated;
 
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT INSERT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT UPDATE ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+-- Granting INSERT/UPDATE only for assets to authenticated users
+GRANT INSERT, UPDATE ON shared.asset_static_data TO authenticated;
+
+-- C: PUBLIC SCHEMA (User data)
+-- IMPORTANT: 'anon' gets ZERO access to public tables to prevent data leaks.
+-- If someone is not logged in, they shouldn't even query the user tables.
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
+
+-- Authenticated users need permissions to work with their own data.
+-- RLS will ensure they only see their OWN rows.
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
+
+-- Granting access to the sequences (if you use SERIAL or IDENTITY columns)
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA shared TO authenticated;
+
+-- D: SERVICE ROLE (The Master Key)
+-- The service_role should always have full access for your background scripts.
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA shared TO service_role;
+
+
+
+
+
