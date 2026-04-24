@@ -19,20 +19,18 @@ CREATE OR REPLACE VIEW shared.users WITH (security_invoker = true) AS SELECT id,
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger 
 LANGUAGE plpgsql 
-SECURITY DEFINER 
-SET search_path = public   -- Schützt die Funktion und legt das Schema fest
-AS $$
+SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  INSERT INTO public.users (id, username, email, is_approved)
+  INSERT INTO public.users (id, email, username, is_approved)
   VALUES (
     new.id, 
-    COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
     new.email,
-    FALSE -- Standardmäßig auf 'Warten' gesetzt
+    COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
+    FALSE
   );
   RETURN new;
 END;
-$$; -- Hier kein "LANGUAGE" mehr wiederholen
+$$;
 
 -- Trigger aktivieren
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
