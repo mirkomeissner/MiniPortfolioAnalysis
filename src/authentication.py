@@ -92,13 +92,13 @@ def check_password():
 
     with tab2:
         st.subheader("Register")
-        with st.form("Registration Form"):
+        with st.form("Registration Form", clear_on_submit=True):
             new_email = st.text_input("Email (required)").strip()
             new_username = st.text_input("Username (required)").strip()
             new_pwd = st.text_input("Password", type="password")
             confirm_pwd = st.text_input("Confirm Password", type="password")
             reg_submit = st.form_submit_button("Register")
-
+    
             if reg_submit:
                 if not new_email or not new_username:
                     st.error("Email and Username are required.")
@@ -109,7 +109,19 @@ def check_password():
                 else:
                     res = register_user(new_email, new_pwd, new_username)
                     if res:
-                        st.success("✅ Account created! Please wait for admin approval.")
+                        # Wir speichern einen Hinweis in den Session State, 
+                        # damit er nach dem Refresh angezeigt wird
+                        st.session_state["reg_success_msg"] = f"✅ Account created for {new_username}!"
+                        if new_email in st.secrets.get("ADMIN_EMAILS", []):
+                            st.session_state["reg_success_msg"] += " Admin access granted automatically."
+                        
+                        st.rerun() # Seite neu laden, um Meldung oben anzuzeigen
+    
+        # Meldung nach dem Rerender außerhalb des Forms anzeigen
+        if "reg_success_msg" in st.session_state:
+            st.success(st.session_state["reg_success_msg"])
+            del st.session_state["reg_success_msg"] # Einmalig anzeigen
+        
 
     return False
 
