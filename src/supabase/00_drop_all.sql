@@ -14,7 +14,7 @@ DROP TABLE IF EXISTS public.incremental_holdings CASCADE;
 DROP TABLE IF EXISTS public.user_import_settings CASCADE;
 DROP TABLE IF EXISTS public.transactions CASCADE;
 DROP TABLE IF EXISTS public.accounts CASCADE;
-DROP TABLE IF EXISTS public.user_secrets CASCADE;
+DROP TABLE IF EXISTS public.user_secrets CASCADE; -- TO BE REOMVED AFTER REFACTORING
 DROP TABLE IF EXISTS public.users CASCADE;
 
 -- 3. Drop Tables in SHARED (Global data)
