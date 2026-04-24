@@ -17,18 +17,22 @@ CREATE TABLE IF NOT EXISTS public.users (
 CREATE OR REPLACE VIEW shared.users WITH (security_invoker = true) AS SELECT id, username FROM public.users;
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger AS $$
+RETURNS trigger 
+LANGUAGE plpgsql 
+SECURITY DEFINER 
+SET search_path = public   -- Schützt die Funktion und legt das Schema fest
+AS $$
 BEGIN
   INSERT INTO public.users (id, username, email, is_approved)
   VALUES (
     new.id, 
     COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
     new.email,
-    FALSE -- Jeder neue User wartet erst auf dein OK
+    FALSE -- Standardmäßig auf 'Warten' gesetzt
   );
   RETURN new;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$; -- Hier kein "LANGUAGE" mehr wiederholen
 
 -- Trigger aktivieren
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
@@ -301,7 +305,7 @@ CREATE POLICY "Users can only update their own profile"
 ON public.users FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
 
 -- B: All other tables (using user_id column)
--- We'll do this for accounts, transactions, user_import_settings, incremental_holdings, user_secrets
+-- We'll do this for accounts, transactions, user_import_settings, incremental_holdings
 
 DO $$ 
 DECLARE 
@@ -312,8 +316,20 @@ BEGIN
         EXECUTE format('DROP POLICY IF EXISTS "Users can only access their own %I" ON public.%I', t, t);
         EXECUTE format('CREATE POLICY "Users can only access their own %I" ON public.%I 
                         FOR ALL 
-                        USING (auth.uid() = user_id) 
-                        WITH CHECK (auth.uid() = user_id)', t, t);
+                        USING (
+                            auth.uid() = user_id 
+                            AND EXISTS (
+                                SELECT 1 FROM public.users 
+                                WHERE id = auth.uid() AND is_approved = TRUE
+                            )
+                        ) 
+                        WITH CHECK (
+                            auth.uid() = user_id 
+                            AND EXISTS (
+                                SELECT 1 FROM public.users 
+                                WHERE id = auth.uid() AND is_approved = TRUE
+                            )
+                        )', t, t);
     END LOOP;
 END $$;
 
