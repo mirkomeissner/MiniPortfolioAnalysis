@@ -35,7 +35,7 @@ def get_option_index_by_label(options: list, current_label: str):
     if not current_label:
         return 0
     try:
-        return next(i for i, s in enumerate(options) if f"({current_label})" in s)
+        return next(i for i, s in enumerate(options) if s == current_label or f"({current_label})" in s)
     except (StopIteration, AttributeError):
         return 0
 
@@ -52,7 +52,7 @@ def get_selectbox_options_and_index(options: list, current_label: str):
 
     # Look for the current label in the original options (not the enhanced ones)
     try:
-        index = next(i for i, s in enumerate(options) if f"({current_label})" in s)
+        index = next(i for i, s in enumerate(options) if s == current_label or f"({current_label})" in s)
         return enhanced_options, index + 1  # +1 because (None) is at index 0
     except (StopIteration, AttributeError):
         return enhanced_options, 0

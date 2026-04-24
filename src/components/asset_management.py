@@ -171,6 +171,10 @@ def render_edit_view():
             st.session_state["prefill_instrument_type"] = selected_row["InstrumentType"]
             st.session_state["prefill_industry"] = selected_row["Industry"]
             st.session_state["prefill_country"] = selected_row["Country"]
+            # Pre-fill Price Source with YFN
+            price_source_option = next((s for s in st.session_state['opt_source'] if s.startswith("YFN")), None)
+            if price_source_option:
+                st.session_state["prefill_price_source"] = price_source_option
             st.success("Form pre-filled with reloaded data. Please review and save below.")
             st.rerun()
 
@@ -203,7 +207,7 @@ def render_edit_view():
         instr_type_options, instr_type_index = get_selectbox_options_and_index(st.session_state['opt_type'], st.session_state.get("prefill_instrument_type", asset["Type"]))
         instr_type = col2.selectbox(f"Instrument Type{gap}:blue[(original: {asset['Type']})]", instr_type_options, index=instr_type_index)
         
-        source_options, source_index = get_selectbox_options_and_index(st.session_state['opt_source'], asset["Price Source"])
+        source_options, source_index = get_selectbox_options_and_index(st.session_state['opt_source'], st.session_state.get("prefill_price_source", asset["Price Source"]))
         source = col1.selectbox(f"Price Source{gap}:blue[(original: {asset['Price Source']})]", source_options, index=source_index)
         
         industry = col2.text_input(f"Industry{gap}:blue[(original: {asset['Industry']})]", value=st.session_state.get("prefill_industry", asset["Industry"]))
@@ -236,7 +240,7 @@ def render_edit_view():
             st.cache_data.clear() 
             # Clear prefill data
             for key in ["prefill_name", "prefill_ticker", "prefill_currency", "prefill_asset_class", 
-                       "prefill_region", "prefill_sector", "prefill_instrument_type", "prefill_industry", "prefill_country"]:
+                       "prefill_region", "prefill_sector", "prefill_instrument_type", "prefill_industry", "prefill_country", "prefill_price_source"]:
                 if key in st.session_state:
                     del st.session_state[key]
             st.session_state["view"] = "list"
