@@ -9,43 +9,23 @@ from src.database import (
     get_user_by_username
 )
 
-def hash_password(password):
-    """Generates a SHA-256 hash of the provided password."""
-    return hashlib.sha256(str.encode(password)).hexdigest()
 
-def create_new_user(username, password):
-    """
-    Handles user provisioning. Checks if the user exists in 'users' 
-    before attempting an insert to avoid Unique Constraint violations.
-    """
-    # 1. Check if the user already exists
-    existing_id = get_user_by_username(username)
-    
-    if existing_id:
-        # User exists, use the existing UUID
-        new_id = existing_id
-    else:
-        # User does not exist, try to create
-        new_id = create_user(username)
-        if not new_id:
-            # Race condition: another process created the user, fetch it
-            new_id = get_user_by_username(username)
-            if not new_id:
-                st.error("Failed to create user.")
-                return None
-    
-    # 2. Set the password hash
-    p_hash = hash_password(password)
+def register_user(email, password, username):
     try:
-        set_user_password(new_id, p_hash)
+        # Registriert den User bei Supabase Auth
+        response = supabase.auth.sign_up({
+            "email": email,
+            "password": password,
+            "options": {"data": {"username": username}}
+        })
+        return response
     except Exception as e:
-        st.error(f"Error setting password: {e}")
+        st.error(f"Error with registration: {e}")
         return None
-        
-    return new_id
+
+
 
 def check_password():
-    """Main login logic. Handles authentication and JIT user provisioning."""
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
 
@@ -55,47 +35,44 @@ def check_password():
     st.title("Login")
     
     with st.form("Login Form"):
-        user = st.text_input("Username").strip()
-        pwd = st.text_input("Password", type="password")
+        email = st.text_input("Email").strip() # Supabase Auth nutzt primär Email
+        pwd = st.text_input("Passwort", type="password")
         submit = st.form_submit_button("Login")
 
         if submit:
-            # Check against Admin-defined allowed users (Streamlit Secrets)
-            allowed_users = st.secrets.get("allowed_users", [])
-            if user not in allowed_users:
-                st.error("❌ User not authorized by Admin.")
-                return False
-            
-            if not pwd:
-                st.warning("⚠️ Please enter a password.")
-                return False
-
-            # Retrieve profile from DB
-            profile = get_user_profile(user)
-            
-            if profile and profile["password_hash"]:
-                # Registered user: Compare hashes
-                if profile["password_hash"] == hash_password(pwd):
+            try:
+                # 1. Versuch den Login bei Supabase Auth
+                auth_response = supabase.auth.sign_in_with_password({
+                    "email": email, 
+                    "password": pwd
+                })
+                
+                user_id = auth_response.user.id
+                
+                # 2. Prüfen, ob der User in deiner public.users Tabelle 'approved' ist
+                # Hier nutzen wir den Client, der jetzt im User-Kontext läuft
+                profile = supabase.table("users").select("is_approved, username").eq("id", user_id).single().execute()
+                
+                if profile.data and profile.data.get("is_approved"):
                     st.session_state["logged_in"] = True
-                    st.session_state["user_name"] = user
-                    st.session_state["user_id"] = profile["id"]
+                    st.session_state["user_id"] = user_id
+                    st.session_state["user_name"] = profile.data["username"]
+                    st.success("Erfolgreich eingeloggt!")
                     st.rerun()
                 else:
-                    st.error("❌ Invalid password")
-            else:
-                # User is authorized in Secrets but missing from DB or has no password
-                if len(pwd) < 4:
-                    st.error("❌ For security, passwords must be at least 4 characters.")
-                    return False
-                
-                new_uuid = create_new_user(user, pwd)
-                if new_uuid:
-                    st.success(f"Welcome {user}! Profile initialized.")
-                    st.session_state["logged_in"] = True
-                    st.session_state["user_name"] = user
-                    st.session_state["user_id"] = new_uuid
-                    st.rerun()
+                    st.warning("⏳ Dein Account wartet noch auf die Freigabe durch den Admin.")
+                    # Wir loggen ihn wieder aus, damit die Session nicht "halb" offen ist
+                    supabase.auth.sign_out()
+                    
+            except Exception as e:
+                st.error("❌ Login fehlgeschlagen: E-Mail oder Passwort falsch.")
+                return False
     return False
+
+
+
+
+    
 
 def user_settings_ui():
     """UI component for managing user settings (password and email)."""
