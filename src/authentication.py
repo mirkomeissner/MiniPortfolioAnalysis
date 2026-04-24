@@ -128,19 +128,21 @@ def user_settings_ui():
     
     with col2:
         st.subheader("Edit Email Address")
-        current_email = get_user_email(st.session_state["user_id"])
+        # Wir holen die aktuelle Email direkt aus der Session oder dem Profil
+        current_email = st.session_state.get("user_email", "") 
+        
         with st.form("edit_email_form"):
-            email = st.text_input("Email Address", value=current_email or "", placeholder="your.email@example.com")
+            new_email = st.text_input("New Email Address", value=current_email)
+            
             if st.form_submit_button("Update Email"):
-                if email:
+                if new_email and new_email != current_email:
                     try:
-                        update_user_email(st.session_state["user_id"], email)
-                        st.success("✅ Email updated successfully!")
+                        # Der offizielle Supabase Auth Weg
+                        supabase.auth.update_user({"email": new_email})
+                        st.success("✅ Email update initiated!")
+                        st.info("Note: Depending on your Supabase settings, you might need to confirm the new email address.")
                     except Exception as e:
-                        if "duplicate" in str(e).lower():
-                            st.error("❌ This email address is already in use.")
-                        else:
-                            st.error(f"❌ Error updating email: {e}")
+                        st.error(f"❌ Error: {e}")
                 else:
-                    st.warning("⚠️ Email address cannot be empty.")
+                    st.warning("⚠️ Please enter a different email address.")
 
