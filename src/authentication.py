@@ -32,42 +32,64 @@ def check_password():
     if st.session_state["logged_in"]:
         return True
 
-    st.title("Login")
-    
-    with st.form("Login Form"):
-        email = st.text_input("Email").strip() # Supabase Auth nutzt primär Email
-        pwd = st.text_input("Passwort", type="password")
-        submit = st.form_submit_button("Login")
+    # Tabs für Login und Registrierung
+    tab1, tab2 = st.tabs(["Login", "Create Account"])
 
-        if submit:
-            try:
-                # 1. Versuch den Login bei Supabase Auth
-                auth_response = supabase.auth.sign_in_with_password({
-                    "email": email, 
-                    "password": pwd
-                })
-                
-                user_id = auth_response.user.id
-                
-                # 2. Prüfen, ob der User in deiner public.users Tabelle 'approved' ist
-                # Hier nutzen wir den Client, der jetzt im User-Kontext läuft
-                profile = supabase.table("users").select("is_approved, username").eq("id", user_id).single().execute()
-                
-                if profile.data and profile.data.get("is_approved"):
-                    st.session_state["logged_in"] = True
-                    st.session_state["user_id"] = user_id
-                    st.session_state["user_name"] = profile.data["username"]
-                    st.success("Erfolgreich eingeloggt!")
-                    st.rerun()
-                else:
-                    st.warning("⏳ Dein Account wartet noch auf die Freigabe durch den Admin.")
-                    # Wir loggen ihn wieder aus, damit die Session nicht "halb" offen ist
-                    supabase.auth.sign_out()
+    with tab1:
+        st.subheader("Login")
+        with st.form("Login Form"):
+            email = st.text_input("Email").strip()
+            pwd = st.text_input("Password", type="password")
+            submit = st.form_submit_button("Login")
+
+            if submit:
+                try:
+                    auth_response = supabase.auth.sign_in_with_password({
+                        "email": email, 
+                        "password": pwd
+                    })
+                    user_id = auth_response.user.id
                     
-            except Exception as e:
-                st.error("❌ Login fehlgeschlagen: E-Mail oder Passwort falsch.")
-                return False
+                    # Abfrage des Profils (Dank RLS Policy 'view own profile' erlaubt)
+                    profile = supabase.table("users").select("is_approved, username").eq("id", user_id).single().execute()
+                    
+                    if profile.data and profile.data.get("is_approved"):
+                        st.session_state["logged_in"] = True
+                        st.session_state["user_id"] = user_id
+                        st.session_state["user_name"] = profile.data["username"]
+                        st.success("Success!")
+                        st.rerun()
+                    else:
+                        st.warning("⏳ Your account is pending admin approval.")
+                        supabase.auth.sign_out()
+                        
+                except Exception:
+                    st.error("❌ Invalid email or password.")
+
+    with tab2:
+        st.subheader("Register")
+        with st.form("Registration Form"):
+            new_email = st.text_input("Email (required)").strip()
+            new_username = st.text_input("Username (required)").strip()
+            new_pwd = st.text_input("Password", type="password")
+            confirm_pwd = st.text_input("Confirm Password", type="password")
+            reg_submit = st.form_submit_button("Register")
+
+            if reg_submit:
+                if not new_email or not new_username:
+                    st.error("Email and Username are required.")
+                elif new_pwd != confirm_pwd:
+                    st.error("Passwords do not match.")
+                elif len(new_pwd) < 6:
+                    st.error("Password must be at least 6 characters.")
+                else:
+                    res = register_user(new_email, new_pwd, new_username)
+                    if res:
+                        st.success("✅ Account created! Please wait for admin approval.")
+                        st.info("You can try to log in once the admin has activated your account.")
+
     return False
+
 
 
 
@@ -86,15 +108,14 @@ def user_settings_ui():
             new_pwd = st.text_input("New Password", type="password")
             confirm_pwd = st.text_input("Confirm New Password", type="password")
             if st.form_submit_button("Update Password"):
-                if new_pwd == confirm_pwd and len(new_pwd) >= 4:
-                    p_hash = hash_password(new_pwd)
+                if new_pwd == confirm_pwd and len(new_pwd) >= 6:
                     try:
-                        set_user_password(st.session_state["user_id"], p_hash)
+                        supabase.auth.update_user({"password": new_pwd})
                         st.success("✅ Password updated successfully!")
-                    except Exception:
-                        st.error("❌ Failed to update password.")
-                elif len(new_pwd) < 4:
-                    st.error("❌ Password must be at least 4 characters long.")
+                    except Exception as e:
+                        st.error(f"❌ Error: {e}")
+                elif len(new_pwd) < 6:
+                    st.error("❌ Password must be at least 6 characters long.")
                 else:
                     st.error("❌ Passwords do not match.")
     
