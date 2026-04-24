@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS shared.asset_prices (
     CONSTRAINT fk_prices_isin FOREIGN KEY (isin) REFERENCES shared.asset_static_data(isin) ON DELETE CASCADE
 );
 -- Index for efficient time-series charting
-CREATE INDEX idx_asset_prices_date ON shared.asset_prices(price_date);
+CREATE INDEX IF NOT EXISTS idx_asset_prices_date ON shared.asset_prices(price_date);
 
 
 -- Historical foreign exchange rates relative to EUR
@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS shared.exchange_rates (
         ON DELETE SET NULL
 );
 -- Index for fast conversion lookups
-CREATE INDEX idx_exchange_rates_date ON shared.exchange_rates(rate_date);
+CREATE INDEX IF NOT EXISTS idx_exchange_rates_date ON shared.exchange_rates(rate_date);
 
 
 -- --- PUBLIC SCHEMA TABLES (User specific) ---
@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS public.incremental_holdings (
     CONSTRAINT fk_incremental_holdings_account FOREIGN KEY (user_id, account_code) REFERENCES public.accounts(user_id, account_code) ON DELETE CASCADE,
     CONSTRAINT fk_incremental_holdings_isin FOREIGN KEY (isin) REFERENCES shared.asset_static_data(isin) ON DELETE CASCADE
 );
-CREATE INDEX idx_holdings_lookup ON public.incremental_holdings (user_id, account_code, isin, holding_date DESC);
+CREATE INDEX IF NOT EXISTS idx_holdings_lookup ON public.incremental_holdings (user_id, account_code, isin, holding_date DESC);
 
 
 -- view to create daily holdings by filling the gaps in incremental_holdings
@@ -227,14 +227,61 @@ WHERE h.quantity IS NOT NULL; -- Verhindert Zeilen für Assets vor ihrem ersten 
 
 
 
--- --- GRANTS ---
+-- ==========================================================
+-- 3. ENABLING ROW LEVEL SECURITY (RLS)
+-- ==========================================================
+-- This enables RLS for all tables in the shared schema
+DO $$ 
+DECLARE 
+    t text;
+BEGIN
+    FOR t IN (SELECT table_name FROM information_schema.tables WHERE table_schema = 'shared' AND table_type = 'BASE TABLE') 
+    LOOP
+        EXECUTE format('ALTER TABLE shared.%I ENABLE ROW LEVEL SECURITY', t);
+    END LOOP;
+END $$;
 
-GRANT USAGE ON SCHEMA shared TO anon, authenticated, service_role;
+-- ==========================================================
+-- 4. POLICIES (SHARED SCHEMA)
+-- ==========================================================
+
+-- A: READ ACCESS FOR EVERYONE (anon & authenticated)
+-- We use a loop to apply the "Public Read" policy to all shared tables
+DO $$ 
+DECLARE 
+    t text;
+BEGIN
+    FOR t IN (SELECT table_name FROM information_schema.tables WHERE table_schema = 'shared' AND table_type = 'BASE TABLE') 
+    LOOP
+        EXECUTE format('DROP POLICY IF EXISTS "Public Read Access" ON shared.%I', t);
+        EXECUTE format('CREATE POLICY "Public Read Access" ON shared.%I FOR SELECT USING (true)', t);
+    END LOOP;
+END $$;
+
+-- B: WRITE ACCESS (Only authenticated users or system)
+-- For shared data, we typically don't want 'anon' to insert data.
+-- If you want logged-in users to propose new assets:
+DROP POLICY IF EXISTS "Authenticated Insert Access" ON shared.asset_static_data;
+CREATE POLICY "Authenticated Insert Access" ON shared.asset_static_data 
+FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+-- C: UPDATE ACCESS (Only authenticated users or system)
+DROP POLICY IF EXISTS "Authenticated Update Access" ON shared.asset_static_data;
+CREATE POLICY "Authenticated Update Access" ON shared.asset_static_data 
+FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+
+-- ==========================================================
+-- 5. PERMISSIONS (GRANTS)
+-- ==========================================================
+-- Grant schema usage
+
+GRANT USAGE ON SCHEMA shared TO anon, authenticated;
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
-GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
-GRANT INSERT ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
-GRANT UPDATE ON ALL TABLES IN SCHEMA shared TO anon, authenticated, service_role;
+GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated;
+GRANT INSERT ON shared.asset_static_data TO authenticated;
+GRANT UPDATE ON shared.asset_static_data TO authenticated;
 
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT INSERT ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
