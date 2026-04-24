@@ -25,6 +25,20 @@ def register_user(email, password, username):
             "password": password,
             "options": {"data": {"username": username}}
         })
+
+        if response.user:
+            user_id = response.user.id
+            admin_list = st.secrets.get("ADMIN_EMAILS", [])
+
+            # 2. Sofortige Freischaltung, wenn Email in Secrets steht
+            if email in admin_list:
+                # Wir brauchen hier den Service-Role Client!
+                admin_supabase = get_admin_client() 
+                admin_supabase.table("users").update({"is_approved": True}).eq("id", user_id).execute()
+                st.info(f"Admin-Account '{username}' wurde automatisch aktiviert.")
+
+
+        
         return response
     except Exception as e:
         st.error(f"Error with registration: {e}")
