@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE OR REPLACE VIEW shared.users AS SELECT id, username FROM public.users;
+CREATE OR REPLACE VIEW shared.users WITH (security_invoker = true) AS SELECT id, username FROM public.users;
 
 
 
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS shared.ref_instrument_type (code TEXT PRIMARY KEY, la
 CREATE TABLE IF NOT EXISTS shared.ref_transaction_type (code TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS shared.ref_currencies (code CHAR(3) PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
 
-CREATE OR REPLACE VIEW public.ref_transaction_type AS SELECT code, label FROM shared.ref_transaction_type;
+CREATE OR REPLACE VIEW public.ref_transaction_type WITH (security_invoker = true) AS SELECT code, label FROM shared.ref_transaction_type;
 
 CREATE TABLE IF NOT EXISTS shared.ref_transaction_logic (
     transaction_type_code TEXT PRIMARY KEY,
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS shared.asset_static_data (
 );
 
 
-CREATE OR REPLACE VIEW public.asset_static_data AS SELECT isin, name FROM shared.asset_static_data;
+CREATE OR REPLACE VIEW public.asset_static_data WITH (security_invoker = true) AS SELECT isin, name FROM shared.asset_static_data;
 
 -- Mapping for countries to regions
 CREATE TABLE IF NOT EXISTS shared.country_region_mapping (
@@ -182,7 +182,7 @@ CREATE INDEX IF NOT EXISTS idx_holdings_lookup ON public.incremental_holdings (u
 
 
 -- view to create daily holdings by filling the gaps in incremental_holdings
-CREATE OR REPLACE VIEW public.daily_holdings AS
+CREATE OR REPLACE VIEW public.daily_holdings WITH (security_invoker = true) AS
 WITH date_range AS (
     -- 1. Wir ermitteln den Startpunkt und das Ende der Zeitreihe
     SELECT 
