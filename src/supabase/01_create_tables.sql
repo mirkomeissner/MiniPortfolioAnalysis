@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS shared.asset_prices (
     CONSTRAINT fk_prices_isin FOREIGN KEY (isin) REFERENCES shared.asset_static_data(isin) ON DELETE CASCADE
 );
 -- Index for efficient time-series charting
-CREATE INDEX IF NOT EXISTS idx_asset_prices_date ON shared.asset_prices(price_date);
+CREATE INDEX IF NOT EXISTS idx_asset_prices_isin_date ON shared.asset_prices (isin, price_date DESC);
 
 
 -- Historical foreign exchange rates relative to EUR
@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS shared.exchange_rates (
         ON DELETE SET NULL
 );
 -- Index for fast conversion lookups
-CREATE INDEX IF NOT EXISTS idx_exchange_rates_date ON shared.exchange_rates(rate_date);
+CREATE INDEX IF NOT EXISTS idx_exchange_rates_curr_date ON shared.exchange_rates (currency, rate_date DESC);
 
 
 -- --- PUBLIC SCHEMA TABLES (User specific) ---
