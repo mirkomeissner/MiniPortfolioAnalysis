@@ -8,6 +8,13 @@ from src.database import (
     create_user,
     get_user_by_username
 )
+from supabase import create_client, Client
+
+@st.cache_resource
+def get_supabase_client() -> Client:
+    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+
+supabase = get_supabase_client()
 
 
 def register_user(email, password, username):
