@@ -39,6 +39,29 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 
+-- Wir erweitern die Funktion, um auch Updates zu handhaben
+CREATE OR REPLACE FUNCTION public.handle_user_update()
+RETURNS trigger 
+LANGUAGE plpgsql 
+SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  UPDATE public.users
+  SET 
+    email = new.email,
+    -- Wir aktualisieren auch den Usernamen, falls er in den Metadaten geändert wurde
+    username = COALESCE(new.raw_user_meta_data->>'username', username)
+  WHERE id = new.id;
+  RETURN new;
+END;
+$$;
+
+-- Ein zweiter Trigger speziell für Updates in auth.users
+DROP TRIGGER IF EXISTS on_auth_user_updated ON auth.users;
+CREATE TRIGGER on_auth_user_updated
+  AFTER UPDATE OF email, raw_user_meta_data ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_user_update();
+
+
 
 
 
