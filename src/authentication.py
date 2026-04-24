@@ -35,7 +35,6 @@ def register_user(email, password, username):
                 admin_supabase = get_admin_client() 
                 # Update approved status via service role
                 admin_supabase.table("users").update({"is_approved": True}).eq("id", user_id).execute()
-                st.info(f"Admin-Account '{username}' was automatically activated.")
 
         return response
     except Exception as e:
