@@ -104,6 +104,11 @@ def render_edit_view():
     isin = st.session_state.get("edit_isin")
     st.subheader(f"Edit Asset: {isin}")
     
+    # --- NEU: Version Tracker für Formular-Reset ---
+    if "form_version" not in st.session_state:
+        st.session_state["form_version"] = 0
+    v = st.session_state["form_version"]
+
     # Only reset previous yfinance results when a new asset edit session starts
     if st.session_state.get("last_edit_isin") != isin:
         reload_keys = ["reload_results_df", "reload_editor", "reload_ticker_select"]
@@ -111,6 +116,9 @@ def render_edit_view():
             if key in st.session_state:
                 del st.session_state[key]
         st.session_state["last_edit_isin"] = isin
+        # Bei neuem Asset Version zurücksetzen
+        st.session_state["form_version"] = 0
+        v = 0
 
     # 1. Spalten für die obere Button-Leiste definieren
     # [1, 1, 4] bedeutet: zwei kleine Spalten für Buttons, eine große leere Spalte rechts
@@ -183,6 +191,10 @@ def render_edit_view():
             price_source_option = next((s for s in st.session_state['opt_source'] if s.startswith("YFN")), None)
             if price_source_option:
                 st.session_state["prefill_price_source"] = price_source_option
+            
+            # --- NEU: Version erhöhen, um Keys zu ändern und Widgets zum Update zu zwingen ---
+            st.session_state["form_version"] += 1
+            
             st.success("Form pre-filled with reloaded data. Please review and save below.")
             st.rerun()
 
@@ -197,29 +209,30 @@ def render_edit_view():
         col1.text_input("ISIN (Primary Key)", value=isin, disabled=True)
         gap = "&nbsp;" * 6
 
-        name = col1.text_input(f"Name{gap}:blue[(original: {asset['Name']})]", value=st.session_state.get("prefill_name", asset["Name"]))       
-        ticker = col2.text_input(f"Ticker{gap}:blue[(original: {asset['Ticker']})]", value=st.session_state.get("prefill_ticker", asset["Ticker"]))
-        currency = col2.text_input(f"Currency{gap}:blue[(original: {asset['Currency']})]", value=st.session_state.get("prefill_currency", asset["Currency"]))
+        # --- NEU: key= Parameter mit Version v hinzugefügt ---
+        name = col1.text_input(f"Name{gap}:blue[(original: {asset['Name']})]", value=st.session_state.get("prefill_name", asset["Name"]), key=f"fn_{v}")       
+        ticker = col2.text_input(f"Ticker{gap}:blue[(original: {asset['Ticker']})]", value=st.session_state.get("prefill_ticker", asset["Ticker"]), key=f"ft_{v}")
+        currency = col2.text_input(f"Currency{gap}:blue[(original: {asset['Currency']})]", value=st.session_state.get("prefill_currency", asset["Currency"]), key=f"fc_{v}")
         
         # Hinweis: Die Keys hier (z.B. asset["Asset Class"]) müssen 
         # exakt so heißen wie im flattened_data dict der database.py!
         asset_class_options, asset_class_index = get_selectbox_options_and_index(st.session_state['opt_asset'], st.session_state.get("prefill_asset_class", asset["Asset Class"]))
-        asset_class = col1.selectbox(f"Asset Class{gap}:blue[(original: {asset['Asset Class']})]", asset_class_options, index=asset_class_index)
+        asset_class = col1.selectbox(f"Asset Class{gap}:blue[(original: {asset['Asset Class']})]", asset_class_options, index=asset_class_index, key=f"fac_{v}")
         
         region_options, region_index = get_selectbox_options_and_index(st.session_state['opt_region'], st.session_state.get("prefill_region", asset["Region"]))
-        region = col2.selectbox(f"Region{gap}:blue[(original: {asset['Region']})]", region_options, index=region_index)
+        region = col2.selectbox(f"Region{gap}:blue[(original: {asset['Region']})]", region_options, index=region_index, key=f"fr_{v}")
         
         sector_options, sector_index = get_selectbox_options_and_index(st.session_state['opt_gics'], st.session_state.get("prefill_sector", asset["Sector"]))
-        sector = col1.selectbox(f"Sector{gap}:blue[(original: {asset['Sector']})]", sector_options, index=sector_index)
+        sector = col1.selectbox(f"Sector{gap}:blue[(original: {asset['Sector']})]", sector_options, index=sector_index, key=f"fs_{v}")
         
         instr_type_options, instr_type_index = get_selectbox_options_and_index(st.session_state['opt_type'], st.session_state.get("prefill_instrument_type", asset["Type"]))
-        instr_type = col2.selectbox(f"Instrument Type{gap}:blue[(original: {asset['Type']})]", instr_type_options, index=instr_type_index)
+        instr_type = col2.selectbox(f"Instrument Type{gap}:blue[(original: {asset['Type']})]", instr_type_options, index=instr_type_index, key=f"fit_{v}")
         
         source_options, source_index = get_selectbox_options_and_index(st.session_state['opt_source'], st.session_state.get("prefill_price_source", asset["Price Source"]))
-        source = col1.selectbox(f"Price Source{gap}:blue[(original: {asset['Price Source']})]", source_options, index=source_index)
+        source = col1.selectbox(f"Price Source{gap}:blue[(original: {asset['Price Source']})]", source_options, index=source_index, key=f"fps_{v}")
         
-        industry = col2.text_input(f"Industry{gap}:blue[(original: {asset['Industry']})]", value=st.session_state.get("prefill_industry", asset["Industry"]))
-        country = col1.text_input(f"Country{gap}:blue[(original: {asset['Country']})]", value=st.session_state.get("prefill_country", asset["Country"]))
+        industry = col2.text_input(f"Industry{gap}:blue[(original: {asset['Industry']})]", value=st.session_state.get("prefill_industry", asset["Industry"]), key=f"fi_{v}")
+        country = col1.text_input(f"Country{gap}:blue[(original: {asset['Country']})]", value=st.session_state.get("prefill_country", asset["Country"]), key=f"fcty_{v}")
 
         if st.form_submit_button("Save Changes", type="primary"):
             # Helper function to extract code or return None for null selections
@@ -248,11 +261,13 @@ def render_edit_view():
             st.cache_data.clear() 
             # Clear prefill data
             for key in ["prefill_name", "prefill_ticker", "prefill_currency", "prefill_asset_class", 
-                       "prefill_region", "prefill_sector", "prefill_instrument_type", "prefill_industry", "prefill_country", "prefill_price_source"]:
+                       "prefill_region", "prefill_sector", "prefill_instrument_type", "prefill_industry", "prefill_country", "prefill_price_source", "form_version"]:
                 if key in st.session_state:
                     del st.session_state[key]
             st.session_state["view"] = "list"
             st.rerun()
+
+
 
 
 
