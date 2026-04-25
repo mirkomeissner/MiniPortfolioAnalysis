@@ -39,19 +39,26 @@ def check_password():
 
             if submit:
                 try:
-                    auth_res = auth_login(email, pwd)
-                    if auth_res.session:
-                        st.session_state["access_token"] = auth_res.session.access_token
-                        profile = db_get_user_profile(auth_res.user.id)
+                    # 1. Login durchführen
+                    auth_response = auth_login(email, pwd) 
+                    
+                    if auth_response.session:
+                        # 2. SOFORT den Token in den State schreiben
+                        st.session_state["access_token"] = auth_response.session.access_token
+                        
+                        # 3. Profil laden (Nutzt jetzt den frischen Token aus dem State)
+                        user_id = auth_response.user.id
+                        profile = db_get_user_profile(user_id)
                         
                         if profile and profile.get("is_approved"):
                             st.session_state.update({
                                 "logged_in": True,
-                                "user_id": auth_res.user.id,
+                                "user_id": user_id,
                                 "user_name": profile["username"],
                                 "user_email": email,
                                 "is_admin": email in st.secrets.get("ADMIN_EMAILS", [])
                             })
+                            st.success("Login erfolgreich!")
                             st.rerun()
                         else:
                             st.warning("⏳ Your account is pending admin approval.")
