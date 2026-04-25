@@ -1,7 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client
 # Importiere die neuen Funktionen aus der database.py
-from database import get_user_by_id, get_admin_client
+from .database import get_user_by_id, get_admin_client
 
 # --- CLIENT INITIALIZATION ---
 
