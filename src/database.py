@@ -3,6 +3,10 @@ from supabase import create_client, Client
 
 # --- HELPER FÜR AUTHENTIFIZIERUNG ---
 
+def get_client() -> Client:
+    """Gibt den vorkonfigurierten Client zurück (für Auth-Zwecke)."""
+    return _get_client()
+
 def get_admin_client() -> Client:
     """Admin client for bypass RLS (Service Role) - Nur für interne Zwecke."""
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"])
