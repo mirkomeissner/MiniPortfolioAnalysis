@@ -15,6 +15,7 @@ def _get_client() -> Client:
     
     if token:
         client.postgrest.auth(token)
+        client.auth.set_session(token, "any-refresh-token")
     
     return client
 
