@@ -286,7 +286,7 @@ END $$;
 -- 4. POLICIES (SHARED SCHEMA)
 -- ==========================================================
 
--- A: READ ACCESS FOR EVERYONE (anon & authenticated)
+-- A: READ ACCESS FOR authenticated
 -- We use a loop to apply the "Public Read" policy to all shared tables
 DO $$ 
 DECLARE 
@@ -294,8 +294,8 @@ DECLARE
 BEGIN
     FOR t IN (SELECT table_name FROM information_schema.tables WHERE table_schema = 'shared' AND table_type = 'BASE TABLE') 
     LOOP
-        EXECUTE format('DROP POLICY IF EXISTS "Public Read Access" ON shared.%I', t);
-        EXECUTE format('CREATE POLICY "Public Read Access" ON shared.%I FOR SELECT USING (true)', t);
+        EXECUTE format('DROP POLICY IF EXISTS "Authenticated Read Access" ON shared.%I', t);
+        EXECUTE format('CREATE POLICY "Authenticated Read Access" ON shared.%I FOR SELECT TO authenticated USING (true)', t);
     END LOOP;
 END $$;
 
