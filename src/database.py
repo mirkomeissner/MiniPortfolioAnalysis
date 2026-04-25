@@ -8,21 +8,11 @@ def get_admin_client() -> Client:
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"])
 
 def _get_client() -> Client:
-    """
-    Erstellt einen frischen Client und injiziert automatisch den 
-    User-Token (JWT) aus dem Session State.
-    """
     client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+    
+    # Wir verlassen uns NUR auf unseren Session State
     token = st.session_state.get("access_token")
     
-    if not token:
-        try:
-            session = client.auth.get_session()
-            if session:
-                token = session.access_token
-        except:
-            pass
-
     if token:
         client.postgrest.auth(token)
     
