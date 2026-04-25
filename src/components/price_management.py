@@ -38,5 +38,3 @@ def price_table_view():
     
     return view_df
 
-# Aufruf der Funktion
-print(price_table_view(ticker_symbol="AKAN", period="1mo"))
