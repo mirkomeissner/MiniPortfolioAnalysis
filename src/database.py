@@ -78,7 +78,24 @@ def auth_update_user(data):
 
 
 
+# --- ADMIN DB OPERATIONS ---
 
+def db_get_all_users():
+    """Holt alle User mit bestätigter Email (Admin-Funktion)."""
+    admin_supabase = get_admin_client()
+    try:
+        response = admin_supabase.table("users").select("*")\
+            .not_.is_("email_confirmed_at", "null")\
+            .order("created_at", desc=True).execute()
+        return response.data
+    except Exception as e:
+        st.error(f"Fehler beim Laden der User: {e}")
+        return []
+
+def db_update_user_approval(user_id, status: bool):
+    """Schaltet einen User frei oder sperrt ihn (Admin-Funktion)."""
+    admin_supabase = get_admin_client()
+    return admin_supabase.table("users").update({"is_approved": status}).eq("id", user_id).execute()
 
 
 
