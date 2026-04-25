@@ -1,7 +1,7 @@
 import yfinance as yf
 import pandas as pd
 
-def price_table_view(ticker_symbol="AKAN", period="1mo"):
+def price_table_view():
     """
     Erstellt eine Tabelle der Schlusskurse (unbereinigt vs. bereinigt).
     
@@ -9,6 +9,8 @@ def price_table_view(ticker_symbol="AKAN", period="1mo"):
     :param period: Zeitraum (z.B. '1mo', '3mo', '1y')
     """
     # Ticker Objekt initialisieren
+    ticker_symbol="AKAN"
+    period="1mo"    
     ticker = yf.Ticker(ticker_symbol)
     
     # Historie laden: auto_adjust=False ist entscheidend für unbereinigte Kurse
