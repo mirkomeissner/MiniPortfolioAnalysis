@@ -1,16 +1,9 @@
 import streamlit as st
-from supabase import create_client, Client
-# Importiere die neuen Funktionen aus der database.py
-from .database import get_user_by_id, get_admin_client
+from .database import get_user_by_id, get_admin_client, get_client
 
 # --- CLIENT INITIALIZATION ---
 
-@st.cache_resource
-def get_supabase_client() -> Client:
-    """Standard client for normal users (honors RLS)"""
-    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-
-supabase = get_supabase_client()
+supabase = get_client()
 
 # --- AUTH FUNCTIONS ---
 
