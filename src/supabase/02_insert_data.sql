@@ -195,22 +195,3 @@ ON CONFLICT (country) DO UPDATE SET region_code = EXCLUDED.region_code;
 
 
 
-
-
--- Insert users into public.users
--- The ID (UUID) is generated automatically
-INSERT INTO public.users (username, email)
-VALUES 
-    ('mirko', NULL),
-    ('anja', NULL);
-
--- Insert accounts using the UUIDs from the users table
-INSERT INTO public.accounts (user_id, account_code, description)
-VALUES 
-    ((SELECT id FROM public.users WHERE username = 'mirko'), 'SMB', 'Smartbroker'),
-    ((SELECT id FROM public.users WHERE username = 'mirko'), 'ING', 'ING-DiBa'),
-    ((SELECT id FROM public.users WHERE username = 'mirko'), 'CON', 'Consorsbank'),
-    ((SELECT id FROM public.users WHERE username = 'anja'),  'SMB', 'Smartbroker'),
-    ((SELECT id FROM public.users WHERE username = 'anja'),  'DKB', 'DKB')
-ON CONFLICT (user_id, account_code) 
-DO UPDATE SET description = EXCLUDED.description;
