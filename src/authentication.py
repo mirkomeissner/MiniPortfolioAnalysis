@@ -8,8 +8,6 @@ from .database import (
     auth_update_user
 )
 
-supabase = get_client()
-
 # --- AUTH FUNCTIONS ---
 
 def register_user(email, password, username):
