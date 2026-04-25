@@ -374,6 +374,7 @@ GRANT USAGE ON SCHEMA shared TO anon, authenticated;
 -- B: SHARED SCHEMA (Stammdaten)
 -- In Postgres werden Views oft wie Tabellen behandelt.
 GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated;
+GRANT INSERT, UPDATE ON shared.asset_static_data TO authenticated;
 
 -- Falls "ALL VIEWS" nicht geht, einzeln für deine Views:
 GRANT SELECT ON shared.users TO anon, authenticated;
