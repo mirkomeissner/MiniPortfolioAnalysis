@@ -11,7 +11,7 @@ def admin_approval_page():
     # 1. Alle Profile laden
     try:
         # Wir holen alle User, sortiert nach Erstellungsdatum
-        response = admin_supabase.table("users").select("*").order("created_at", desc=True).execute()
+        response = admin_supabase.table("users").select("*").not_.is_("email_confirmed_at", "null").order("created_at", desc=True).execute()
         all_users = response.data
     except Exception as e:
         st.error(f"Fehler beim Laden der User: {e}")
