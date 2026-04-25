@@ -189,18 +189,6 @@ def user_settings_ui():
             elif status == 1:
                 st.success("One address confirmed (1/2). One more to go!")
 
-            # ABBRECHEN BUTTON
-            if st.button("Cancel Email Change", type="secondary"):
-                try:
-                    # In Supabase bricht man einen Change ab, indem man die Email 
-                    # auf den aktuellen Wert zurücksetzt
-                    supabase.rpc("force_cancel_email_change", {"user_uuid": st.session_state["user_id"]}).execute()
-                    st.toast("✅ Email change cancelled!", icon="✉️")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error cancelling change: {e}")
-
-
         else:        
             with st.form("edit_email_form"):
                 new_email = st.text_input("New Email Address", value=current_email)
