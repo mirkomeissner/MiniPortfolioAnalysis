@@ -84,7 +84,7 @@ def db_cancel_email_change(user_id, current_email):
         )
         
         # Zusätzlich säubern wir deine public.users Tabelle
-        admin_supabase.table("users").update({"pending_email": None}).eq("id", user_id).execute()
+        # admin_supabase.table("users").update({"pending_email": None}).eq("id", user_id).execute()
         
         return True
     except Exception as e:
