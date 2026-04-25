@@ -148,7 +148,7 @@ def user_settings_ui():
                 if st.form_submit_button("Update Email"):
                     if new_email and new_email != current_email:
                         try:
-                            supabase.auth.update_user({"email": new_email})
+                            auth_update_user({"email": new_email})
                             st.success("✅ Email update initiated!")
                         except Exception as e: st.error(f"❌ Error: {e}")
 
