@@ -19,9 +19,7 @@ if check_password():
 
      
     if st.sidebar.button("Logout"):  
-        st.session_state["logged_in"] = False
         logout()
-        st.rerun()  
  
     # State Management 
     if "view" not in st.session_state: 
