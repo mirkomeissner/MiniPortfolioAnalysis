@@ -68,32 +68,6 @@ def auth_update_user(data):
     return supabase.auth.update_user(data)
 
 
-def db_cancel_email_change(user_id):
-    """
-    Bricht den Wechsel ab, indem eine Metadaten-Änderung erzwungen wird.
-    Völlig sicher, da nur das offizielle SDK genutzt wird.
-    """
-    admin_supabase = get_admin_client()
-    try:
-        import datetime
-        # Wir setzen einen harmlosen Zeitstempel in die Metadaten.
-        # Das zwingt GoTrue, den User-Status zu aktualisieren und 
-        # bricht laufende Email-Änderungen im Hintergrund ab.
-        admin_supabase.auth.admin.update_user_by_id(
-            user_id, 
-            attributes={
-                "user_metadata": { "last_cancel": str(datetime.datetime.now()) }
-            }
-        )
-        
-        # Jetzt säubern wir DEINE Tabelle
-        # admin_supabase.table("users").update({"pending_email": None}).eq("id", user_id).execute()
-        
-        return True
-    except Exception as e:
-        print(f"Abbruch fehlgeschlagen: {e}")
-        return False
-
 
 
 
