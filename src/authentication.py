@@ -58,6 +58,7 @@ def check_password():
                             auth_logout()
                            
                 except:
+                    st.session_state.pop("access_token", None)
                     st.error("❌ Invalid email or password.")
 
     with tab2:
