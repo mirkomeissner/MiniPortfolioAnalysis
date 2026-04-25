@@ -194,11 +194,9 @@ def user_settings_ui():
                 try:
                     # In Supabase bricht man einen Change ab, indem man die Email 
                     # auf den aktuellen Wert zurücksetzt
-                    response = supabase.auth.update_user({"email": current_email})
-                    if response:
-                        st.success("Email change cancelled.")
-                        # Kleiner Trick: Wir warten kurz oder fordern die DB-Daten neu an
-                        st.rerun()
+                    supabase.rpc("force_cancel_email_change", {"user_uuid": st.session_state["user_id"]}).execute()
+                    st.success("Email change cancelled.")
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Error cancelling change: {e}")
 
