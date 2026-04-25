@@ -255,7 +255,7 @@ def get_user_by_username(username):
 def get_all_accounts(user_id):
     supabase = _get_client()
     try:
-        res = supabase.schema("public").table("accounts").select("*").eq("user_id", user_id).execute()
+        res = supabase.schema("public").table("accounts").select("account_code, description").eq("user_id", user_id).execute()
         return res.data
     except Exception as e:
         st.error(f"Error loading accounts: {e}")
