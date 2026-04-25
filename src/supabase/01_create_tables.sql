@@ -27,7 +27,7 @@ BEGIN
     new.id, 
     new.email,
     COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
-    NULL,
+    new.email_confirmed_at,
     FALSE
   );
   RETURN new;
