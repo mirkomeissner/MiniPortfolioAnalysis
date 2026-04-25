@@ -201,7 +201,7 @@ def user_settings_ui():
                     st.error(f"Error cancelling change: {e}")
 
 
-        else        
+        else:        
             with st.form("edit_email_form"):
                 new_email = st.text_input("New Email Address", value=current_email)
                 if st.form_submit_button("Update Email"):
