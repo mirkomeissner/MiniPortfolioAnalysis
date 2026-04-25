@@ -1,27 +1,18 @@
 import streamlit as st
-from src.database import get_admin_client
+from src.database import db_get_all_users, db_update_user_approval
 
 def admin_approval_page():
     st.title("🛡️ Admin Console")
     st.subheader("User Management & Approvals")
 
-    # Admin-Client holen (nutzt Service Role Key)
-    admin_supabase = get_admin_client()
-
-    # 1. Alle Profile laden
-    try:
-        # Wir holen alle User, sortiert nach Erstellungsdatum
-        response = admin_supabase.table("users").select("*").not_.is_("email_confirmed_at", "null").order("created_at", desc=True).execute()
-        all_users = response.data
-    except Exception as e:
-        st.error(f"Fehler beim Laden der User: {e}")
-        return
+    # Daten über die zentrale Datenbank-Funktion holen
+    all_users = db_get_all_users()
 
     if not all_users:
         st.info("Keine registrierten User gefunden.")
         return
 
-    # 2. Tabs für bessere Übersicht
+    # Tabs für bessere Übersicht
     tab_pending, tab_approved = st.tabs(["Wartend ⏳", "Freigeschaltet ✅"])
 
     with tab_pending:
@@ -34,14 +25,13 @@ def admin_approval_page():
                     col1, col2 = st.columns([3, 1])
                     col1.write(f"Registriert am: {user['created_at']}")
                     if col2.button("Freischalten", key=f"approve_{user['id']}"):
-                        admin_supabase.table("users").update({"is_approved": True}).eq("id", user['id']).execute()
+                        db_update_user_approval(user['id'], True)
                         st.success(f"User {user['username']} freigeschaltet!")
                         st.rerun()
 
     with tab_approved:
         approved = [u for u in all_users if u["is_approved"]]
         for user in approved:
-            # Check ob Admin (aus Secrets)
             is_admin = user['email'] in st.secrets.get("ADMIN_EMAILS", [])
             admin_label = " (Admin)" if is_admin else ""
             
@@ -49,14 +39,10 @@ def admin_approval_page():
                 col1, col2 = st.columns([3, 1])
                 col1.write(f"ID: `{user['id']}`")
                 
-                # Admins können nicht gesperrt werden (Sicherheit gegen Aussperren)
                 if not is_admin:
                     if col2.button("Sperren", key=f"block_{user['id']}", type="secondary"):
-                        admin_supabase.table("users").update({"is_approved": False}).eq("id", user['id']).execute()
+                        db_update_user_approval(user['id'], False)
                         st.warning(f"User {user['username']} gesperrt.")
                         st.rerun()
                 else:
                     col2.info("Admin-Status")
-
-
-                    
