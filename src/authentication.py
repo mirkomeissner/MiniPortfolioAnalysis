@@ -137,7 +137,7 @@ def user_settings_ui():
             if st.button("Cancel Email Change", type="secondary"):
                 from src.database import db_cancel_email_change
                 # Wir übergeben die aktuelle Email aus dem Session State
-                if db_cancel_email_change(st.session_state["user_id"], st.session_state["user_email"]):
+                if db_cancel_email_change(st.session_state["user_id"]): # , st.session_state["user_email"]):
                     st.success("✅ Email change cancelled.")
                     st.rerun()
 
