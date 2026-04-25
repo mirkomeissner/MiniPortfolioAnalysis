@@ -1,6 +1,12 @@
 import streamlit as st
-# Importe von der database.py (Pfad ggf. anpassen: src.database)
-from .database import get_client, db_get_user_profile, db_approve_user
+from .database import (
+    db_get_user_profile, 
+    db_approve_user,
+    auth_login,
+    auth_register,
+    auth_logout,
+    auth_update_user
+)
 
 supabase = get_client()
 
@@ -8,17 +14,10 @@ supabase = get_client()
 
 def register_user(email, password, username):
     try:
-        response = supabase.auth.sign_up({
-            "email": email,
-            "password": password,
-            "options": {"data": {"username": username}}
-        })
-
+        response = auth_register(email, password, username)
         if response.user:
-            user_id = response.user.id
-            admin_list = st.secrets.get("ADMIN_EMAILS", [])
-            if email in admin_list:
-                db_approve_user(user_id)
+            if email in st.secrets.get("ADMIN_EMAILS", []):
+                db_approve_user(response.user.id)
         return response
     except Exception as e:
         st.error(f"Error with registration: {e}")
@@ -42,27 +41,24 @@ def check_password():
 
             if submit:
                 try:
-                    auth_response = supabase.auth.sign_in_with_password({"email": email, "password": pwd})
-                    if auth_response.session:
-                        # WICHTIG: Token für database.py speichern
-                        st.session_state["access_token"] = auth_response.session.access_token
-                        user_id = auth_response.user.id
-                        
-                        profile = db_get_user_profile(user_id)
+                    auth_res = auth_login(email, pwd)
+                    if auth_res.session:
+                        st.session_state["access_token"] = auth_res.session.access_token
+                        profile = db_get_user_profile(auth_res.user.id)
                         
                         if profile and profile.get("is_approved"):
                             st.session_state.update({
                                 "logged_in": True,
-                                "user_id": user_id,
+                                "user_id": auth_res.user.id,
                                 "user_name": profile["username"],
                                 "user_email": email,
                                 "is_admin": email in st.secrets.get("ADMIN_EMAILS", [])
                             })
-                            st.success("Login successful!")
                             st.rerun()
                         else:
                             st.warning("⏳ Your account is pending admin approval.")
-                            supabase.auth.sign_out()
+                            auth_logout()
+                           
                 except:
                     st.error("❌ Invalid email or password.")
 
@@ -95,11 +91,9 @@ def check_password():
     return False
 
 def logout():
-    try:
-        supabase.auth.sign_out()
-    except: pass
+    auth_logout()
     for key in ["logged_in", "user_id", "user_name", "user_email", "is_admin", "access_token"]:
-        if key in st.session_state: del st.session_state[key]
+        st.session_state.pop(key, None)
     st.rerun()
 
 def user_settings_ui():
@@ -114,12 +108,12 @@ def user_settings_ui():
             new_pwd = st.text_input("New Password", type="password")
             confirm_pwd = st.text_input("Confirm New Password", type="password")
             if st.form_submit_button("Update Password"):
-                if new_pwd == confirm_pwd and len(new_pwd) >= 6:
-                    try:
-                        supabase.auth.update_user({"password": new_pwd})
-                        st.success("✅ Password updated successfully!")
-                    except Exception as e: st.error(f"❌ Error: {e}")
-                else: st.error("❌ Invalid password.")
+                try:
+                    auth_update_user({"password": new_pwd})
+                    st.success("✅ Password updated successfully!")
+                except Exception as e: 
+                    st.error(f"❌ Error: {e}")
+ 
     
     with col2:
         st.subheader("Edit Email Address")
