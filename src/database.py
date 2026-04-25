@@ -15,6 +15,8 @@ def _get_client() -> Client:
         session = client.auth.get_session()
         if session and session.access_token:
             client.postgrest.auth(session.access_token)
+        else:
+            st.error("DEBUG: Client hat keinen Auth-Token! RLS wird fehlschlagen.")
     except:
         pass # Falls kein User eingeloggt ist, bleibt es beim anon-Zugriff
     
