@@ -132,24 +132,15 @@ def user_settings_ui():
         if pending_email:
             st.info(f"🔄 **Email change in progress** to `{pending_email}`")
             st.write(f"From: `{current_email}`")	
-            st.write(f"To: `{pending_email}`")
-            
-            if st.button("Cancel Email Change", type="secondary"):
-                from src.database import db_cancel_email_change
-                # Wir übergeben die aktuelle Email aus dem Session State
-                if db_cancel_email_change(st.session_state["user_id"]): # , st.session_state["user_email"]):
-                    st.success("✅ Email change cancelled.")
-                    st.rerun()
-
-        
-        else:        
-            with st.form("edit_email_form"):
-                new_email = st.text_input("New Email Address", value=current_email)
-                if st.form_submit_button("Update Email"):
-                    if new_email and new_email != current_email:
-                        try:
-                            auth_update_user({"email": new_email})
-                            st.success("✅ Email update initiated!")
-                        except Exception as e: st.error(f"❌ Error: {e}")
+            st.write(f"To: `{pending_email}`")   
+      
+        with st.form("edit_email_form"):
+            new_email = st.text_input("New Email Address", value=current_email)
+            if st.form_submit_button("Update Email"):
+                if new_email and new_email != current_email:
+                    try:
+                        auth_update_user({"email": new_email})
+                        st.success("✅ Email update initiated!")
+                    except Exception as e: st.error(f"❌ Error: {e}")
 
 
