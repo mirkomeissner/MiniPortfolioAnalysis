@@ -52,8 +52,8 @@ BEGIN
   UPDATE public.users
   SET 
     email = new.email,
-    pending_email = new.email_change,
-    pending_email_status = new.email_change_confirm_status,
+    pending_email = NULLIF(new.email_change, ''),
+    pending_email_status = COALESCE(new.email_change_confirm_status, 0),
     email_confirmed_at = new.email_confirmed_at,
     username = COALESCE(new.raw_user_meta_data->>'username', username),
     updated_at = NOW()
@@ -65,8 +65,7 @@ $$;
 -- Ein zweiter Trigger speziell für Updates in auth.users
 DROP TRIGGER IF EXISTS on_auth_user_updated ON auth.users;
 CREATE TRIGGER on_auth_user_updated
-  AFTER UPDATE OF email, raw_user_meta_data, email_confirmed_at, email_change, email_change_confirm_status
-  ON auth.users
+  AFTER UPDATE ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_user_update();
 
 
@@ -369,34 +368,43 @@ END $$;
 -- ==========================================================
 
 -- A: SCHEMA USAGE
--- Everyone needs to see the schema exists
+-- Erlaubt den Rollen, die Schemas überhaupt zu "sehen"
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT USAGE ON SCHEMA shared TO anon, authenticated;
 
--- B: SHARED SCHEMA (Read-only for most, contributor for authenticated)
--- Granting SELECT to everyone (anon + authenticated)
+-- B: SHARED SCHEMA (Stammdaten)
+-- 1. Alle (auch Gäste) dürfen Stammdaten lesen
 GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated;
+GRANT SELECT ON ALL VIEWS IN SCHEMA shared TO anon, authenticated;
 
--- Granting INSERT/UPDATE only for assets to authenticated users
+-- 2. Eingeloggte User dürfen neue Assets vorschlagen/bearbeiten
 GRANT INSERT, UPDATE ON shared.asset_static_data TO authenticated;
 
--- C: PUBLIC SCHEMA (User data)
--- IMPORTANT: 'anon' gets ZERO access to public tables to prevent data leaks.
--- If someone is not logged in, they shouldn't even query the user tables.
+-- C: PUBLIC SCHEMA (User-Daten)
+-- 1. 'anon' explizit komplett aussperren (Sicherheitsnetz)
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
+REVOKE ALL ON ALL VIEWS IN SCHEMA public FROM anon;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon;
 
--- Authenticated users need permissions to work with their own data.
--- RLS will ensure they only see their OWN rows.
+-- 2. Eingeloggte User dürfen mit ihren Daten arbeiten
+-- RLS sorgt dafür, dass sie trotzdem nur ihre eigenen Zeilen sehen!
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
+GRANT SELECT ON ALL VIEWS IN SCHEMA public TO authenticated;
 
--- Granting access to the sequences (if you use SERIAL or IDENTITY columns)
+-- D: SEQUENCES (Für AUTO_INCREMENT / IDENTITY Spalten)
+-- Ohne diese Rechte können User keine neuen Zeilen einfügen
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA shared TO authenticated;
 
--- D: SERVICE ROLE (The Master Key)
--- The service_role should always have full access for your background scripts.
+-- E: SERVICE ROLE (Der Master Key für Backend-Skripte)
+-- Die service_role umgeht RLS und braucht vollen Zugriff
 GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA shared TO service_role;
+GRANT ALL ON ALL VIEWS IN SCHEMA public TO service_role;
+GRANT ALL ON ALL VIEWS IN SCHEMA shared TO service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA shared TO service_role;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role;
 
 
 
