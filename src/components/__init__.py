@@ -2,9 +2,11 @@
 from .asset_management import asset_table_view
 from .transaction_management import transaction_table_view
 from .ticker_search import ticker_search_view
+from .accounts_management import accounts_settings_view
 
 __all__ = [
     'asset_table_view',
     'transaction_table_view',
     'ticker_search_view',
+    'accounts_settings_view',
 ]

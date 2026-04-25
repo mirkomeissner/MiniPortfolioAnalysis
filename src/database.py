@@ -359,3 +359,55 @@ def get_user_by_username(username):
     except Exception as e:
         st.error(f"Error checking user existence: {e}")
         return None
+
+
+# --- ACCOUNTS MANAGEMENT FUNCTIONS ---
+
+def get_all_accounts(user_id):
+    """Fetches all accounts for a specific user."""
+    try:
+        res = supabase.schema("public").table("accounts") \
+            .select("account_code, description") \
+            .eq("user_id", user_id) \
+            .execute()
+        return res.data if res.data else []
+    except Exception as e:
+        st.error(f"Error fetching accounts: {e}")
+        return []
+
+def save_account(user_id, account_code, description):
+    """Inserts a new account for the user."""
+    try:
+        account_data = {
+            "user_id": user_id,
+            "account_code": account_code,
+            "description": description
+        }
+        return supabase.schema("public").table("accounts").insert(account_data).execute()
+    except Exception as e:
+        st.error(f"Error saving account: {e}")
+        raise e
+
+def update_account(user_id, account_code, description):
+    """Updates an existing account."""
+    try:
+        return supabase.schema("public").table("accounts") \
+            .update({"description": description}) \
+            .eq("user_id", user_id) \
+            .eq("account_code", account_code) \
+            .execute()
+    except Exception as e:
+        st.error(f"Error updating account: {e}")
+        raise e
+
+def delete_account(user_id, account_code):
+    """Deletes an account."""
+    try:
+        return supabase.schema("public").table("accounts") \
+            .delete() \
+            .eq("user_id", user_id) \
+            .eq("account_code", account_code) \
+            .execute()
+    except Exception as e:
+        st.error(f"Error deleting account: {e}")
+        raise e
