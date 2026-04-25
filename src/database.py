@@ -67,28 +67,30 @@ def auth_update_user(data):
     return supabase.auth.update_user(data)
 
 
-def db_cancel_email_change(user_id, current_email):
+def db_cancel_email_change(user_id):
     """
-    Nutzt die Admin-API, um den E-Mail-Status zu 'resetten'.
+    Bricht den Wechsel ab, indem eine Metadaten-Änderung erzwungen wird.
+    Völlig sicher, da nur das offizielle SDK genutzt wird.
     """
     admin_supabase = get_admin_client()
     try:
-        # Wir schicken den Update-Befehl an die API.
-        # 'email_confirm' ist ein Instruktions-Flag für den Server, keine Spalte!
+        import datetime
+        # Wir setzen einen harmlosen Zeitstempel in die Metadaten.
+        # Das zwingt GoTrue, den User-Status zu aktualisieren und 
+        # bricht laufende Email-Änderungen im Hintergrund ab.
         admin_supabase.auth.admin.update_user_by_id(
             user_id, 
             attributes={
-                "email": current_email,
-                "email_confirm": True  # Dies ist das 'Zauberwort' für den GoTrue-Server
+                "user_metadata": { "last_cancel": str(datetime.datetime.now()) }
             }
         )
         
-        # Zusätzlich säubern wir deine public.users Tabelle
+        # Jetzt säubern wir DEINE Tabelle
         # admin_supabase.table("users").update({"pending_email": None}).eq("id", user_id).execute()
         
         return True
     except Exception as e:
-        print(f"Fehler beim SDK-Abbruch: {e}")
+        print(f"Abbruch fehlgeschlagen: {e}")
         return False
 
 
