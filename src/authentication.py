@@ -183,7 +183,7 @@ def user_settings_ui():
             st.write(f"To: `{pending_email}`")
             
             # Fortschrittsanzeige basierend auf email_change_status
-            status = user_data.get("email_change_status", 0)
+            status = user_data.get("pending_email_status", 0)
             if status == 0:
                 st.warning("Waiting for confirmation on both addresses...")
             elif status == 1:
