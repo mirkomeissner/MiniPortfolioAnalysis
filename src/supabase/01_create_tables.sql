@@ -72,6 +72,25 @@ CREATE TRIGGER on_auth_user_updated
 
 
 
+CREATE OR REPLACE FUNCTION public.force_cancel_email_change(user_uuid UUID)
+RETURNS void 
+LANGUAGE plpgsql 
+SECURITY DEFINER AS $$
+BEGIN
+  -- Wir löschen die schwebenden Änderungen direkt in der Quelle
+  UPDATE auth.users 
+  SET 
+    email_change = NULL, 
+    email_change_confirm_status = 0,
+    email_change_token_new = NULL,
+    email_change_token_current = NULL
+  WHERE id = user_uuid;
+END;
+$$;
+
+
+
+
 
 
 
