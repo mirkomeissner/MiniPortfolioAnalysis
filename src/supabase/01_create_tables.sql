@@ -65,7 +65,8 @@ $$;
 -- Ein zweiter Trigger speziell für Updates in auth.users
 DROP TRIGGER IF EXISTS on_auth_user_updated ON auth.users;
 CREATE TRIGGER on_auth_user_updated
-  AFTER UPDATE OF email, raw_user_meta_data, email_confirmed_at ON auth.users
+  AFTER UPDATE OF email, raw_user_meta_data, email_confirmed_at, new_email, email_change_confirm_status
+  ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_user_update();
 
 
