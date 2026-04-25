@@ -249,3 +249,27 @@ def get_user_by_username(username):
         res = supabase.schema("public").table("users").select("id").eq("username", username).execute()
         return res.data[0]["id"] if res.data else None
     except: return None
+
+# --- ACCOUNT MANAGEMENT FUNCTIONS ---
+
+def get_all_accounts(user_id):
+    supabase = _get_client()
+    try:
+        res = supabase.schema("public").table("accounts").select("account_code, description").eq("user_id", user_id).execute()
+        return res.data
+    except Exception as e:
+        st.error(f"Error loading accounts: {e}")
+        return []
+
+def save_account(user_id, account_code, description):
+    supabase = _get_client()
+    payload = {"user_id": user_id, "account_code": account_code, "description": description}
+    return supabase.schema("public").table("accounts").insert(payload).execute()
+
+def update_account(user_id, account_code, description):
+    supabase = _get_client()
+    return supabase.schema("public").table("accounts").update({"description": description}).eq("user_id", user_id).eq("account_code", account_code).execute()
+
+def delete_account(user_id, account_code):
+    supabase = _get_client()
+    return supabase.schema("public").table("accounts").delete().eq("user_id", user_id).eq("account_code", account_code).execute()
