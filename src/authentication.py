@@ -129,13 +129,11 @@ def user_settings_ui():
         current_email = st.session_state.get("user_email", "") 
         pending_email = user_data.get("pending_email")
 
-        if pending_email:
-            st.info(f"🔄 **Email change in progress** to `{pending_email}`")
-            st.write(f"From: `{current_email}`")	
-            st.write(f"To: `{pending_email}`")   
-      
+        st.write(f"Current eMail: `{current_email}`")
+
+        if pending_email: st.info(f"🔄 **Email change in progress** to `{pending_email}`")      
         with st.form("edit_email_form"):
-            new_email = st.text_input("New Email Address", value=current_email)
+            new_email = st.text_input("New Email Address", value=f"new.mail@adress.com")
             if st.form_submit_button("Update Email"):
                 if new_email and new_email != current_email:
                     try:
