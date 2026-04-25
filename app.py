@@ -1,5 +1,5 @@
 import streamlit as st  
-from src.authentication import check_password, user_settings_ui  
+from src.authentication import check_password, logout, user_settings_ui  
 from src.components import asset_table_view, transaction_table_view, admin_approval_page
  
 st.set_page_config(page_title="Asset Manager", layout="wide")  
@@ -19,7 +19,8 @@ if check_password():
 
      
     if st.sidebar.button("Logout"):  
-        st.session_state["logged_in"] = False  
+        st.session_state["logged_in"] = False
+        logout()
         st.rerun()  
  
     # State Management 
