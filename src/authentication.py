@@ -1,5 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client
+# Importiere die neuen Funktionen aus der database.py
+from database import get_user_by_id, get_admin_client
 
 # --- CLIENT INITIALIZATION ---
 
@@ -7,11 +9,6 @@ from supabase import create_client, Client
 def get_supabase_client() -> Client:
     """Standard client for normal users (honors RLS)"""
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-
-@st.cache_resource
-def get_admin_client() -> Client:
-    """Admin client for bypass RLS (Service Role)"""
-    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"])
 
 supabase = get_supabase_client()
 
@@ -32,8 +29,8 @@ def register_user(email, password, username):
 
             # 2. Check for automatic admin approval
             if email in admin_list:
+                # Nutzt jetzt den admin_client aus database.py
                 admin_supabase = get_admin_client() 
-                # Update approved status via service role
                 admin_supabase.table("users").update({"is_approved": True}).eq("id", user_id).execute()
 
         return response
@@ -64,28 +61,35 @@ def check_password():
                         "email": email, 
                         "password": pwd
                     })
-                    user_id = auth_response.user.id
                     
-                    # Fetch profile to check approval
-                    profile = supabase.table("users").select("is_approved, username").eq("id", user_id).single().execute()
+                    if auth_response.session:
+                        # WICHTIG: Token für database.py speichern
+                        st.session_state["access_token"] = auth_response.session.access_token
+                        
+                        user_id = auth_response.user.id
+                        
+                        # Nutzt jetzt die zentrale Funktion aus database.py
+                        profile_data = get_user_by_id(user_id)
+                        
+                        if profile_data and profile_data.get("is_approved"):
+                            # Set session states
+                            st.session_state["logged_in"] = True
+                            st.session_state["user_id"] = user_id
+                            st.session_state["user_name"] = profile_data["username"]
+                            st.session_state["user_email"] = email
+                            
+                            # Admin Check
+                            admin_list = st.secrets.get("ADMIN_EMAILS", [])
+                            st.session_state["is_admin"] = email in admin_list
+                            
+                            st.success("Login successful!")
+                            st.rerun()
+                        else:
+                            st.warning("⏳ Your account is pending admin approval.")
+                            supabase.auth.sign_out()
+                            if "access_token" in st.session_state:
+                                del st.session_state["access_token"]
                     
-                    if profile.data and profile.data.get("is_approved"):
-                        # Set session states
-                        st.session_state["logged_in"] = True
-                        st.session_state["user_id"] = user_id
-                        st.session_state["user_name"] = profile.data["username"]
-                        st.session_state["user_email"] = email
-                        
-                        # Admin Check based on secrets
-                        admin_list = st.secrets.get("ADMIN_EMAILS", [])
-                        st.session_state["is_admin"] = email in admin_list
-                        
-                        st.success("Login successful!")
-                        st.rerun()
-                    else:
-                        st.warning("⏳ Your account is pending admin approval.")
-                        supabase.auth.sign_out()
-                        
                 except Exception:
                     st.error("❌ Invalid email or password.")
 
@@ -108,20 +112,15 @@ def check_password():
                 else:
                     res = register_user(new_email, new_pwd, new_username)
                     if res:
-                        # Wir speichern einen Hinweis in den Session State, 
-                        # damit er nach dem Refresh angezeigt wird
                         st.session_state["reg_success_msg"] = f"✅ Account created for {new_username}!"
                         if new_email in st.secrets.get("ADMIN_EMAILS", []):
                             st.session_state["reg_success_msg"] += " Admin access granted automatically."
-                        
-                        st.rerun() # Seite neu laden, um Meldung oben anzuzeigen
+                        st.rerun() 
     
-        # Meldung nach dem Rerender außerhalb des Forms anzeigen
         if "reg_success_msg" in st.session_state:
             st.success(st.session_state["reg_success_msg"])
-            del st.session_state["reg_success_msg"] # Einmalig anzeigen
+            del st.session_state["reg_success_msg"] 
         
-
     return False
 
 
@@ -133,7 +132,8 @@ def logout():
         st.error(f"Fehler beim Abmelden bei Supabase: {e}")
     
     # Alle relevanten Session States löschen
-    for key in ["logged_in", "user_id", "user_name", "user_email", "is_admin"]:
+    keys_to_clear = ["logged_in", "user_id", "user_name", "user_email", "is_admin", "access_token"]
+    for key in keys_to_clear:
         if key in st.session_state:
             del st.session_state[key]
             
@@ -141,17 +141,14 @@ def logout():
     st.rerun()
 
 
-
-
 def user_settings_ui():
     st.title("User Settings")
 
-    # Aktuelle Profildaten frisch aus der DB laden, um pending_email zu prüfen
-    try:
-        profile = supabase.table("users").select("*").eq("id", st.session_state["user_id"]).single().execute()
-        user_data = profile.data
-    except Exception as e:
-        st.error(f"Error when loading configuration: {e}")
+    # Nutzt jetzt die zentrale Funktion aus database.py
+    user_data = get_user_by_id(st.session_state["user_id"])
+    
+    if not user_data:
+        st.error("Error when loading configuration.")
         return
     
     col1, col2 = st.columns(2)
@@ -174,15 +171,14 @@ def user_settings_ui():
     with col2:
         st.subheader("Edit Email Address")
         current_email = st.session_state.get("user_email", "") 
+        # Falls in users Tabelle vorhanden (optional je nach DB-Trigger)
         pending_email = user_data.get("pending_email")
 
         if pending_email:
-            # STATUS: UMZUG LÄUFT
             st.info(f"🔄 **Email change in progress**")
             st.write(f"From: `{current_email}`")
             st.write(f"To: `{pending_email}`")
             
-            # Fortschrittsanzeige basierend auf email_change_status
             status = user_data.get("pending_email_status", 0)
             if status == 0:
                 st.warning("Waiting for confirmation on both addresses...")
@@ -200,4 +196,3 @@ def user_settings_ui():
                             st.info("Please check your email to confirm the change.")
                         except Exception as e:
                             st.error(f"❌ Error: {e}")
-
