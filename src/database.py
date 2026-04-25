@@ -48,6 +48,45 @@ def db_approve_user(user_id):
     admin_supabase = get_admin_client()
     return admin_supabase.table("users").update({"is_approved": True}).eq("id", user_id).execute()
 
+
+
+# --- AUTH ACTIONS ---
+
+def auth_login(email, password):
+    """Führt den Login aus und gibt die Response zurück."""
+    supabase = _get_client()
+    return supabase.auth.sign_in_with_password({"email": email, "password": password})
+
+def auth_register(email, password, username):
+    """Registriert einen neuen User."""
+    supabase = _get_client()
+    return supabase.auth.sign_up({
+        "email": email,
+        "password": password,
+        "options": {"data": {"username": username}}
+    })
+
+def auth_logout():
+    """Meldet den User bei Supabase ab."""
+    supabase = _get_client()
+    return supabase.auth.sign_out()
+
+def auth_update_user(data):
+    """Aktualisiert User-Daten wie Passwort oder Email."""
+    supabase = _get_client()
+    return supabase.auth.update_user(data)
+
+
+
+
+
+
+
+
+
+
+
+
 # --- DATABASE FUNCTIONS (Assets, Transactions, etc.) ---
 
 @st.cache_data(ttl=600)
