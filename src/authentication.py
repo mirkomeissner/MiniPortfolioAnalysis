@@ -1,141 +1,144 @@
 import streamlit as st
-import hashlib
-from src.database import (
-    get_user_profile,
-    set_user_password,
-    get_user_email,
-    update_user_email,
-    create_user,
-    get_user_by_username
+from .database import (
+    db_get_user_profile, 
+    db_approve_user,
+    auth_login,
+    auth_register,
+    auth_logout,
+    auth_update_user
 )
 
-def hash_password(password):
-    """Generates a SHA-256 hash of the provided password."""
-    return hashlib.sha256(str.encode(password)).hexdigest()
+# --- AUTH FUNCTIONS ---
 
-def create_new_user(username, password):
-    """
-    Handles user provisioning. Checks if the user exists in 'users' 
-    before attempting an insert to avoid Unique Constraint violations.
-    """
-    # 1. Check if the user already exists
-    existing_id = get_user_by_username(username)
-    
-    if existing_id:
-        # User exists, use the existing UUID
-        new_id = existing_id
-    else:
-        # User does not exist, try to create
-        new_id = create_user(username)
-        if not new_id:
-            # Race condition: another process created the user, fetch it
-            new_id = get_user_by_username(username)
-            if not new_id:
-                st.error("Failed to create user.")
-                return None
-    
-    # 2. Set the password hash
-    p_hash = hash_password(password)
+def register_user(email, password, username):
     try:
-        set_user_password(new_id, p_hash)
+        response = auth_register(email, password, username)
+        if response.user:
+            if email in st.secrets.get("ADMIN_EMAILS", []):
+                db_approve_user(response.user.id)
+        return response
     except Exception as e:
-        st.error(f"Error setting password: {e}")
+        st.error(f"Error with registration: {e}")
         return None
-        
-    return new_id
 
 def check_password():
-    """Main login logic. Handles authentication and JIT user provisioning."""
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
 
     if st.session_state["logged_in"]:
         return True
 
-    st.title("Login")
+    tab1, tab2 = st.tabs(["Login", "Create Account"])
+
+    with tab1:
+        st.subheader("Login")
+        with st.form("Login Form"):
+            email = st.text_input("Email").strip()
+            pwd = st.text_input("Password", type="password")
+            submit = st.form_submit_button("Login")
+
+            if submit:
+                try:
+                    # 1. Login durchführen
+                    auth_response = auth_login(email, pwd) 
+                    
+                    if auth_response and auth_response.session:
+                        # 2. Token sichern
+                        st.session_state["access_token"] = auth_response.session.access_token
+                        user_id = auth_response.user.id
+                        
+                        # 3. Profil laden
+                        profile = db_get_user_profile(user_id)
+                        
+                        if profile and profile.get("is_approved"):
+                            st.session_state.update({
+                                "logged_in": True,
+                                "user_id": user_id,
+                                "user_name": profile["username"],
+                                "user_email": email,
+                                "is_admin": email in st.secrets.get("ADMIN_EMAILS", [])
+                            })
+                            st.success("Login successful!")
+                            st.rerun()
+                        else:
+                            # Hier löschen wir den Token, weil der User zwar existiert, aber nicht rein darf
+                            st.session_state.pop("access_token", None)
+                            st.warning("⏳ Your account is pending admin approval.")
+                            auth_logout()
+                    
+                except Exception as e:
+                    # NUR WENN DER LOGIN-AUFRUF SELBST FEHLSCHLÄGT
+                    st.session_state.pop("access_token", None)
+                    st.error("❌ Invalid email or password.")
+
+    with tab2:
+        st.subheader("Register")
+        with st.form("Registration Form", clear_on_submit=True):
+            new_email = st.text_input("Email (required)").strip()
+            new_username = st.text_input("Username (required)").strip()
+            new_pwd = st.text_input("Password", type="password")
+            confirm_pwd = st.text_input("Confirm Password", type="password")
+            reg_submit = st.form_submit_button("Register")
     
-    with st.form("Login Form"):
-        user = st.text_input("Username").strip()
-        pwd = st.text_input("Password", type="password")
-        submit = st.form_submit_button("Login")
-
-        if submit:
-            # Check against Admin-defined allowed users (Streamlit Secrets)
-            allowed_users = st.secrets.get("allowed_users", [])
-            if user not in allowed_users:
-                st.error("❌ User not authorized by Admin.")
-                return False
-            
-            if not pwd:
-                st.warning("⚠️ Please enter a password.")
-                return False
-
-            # Retrieve profile from DB
-            profile = get_user_profile(user)
-            
-            if profile and profile["password_hash"]:
-                # Registered user: Compare hashes
-                if profile["password_hash"] == hash_password(pwd):
-                    st.session_state["logged_in"] = True
-                    st.session_state["user_name"] = user
-                    st.session_state["user_id"] = profile["id"]
-                    st.rerun()
+            if reg_submit:
+                if not new_email or not new_username:
+                    st.error("Email and Username are required.")
+                elif new_pwd != confirm_pwd:
+                    st.error("Passwords do not match.")
+                elif len(new_pwd) < 6:
+                    st.error("Password must be at least 6 characters.")
                 else:
-                    st.error("❌ Invalid password")
-            else:
-                # User is authorized in Secrets but missing from DB or has no password
-                if len(pwd) < 4:
-                    st.error("❌ For security, passwords must be at least 4 characters.")
-                    return False
-                
-                new_uuid = create_new_user(user, pwd)
-                if new_uuid:
-                    st.success(f"Welcome {user}! Profile initialized.")
-                    st.session_state["logged_in"] = True
-                    st.session_state["user_name"] = user
-                    st.session_state["user_id"] = new_uuid
-                    st.rerun()
+                    res = register_user(new_email, new_pwd, new_username)
+                    if res:
+                        st.session_state["reg_success_msg"] = f"✅ Account created for {new_username}!"
+                        st.rerun()
+    
+        if "reg_success_msg" in st.session_state:
+            st.success(st.session_state["reg_success_msg"])
+            del st.session_state["reg_success_msg"]
+        
     return False
 
+def logout():
+    auth_logout()
+    for key in ["logged_in", "user_id", "user_name", "user_email", "is_admin", "access_token"]:
+        st.session_state.pop(key, None)
+    st.rerun()
+
 def user_settings_ui():
-    """UI component for managing user settings (password and email)."""
     st.title("User Settings")
-    
+    user_data = db_get_user_profile(st.session_state["user_id"])
+    if not user_data: return
+
     col1, col2 = st.columns(2)
-    
     with col1:
         st.subheader("Change Password")
         with st.form("change_pwd_form"):
             new_pwd = st.text_input("New Password", type="password")
             confirm_pwd = st.text_input("Confirm New Password", type="password")
             if st.form_submit_button("Update Password"):
-                if new_pwd == confirm_pwd and len(new_pwd) >= 4:
-                    p_hash = hash_password(new_pwd)
-                    try:
-                        set_user_password(st.session_state["user_id"], p_hash)
-                        st.success("✅ Password updated successfully!")
-                    except Exception:
-                        st.error("❌ Failed to update password.")
-                elif len(new_pwd) < 4:
-                    st.error("❌ Password must be at least 4 characters long.")
-                else:
-                    st.error("❌ Passwords do not match.")
+                try:
+                    auth_update_user({"password": new_pwd})
+                    st.success("✅ Password updated successfully!")
+                except Exception as e: 
+                    st.error(f"❌ Error: {e}")
+ 
     
     with col2:
         st.subheader("Edit Email Address")
-        current_email = get_user_email(st.session_state["user_id"])
+        current_email = st.session_state.get("user_email", "") 
+        pending_email = user_data.get("pending_email")
+
+        st.write(f"Current eMail: `{current_email}`")
+
+        if pending_email: st.info(f"🔄 **Email change in progress** to `{pending_email}`")      
         with st.form("edit_email_form"):
-            email = st.text_input("Email Address", value=current_email or "", placeholder="your.email@example.com")
+            new_email = st.text_input("New Email Address")
             if st.form_submit_button("Update Email"):
-                if email:
+                if new_email and new_email != current_email:
                     try:
-                        update_user_email(st.session_state["user_id"], email)
-                        st.success("✅ Email updated successfully!")
-                    except Exception as e:
-                        if "duplicate" in str(e).lower():
-                            st.error("❌ This email address is already in use.")
-                        else:
-                            st.error(f"❌ Error updating email: {e}")
-                else:
-                    st.warning("⚠️ Email address cannot be empty.")
+                        auth_update_user({"email": new_email})
+                        st.success("✅ Email update initiated!")
+                    except Exception as e: st.error(f"❌ Error: {e}")
+
 
