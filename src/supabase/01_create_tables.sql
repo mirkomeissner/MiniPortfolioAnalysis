@@ -52,7 +52,7 @@ BEGIN
   UPDATE public.users
   SET 
     email = new.email,
-    pending_email = new.new_email,
+    pending_email = new.email_change,
     pending_email_status = new.email_change_confirm_status,
     email_confirmed_at = new.email_confirmed_at,
     username = COALESCE(new.raw_user_meta_data->>'username', username),
@@ -65,7 +65,7 @@ $$;
 -- Ein zweiter Trigger speziell für Updates in auth.users
 DROP TRIGGER IF EXISTS on_auth_user_updated ON auth.users;
 CREATE TRIGGER on_auth_user_updated
-  AFTER UPDATE OF email, raw_user_meta_data, email_confirmed_at, new_email, email_change_confirm_status
+  AFTER UPDATE OF email, raw_user_meta_data, email_confirmed_at, email_change, email_change_confirm_status
   ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_user_update();
 
