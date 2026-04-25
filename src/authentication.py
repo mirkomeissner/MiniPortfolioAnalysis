@@ -1,6 +1,6 @@
 import streamlit as st
 # Importe von der database.py (Pfad ggf. anpassen: src.database)
-from src.database import get_client, db_get_user_profile, db_approve_user
+from .database import get_client, db_get_user_profile, db_approve_user
 
 supabase = get_client()
 
