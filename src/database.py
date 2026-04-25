@@ -3,26 +3,44 @@ from supabase import create_client, Client
 
 # --- HELPER FÜR AUTHENTIFIZIERUNG ---
 
+def get_admin_client() -> Client:
+    """Admin client for bypass RLS (Service Role) - Nur für interne Zwecke."""
+    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"])
+
 def _get_client() -> Client:
     """
     Erstellt einen frischen Client und injiziert automatisch den 
-    User-Token (JWT), falls der User eingeloggt ist.
+    User-Token (JWT) aus dem Session State.
     """
     client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
     
-    # Prüfen, ob eine Session existiert (nach dem Login in authentication.py)
-    try:
-        session = client.auth.get_session()
-        if session and session.access_token:
-            client.postgrest.auth(session.access_token)
-        else:
-            st.error("DEBUG: Client hat keinen Auth-Token! RLS wird fehlschlagen.")
-    except:
-        pass # Falls kein User eingeloggt ist, bleibt es beim anon-Zugriff
+    # Priorität 1: Token aus session_state (von authentication.py gesetzt)
+    token = st.session_state.get("access_token")
+    
+    # Priorität 2: Interne Session des Clients (Fallback)
+    if not token:
+        try:
+            session = client.auth.get_session()
+            if session:
+                token = session.access_token
+        except:
+            pass
+
+    if token:
+        client.postgrest.auth(token)
     
     return client
 
 # --- DATABASE FUNCTIONS ---
+
+def get_user_by_id(user_id):
+    """Holt Profildaten für die Authentifizierung."""
+    supabase = _get_client()
+    try:
+        res = supabase.schema("public").table("users").select("is_approved, username").eq("id", user_id).single().execute()
+        return res.data
+    except Exception as e:
+        return None
 
 @st.cache_data(ttl=600)
 def get_ref_options(table_name):
@@ -228,12 +246,10 @@ def save_import_settings(user_id, account_code, config):
 def get_user_profile(username):
     supabase = _get_client()
     try:
-        res = supabase.schema("public").table("users").select("id, username, user_secrets(password_hash)").eq("username", username).execute()
+        res = supabase.schema("public").table("users").select("id, username").eq("username", username).execute()
         if res.data:
             data = res.data[0]
-            secrets = data.get("user_secrets")
-            p_hash = secrets[0].get("password_hash") if isinstance(secrets, list) and secrets else secrets.get("password_hash") if isinstance(secrets, dict) else None
-            return {"id": data["id"], "username": data["username"], "password_hash": p_hash}
+            return {"id": data["id"], "username": data["username"]}
         return None
     except Exception as e:
         st.error(f"Error fetching user profile: {e}")
