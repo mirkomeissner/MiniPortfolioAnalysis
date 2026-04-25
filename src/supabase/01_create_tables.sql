@@ -274,10 +274,12 @@ WHERE h.quantity IS NOT NULL; -- Verhindert Zeilen für Assets vor ihrem ersten 
 
 
 
--- ==========================================================
--- 3. ENABLING ROW LEVEL SECURITY (RLS)
--- ==========================================================
 
+
+
+-- ==========================================================
+-- 1. RLS ÜBERALL AKTIVIEREN
+-- ==========================================================
 DO $$ 
 DECLARE 
     r RECORD;
@@ -288,13 +290,9 @@ BEGIN
     END LOOP;
 END $$;
 
-
 -- ==========================================================
--- 4. POLICIES (SHARED SCHEMA)
+-- 2. SHARED SCHEMA: AUTOMATISCHER LESEZUGRIFF
 -- ==========================================================
-
--- A: READ ACCESS FOR authenticated
--- We use a loop to apply the "Public Read" policy to all shared tables
 DO $$ 
 DECLARE 
     t text;
@@ -306,105 +304,52 @@ BEGIN
     END LOOP;
 END $$;
 
--- B: WRITE ACCESS (Only authenticated users or system)
--- For shared data, we typically don't want 'anon' to insert data.
--- If you want logged-in users to propose new assets:
-DROP POLICY IF EXISTS "Authenticated Insert Access" ON shared.asset_static_data;
-CREATE POLICY "Authenticated Insert Access" ON shared.asset_static_data 
-FOR INSERT WITH CHECK (auth.role() = 'authenticated');
-
--- C: UPDATE ACCESS (Only authenticated users or system)
-DROP POLICY IF EXISTS "Authenticated Update Access" ON shared.asset_static_data;
-CREATE POLICY "Authenticated Update Access" ON shared.asset_static_data 
-FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-
-
 -- ==========================================================
--- 5. POLICIES (PUBLIC SCHEMA)
+-- 3. PUBLIC SCHEMA: BESITZER-ZUGRIFF (DIE NEUE SCHLEIFE)
 -- ==========================================================
-
--- A: USERS Table (Special case: id instead of user_id)
-DROP POLICY IF EXISTS "Users can only see their own profile" ON public.users;
-CREATE POLICY "Users can only see their own profile" 
-ON public.users FOR SELECT USING (auth.uid() = id);
-
-DROP POLICY IF EXISTS "Users can only update their own profile" ON public.users;
-CREATE POLICY "Users can only update their own profile" 
-ON public.users FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
-
--- B: All other tables (using user_id column)
--- We'll do this for accounts, transactions, user_import_settings, incremental_holdings
-
+-- Hier nutzen wir die performante Version OHNE den EXISTS-Check
 DO $$ 
 DECLARE 
     t text;
+    -- Liste deiner User-Tabellen
     tables text[] := ARRAY['accounts', 'transactions', 'user_import_settings', 'incremental_holdings'];
 BEGIN
     FOREACH t IN ARRAY tables LOOP
         EXECUTE format('DROP POLICY IF EXISTS "Users can only access their own %I" ON public.%I', t, t);
         EXECUTE format('CREATE POLICY "Users can only access their own %I" ON public.%I 
-                        FOR ALL 
-                        USING (
-                            auth.uid() = user_id 
-                            AND EXISTS (
-                                SELECT 1 FROM public.users 
-                                WHERE id = auth.uid() AND is_approved = TRUE
-                            )
-                        ) 
-                        WITH CHECK (
-                            auth.uid() = user_id 
-                            AND EXISTS (
-                                SELECT 1 FROM public.users 
-                                WHERE id = auth.uid() AND is_approved = TRUE
-                            )
-                        )', t, t);
+                        FOR ALL TO authenticated 
+                        USING (auth.uid() = user_id) 
+                        WITH CHECK (auth.uid() = user_id)', t, t);
     END LOOP;
 END $$;
 
-
+-- Sonderfall users-Tabelle (id statt user_id)
+DROP POLICY IF EXISTS "Users own profile" ON public.users;
+CREATE POLICY "Users own profile" ON public.users 
+FOR ALL TO authenticated USING (auth.uid() = id);
 
 -- ==========================================================
--- 5. PERMISSIONS (GRANTS)
+-- 4. GRANTS (DAS FUNDAMENT)
 -- ==========================================================
+-- Wir entziehen anon alles
+REVOKE ALL ON ALL TABLES IN SCHEMA public, shared FROM anon;
 
--- A: SCHEMA USAGE
-GRANT USAGE ON SCHEMA public TO anon, authenticated;
-GRANT USAGE ON SCHEMA shared TO anon, authenticated;
+-- Authenticated darf USAGE
+GRANT USAGE ON SCHEMA public, shared TO authenticated;
 
--- B: SHARED SCHEMA (Stammdaten)
--- In Postgres werden Views oft wie Tabellen behandelt.
-GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated;
-GRANT INSERT, UPDATE ON shared.asset_static_data TO authenticated;
-
--- Falls "ALL VIEWS" nicht geht, einzeln für deine Views:
-GRANT SELECT ON shared.users TO anon, authenticated;
-
--- C: PUBLIC SCHEMA (User-Daten)
-REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon;
-
+-- Authenticated darf in public alles mit seinen (durch RLS geschützten) Daten machen
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
-
--- Explizite Rechte für die Views in public
-GRANT SELECT ON public.ref_transaction_type TO authenticated;
-GRANT SELECT ON public.asset_static_data TO authenticated;
-GRANT SELECT ON public.daily_holdings TO authenticated;
-
--- D: SEQUENCES
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA shared TO authenticated;
 
--- E: SERVICE ROLE (Der Master Key)
--- Hier nutzen wir auch nur kompatible Befehle
-GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
-GRANT ALL ON ALL TABLES IN SCHEMA shared TO service_role;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA shared TO service_role;
-GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role;
+-- Authenticated darf in shared nur lesen und Assets vorschlagen
+GRANT SELECT ON ALL TABLES IN SCHEMA shared TO authenticated;
+GRANT INSERT ON shared.asset_static_data TO authenticated;
+-- UPDATE auf shared bleibt dem Admin vorbehalten (service_role)
 
--- Da die Views im Service-Role-Kontext wichtig sind:
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO service_role; 
--- (Views sind in 'ALL TABLES' oft inkludiert, sicherheitshalber einzeln falls Fehler)
+-- Service Role (Dein Admin-Client) darf immer alles
+GRANT ALL ON SCHEMA public, shared TO service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public, shared TO service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public, shared TO service_role;
 
 
 
