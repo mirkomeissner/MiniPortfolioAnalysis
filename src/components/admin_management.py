@@ -1,5 +1,5 @@
 import streamlit as st
-from src.authentication import get_admin_client
+from src.database import get_admin_client
 
 def admin_approval_page():
     st.title("🛡️ Admin Console")
