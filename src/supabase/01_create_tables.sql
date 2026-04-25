@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS public.users (
     username TEXT,
     email_confirmed_at TIMESTAMPTZ,
     is_approved BOOLEAN DEFAULT FALSE,
+    pending_email TEXT,
+    pending_email_status INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ
 );
@@ -50,6 +52,8 @@ BEGIN
   UPDATE public.users
   SET 
     email = new.email,
+    pending_email = new.new_email,
+    pending_email_status = new.email_change_confirm_status,
     email_confirmed_at = new.email_confirmed_at,
     username = COALESCE(new.raw_user_meta_data->>'username', username),
     updated_at = NOW()
