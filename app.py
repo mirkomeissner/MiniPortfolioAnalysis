@@ -1,17 +1,4 @@
 import streamlit as st  
-
-# --- DEBUG PANEL ---
-with st.sidebar.expander("🔍 Debug Info", expanded=True):
-    st.write(f"Logged In: `{st.session_state.get('logged_in', False)}`")
-    st.write(f"Has Token: `{ 'access_token' in st.session_state }`")
-    if 'access_token' in st.session_state:
-        st.write(f"Token (first 10 chars): `{st.session_state['access_token'][:10]}...`")
-# --------------------
-
-
-
-
-
 from src.authentication import check_password, logout, user_settings_ui  
 
 st.set_page_config(page_title="Asset Manager", layout="wide")  
