@@ -368,43 +368,42 @@ END $$;
 -- ==========================================================
 
 -- A: SCHEMA USAGE
--- Erlaubt den Rollen, die Schemas überhaupt zu "sehen"
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT USAGE ON SCHEMA shared TO anon, authenticated;
 
 -- B: SHARED SCHEMA (Stammdaten)
--- 1. Alle (auch Gäste) dürfen Stammdaten lesen
+-- In Postgres werden Views oft wie Tabellen behandelt.
 GRANT SELECT ON ALL TABLES IN SCHEMA shared TO anon, authenticated;
-GRANT SELECT ON ALL VIEWS IN SCHEMA shared TO anon, authenticated;
 
--- 2. Eingeloggte User dürfen neue Assets vorschlagen/bearbeiten
-GRANT INSERT, UPDATE ON shared.asset_static_data TO authenticated;
+-- Falls "ALL VIEWS" nicht geht, einzeln für deine Views:
+GRANT SELECT ON shared.users TO anon, authenticated;
 
 -- C: PUBLIC SCHEMA (User-Daten)
--- 1. 'anon' explizit komplett aussperren (Sicherheitsnetz)
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
-REVOKE ALL ON ALL VIEWS IN SCHEMA public FROM anon;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon;
 
--- 2. Eingeloggte User dürfen mit ihren Daten arbeiten
--- RLS sorgt dafür, dass sie trotzdem nur ihre eigenen Zeilen sehen!
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
-GRANT SELECT ON ALL VIEWS IN SCHEMA public TO authenticated;
 
--- D: SEQUENCES (Für AUTO_INCREMENT / IDENTITY Spalten)
--- Ohne diese Rechte können User keine neuen Zeilen einfügen
+-- Explizite Rechte für die Views in public
+GRANT SELECT ON public.ref_transaction_type TO authenticated;
+GRANT SELECT ON public.asset_static_data TO authenticated;
+GRANT SELECT ON public.daily_holdings TO authenticated;
+
+-- D: SEQUENCES
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA shared TO authenticated;
 
--- E: SERVICE ROLE (Der Master Key für Backend-Skripte)
--- Die service_role umgeht RLS und braucht vollen Zugriff
+-- E: SERVICE ROLE (Der Master Key)
+-- Hier nutzen wir auch nur kompatible Befehle
 GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA shared TO service_role;
-GRANT ALL ON ALL VIEWS IN SCHEMA public TO service_role;
-GRANT ALL ON ALL VIEWS IN SCHEMA shared TO service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA shared TO service_role;
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO service_role;
+
+-- Da die Views im Service-Role-Kontext wichtig sind:
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO service_role; 
+-- (Views sind in 'ALL TABLES' oft inkludiert, sicherheitshalber einzeln falls Fehler)
 
 
 
