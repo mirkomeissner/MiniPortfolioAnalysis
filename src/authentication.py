@@ -145,6 +145,14 @@ def logout():
 
 def user_settings_ui():
     st.title("User Settings")
+
+    # Aktuelle Profildaten frisch aus der DB laden, um pending_email zu prüfen
+    try:
+        profile = supabase.table("users").select("*").eq("id", st.session_state["user_id"]).single().execute()
+        user_data = profile.data
+    except Exception as e:
+        st.error(f"Error when loading configuration: {e}")
+        return
     
     col1, col2 = st.columns(2)
     
@@ -166,15 +174,42 @@ def user_settings_ui():
     with col2:
         st.subheader("Edit Email Address")
         current_email = st.session_state.get("user_email", "") 
-        
-        with st.form("edit_email_form"):
-            new_email = st.text_input("New Email Address", value=current_email)
-            if st.form_submit_button("Update Email"):
-                if new_email and new_email != current_email:
-                    try:
-                        supabase.auth.update_user({"email": new_email})
-                        st.success("✅ Email update initiated!")
-                        st.info("Please check your email to confirm the change.")
-                    except Exception as e:
-                        st.error(f"❌ Error: {e}")
+        pending_email = user_data.get("pending_email")
+
+        if pending_email:
+            # STATUS: UMZUG LÄUFT
+            st.info(f"🔄 **Email change in progress**")
+            st.write(f"From: `{current_email}`")
+            st.write(f"To: `{pending_email}`")
+            
+            # Fortschrittsanzeige basierend auf email_change_status
+            status = user_data.get("email_change_status", 0)
+            if status == 0:
+                st.warning("Waiting for confirmation on both addresses...")
+            elif status == 1:
+                st.success("One address confirmed (1/2). One more to go!")
+
+            # ABBRECHEN BUTTON
+            if st.button("Cancel Email Change", type="secondary"):
+                try:
+                    # In Supabase bricht man einen Change ab, indem man die Email 
+                    # auf den aktuellen Wert zurücksetzt
+                    supabase.auth.update_user({"email": current_email})
+                    st.success("Email change cancelled.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error cancelling change: {e}")
+
+
+        else        
+            with st.form("edit_email_form"):
+                new_email = st.text_input("New Email Address", value=current_email)
+                if st.form_submit_button("Update Email"):
+                    if new_email and new_email != current_email:
+                        try:
+                            supabase.auth.update_user({"email": new_email})
+                            st.success("✅ Email update initiated!")
+                            st.info("Please check your email to confirm the change.")
+                        except Exception as e:
+                            st.error(f"❌ Error: {e}")
 
