@@ -124,6 +124,25 @@ def check_password():
 
     return False
 
+
+def logout():
+    """Beendet die Session bei Supabase und räumt den Session State auf."""
+    try:
+        supabase.auth.sign_out()
+    except Exception as e:
+        st.error(f"Fehler beim Abmelden bei Supabase: {e}")
+    
+    # Alle relevanten Session States löschen
+    for key in ["logged_in", "user_id", "user_name", "user_email", "is_admin"]:
+        if key in st.session_state:
+            del st.session_state[key]
+            
+    st.success("Erfolgreich abgemeldet!")
+    st.rerun()
+
+
+
+
 def user_settings_ui():
     st.title("User Settings")
     
