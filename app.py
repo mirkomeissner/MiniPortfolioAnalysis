@@ -5,12 +5,12 @@ st.set_page_config(page_title="Asset Manager", layout="wide")
 
 if check_password():  
     # ERST HIER: Komponenten importieren, nachdem der Login erfolgreich war
-    from src.components import asset_table_view, transaction_table_view, admin_approval_page, accounts_settings_view
+    from src.components import asset_table_view, transaction_table_view, admin_approval_page, accounts_settings_view, price_table_view
 
     st.sidebar.title(f"User: {st.session_state['user_name']}")  
 
     # 1. Menüoptionen definieren
-    menu_options = ["Home", "User Settings", "Accounts Settings", "Asset Data", "Transactions"]
+    menu_options = ["Home", "User Settings", "Accounts Settings", "Asset Data", "Price Data", "Transactions"]
     
     # 2. Admin Console hinzufügen
     if st.session_state.get("is_admin"):
@@ -39,6 +39,9 @@ if check_password():
  
     elif menu == "Asset Data": 
         asset_table_view()  
+
+    elif menu == "Price Data": 
+        price_table_view()  
  
     elif menu == "Transactions": 
         transaction_table_view()
