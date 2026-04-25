@@ -1,15 +1,31 @@
 import streamlit as st
 from supabase import create_client, Client
 
-@st.cache_resource
-def get_supabase_client() -> Client:
-    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+# --- HELPER FÜR AUTHENTIFIZIERUNG ---
 
-supabase = get_supabase_client()
+def _get_client() -> Client:
+    """
+    Erstellt einen frischen Client und injiziert automatisch den 
+    User-Token (JWT), falls der User eingeloggt ist.
+    """
+    client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+    
+    # Prüfen, ob eine Session existiert (nach dem Login in authentication.py)
+    try:
+        session = client.auth.get_session()
+        if session and session.access_token:
+            client.postgrest.auth(session.access_token)
+    except:
+        pass # Falls kein User eingeloggt ist, bleibt es beim anon-Zugriff
+    
+    return client
+
+# --- DATABASE FUNCTIONS ---
 
 @st.cache_data(ttl=600)
 def get_ref_options(table_name):
     """Fetch reference codes and labels for dropdowns."""
+    supabase = _get_client()
     try:
         res = supabase.schema("shared").table(table_name).select("code, label").execute()
         return [f"{item['code']} ({item['label']})" for item in res.data] if res.data else []
@@ -19,32 +35,28 @@ def get_ref_options(table_name):
 
 @st.cache_data(ttl=3600)
 def get_country_region_map():
+    supabase = _get_client()
     res = supabase.schema("shared").table("country_region_mapping").select("country, region_code").execute()
     return {item['country']: item['region_code'] for item in res.data}
 
 def save_asset_static_data(asset_data):
     """Inserts a new asset record."""
+    supabase = _get_client()
     return supabase.schema("shared").table("asset_static_data").insert(asset_data).execute()
 
 def update_asset_static_data(isin, updated_data):
+    supabase = _get_client()
     try:
         return supabase.schema("shared").table("asset_static_data").update(updated_data).eq("isin", isin).execute()
     except Exception as e:
-        # Das wird den echten Datenbank-Fehler (z.B. "column does not exist") 
-        # in deinem Streamlit Fenster anzeigen
         st.error(f"Datenbank-Details: {e}")
         raise e
 
 def get_missing_isins(isins: list) -> list:
-    """
-    Checks which ISINs from the provided list are NOT yet in the database.
-    Returns a list of missing ISIN strings.
-    """
     if not isins:
         return []
-    
+    supabase = _get_client()
     try:
-        # Query existing ISINs from the unique set of input ISINs
         res = supabase.schema("shared").table("asset_static_data") \
             .select("isin") \
             .in_("isin", isins) \
@@ -56,12 +68,10 @@ def get_missing_isins(isins: list) -> list:
         st.error(f"Error checking for missing ISINs: {e}")
         return []
 
-
 def get_all_assets_with_labels():
-    """Fetches full asset records including joined reference labels."""
+    supabase = _get_client()
     flattened_data = []
     try:
-        # REMOVED the aliases (the "xxx_code:" part) to keep default names
         columns = (
             "isin, name, currency, ticker, industry, country, "
             "ref_price_source(label), "
@@ -74,12 +84,10 @@ def get_all_assets_with_labels():
             "updated_by:users!fk_static_updated_by(username), "
             "updated_at"
         )
-        
         query = supabase.schema("shared").table("asset_static_data").select(columns).execute()
         
         if query.data:
             for row in query.data:
-                # Now row.get("ref_instrument_type") will actually find data
                 flattened_data.append({
                     "ISIN": row.get("isin"),
                     "Name": row.get("name"),
@@ -100,50 +108,31 @@ def get_all_assets_with_labels():
                 })
     except Exception as e:
         st.error(f"Error fetching assets: {e}")
-        
     return flattened_data
-
 
 def get_all_transactions():
     user_id = st.session_state.get('user_id')
     if not user_id:
         return []
-
-    # Alle Spalten der Haupttabelle plus die Joins explizit aufgelistet
+    supabase = _get_client()
     columns = (
-        "user_id, "
-        "id, "
-        "account_code, "
-        "isin, "
-        "date, "
-        "transaction_type_code, "
-        "quantity, "
-        "settle_amount, "
-        "settle_currency, "
-        "settle_fxrate, "
-        "amount_eur, "
-        "created_at, "
-        "updated_at, "
+        "user_id, id, account_code, isin, date, transaction_type_code, "
+        "quantity, settle_amount, settle_currency, settle_fxrate, amount_eur, "
+        "created_at, updated_at, "
         "accounts!fk_accounts(description), "
         "ref_transaction_type!fk_ref_type(label), "
         "asset_static_data!fk_transaction_isin(name)"
     )
-    
     try:
-        response = supabase.schema("public") \
-            .table("transactions") \
-            .select(columns) \
-            .eq("user_id", user_id) \
-            .execute()
+        response = supabase.schema("public").table("transactions").select(columns).eq("user_id", user_id).execute()
         return response.data
     except Exception as e:
         st.error(f"Error fetching transactions: {e}")
         return []
 
 def get_asset_ref_options():
-    """Fetches all assets in 'ISIN (Name)' format for dropdowns."""
+    supabase = _get_client()
     try:
-        # Select isin and name from asset_static_data [cite: 76]
         res = supabase.schema("shared").table("asset_static_data").select("isin, name").execute()
         return [f"{item['isin']} ({item['name']})" for item in res.data] if res.data else []
     except Exception as e:
@@ -151,9 +140,8 @@ def get_asset_ref_options():
         return []
 
 def get_account_ref_options(user_id):
-    """Fetches user accounts in 'Code (Description)' format."""
+    supabase = _get_client()
     try:
-        # Filter by username to show only relevant accounts [cite: 79, 81]
         res = supabase.schema("public").table("accounts").select("account_code, description").eq("user_id", user_id).execute()
         return [f"{item['account_code']} ({item['description']})" for item in res.data] if res.data else []
     except Exception as e:
@@ -161,28 +149,22 @@ def get_account_ref_options(user_id):
         return []
 
 def get_next_transaction_count(user_id, isin, date_str):
-    """Counts existing transactions for an ISIN and date to determine the next suffix."""
+    supabase = _get_client()
     try:
-        # We query the transactions for the specific user, ISIN and date [cite: 80, 81]
         res = supabase.schema("public").table("transactions") \
             .select("id") \
             .eq("user_id", user_id) \
             .eq("isin", isin) \
             .eq("date", date_str) \
             .execute()
-        
         return len(res.data) + 1
     except Exception as e:
         st.error(f"Error calculating transaction count: {e}")
         return 1
 
-
 def get_existing_ids_for_bulk(user_id, isins, dates):
-    """
-    Fetches only the 'id' column for transactions matching user_id, ISINs and dates.
-    """
+    supabase = _get_client()
     try:
-        # Added user_id filter to ensure we only check the current user's transactions
         response = supabase.schema("public").table("transactions") \
             .select("id") \
             .eq("user_id", user_id) \
@@ -194,37 +176,20 @@ def get_existing_ids_for_bulk(user_id, isins, dates):
         print(f"Error fetching existing IDs: {e}")
         return []
 
-
-
-
 def save_transaction(transaction_data):
-    """Inserts a new transaction record into the database."""
-    # Insert data into the transactions table [cite: 80]
+    supabase = _get_client()
     return supabase.schema("public").table("transactions").insert(transaction_data).execute()
 
 def save_transactions_bulk(payload_list):
-    """
-    Saves multiple transactions in a single database call.
-    Payload_list must be a list of dictionaries where each dict 
-    represents a row in the 'transactions' table.
-    """
+    supabase = _get_client()
     try:
-        # The .insert() method accepts a list of objects for bulk insertion.
-        # This is significantly faster than inserting row by row.
-        response = supabase.schema("public").table("transactions").insert(payload_list).execute()
-        
-        # You can optionally return the response if you need to 
-        # verify the inserted data.
-        return response
+        return supabase.schema("public").table("transactions").insert(payload_list).execute()
     except Exception as e:
-        # Re-raise the exception to be caught by the UI error handling
         print(f"Error during bulk transaction insert: {e}")
         raise e
 
-
-
 def get_import_settings(user_id, account_code):
-    """Fetches saved mapping for a specific user and account."""
+    supabase = _get_client()
     response = supabase.schema("public").table("user_import_settings")\
         .select("mapping_config")\
         .eq("user_id", user_id)\
@@ -232,130 +197,68 @@ def get_import_settings(user_id, account_code):
         .execute()
     return response.data[0]["mapping_config"] if response.data else None
 
-
 @st.cache_data(ttl=600)
 def get_transaction_type_logic():
+    supabase = _get_client()
     try:
         res = supabase.schema("shared").table("ref_transaction_logic") \
             .select("transaction_type_code, quantity_sign, amount_sign") \
             .execute()
-                
         if res.data:
-            result_map = {
+            return {
                 item['transaction_type_code']: {
                     'quantity_sign': item['quantity_sign'],
                     'amount_sign': item['amount_sign']
                 } for item in res.data
             }
-            return result_map
-            
         return {}
     except Exception as e:
-        # Hier ist st.error okay, da Fehler nicht gecached werden sollten
-        st.error(f"Error loading transaction logic from shared schema: {e}")
+        st.error(f"Error loading transaction logic: {e}")
         return {}
 
-
 def save_import_settings(user_id, account_code, config):
-    """Saves or updates the mapping configuration."""
-    payload = {
-        "user_id": user_id,
-        "account_code": account_code,
-        "mapping_config": config
-    }
-    # upsert handles both insert and update based on primary key
+    supabase = _get_client()
+    payload = {"user_id": user_id, "account_code": account_code, "mapping_config": config}
     supabase.schema("public").table("user_import_settings").upsert(payload).execute()
-
-
-
 
 # --- USER MANAGEMENT FUNCTIONS ---
 
 def get_user_profile(username):
-    """
-    Fetches the user profile and their password hash by joining 
-    public.users and public.user_secrets.
-    """
+    supabase = _get_client()
     try:
         res = supabase.schema("public").table("users").select("id, username, user_secrets(password_hash)").eq("username", username).execute()
-        
         if res.data:
             data = res.data[0]
-            
-            # Handle the joined result: user_secrets might be a list, a dict, or None
             secrets = data.get("user_secrets")
-            p_hash = None
-            
-            if isinstance(secrets, list) and len(secrets) > 0:
-                p_hash = secrets[0].get("password_hash")
-            elif isinstance(secrets, dict):
-                p_hash = secrets.get("password_hash")
-
-            return {
-                "id": data["id"],
-                "username": data["username"],
-                "password_hash": p_hash
-            }
+            p_hash = secrets[0].get("password_hash") if isinstance(secrets, list) and secrets else secrets.get("password_hash") if isinstance(secrets, dict) else None
+            return {"id": data["id"], "username": data["username"], "password_hash": p_hash}
         return None
     except Exception as e:
         st.error(f"Error fetching user profile: {e}")
         return None
 
-def set_user_password(user_id, password_hash):
-    """Updates or inserts the password hash in the user_secrets table."""
-    try:
-        supabase.schema("public").table("user_secrets").upsert({
-            "user_id": user_id,
-            "password_hash": password_hash
-        }).execute()
-    except Exception as e:
-        st.error(f"Error updating password: {e}")
-        raise e
-
 def get_user_email(user_id):
-    """Fetches the current user's email address."""
+    supabase = _get_client()
     try:
         res = supabase.schema("public").table("users").select("email").eq("id", user_id).execute()
-        if res.data:
-            return res.data[0].get("email")
-        return None
+        return res.data[0].get("email") if res.data else None
     except Exception as e:
         st.error(f"Error fetching user email: {e}")
         return None
 
 def update_user_email(user_id, email):
-    """Updates the user's email address."""
+    supabase = _get_client()
     try:
         supabase.schema("public").table("users").update({"email": email}).eq("id", user_id).execute()
     except Exception as e:
         st.error(f"Error updating email: {e}")
         raise e
 
-def create_user(username):
-    """
-    Creates a new user in the 'users' table.
-    Returns the user_id (UUID) or None if creation fails.
-    """
-    try:
-        user_res = supabase.schema("public").table("users").insert({"username": username}).execute()
-        if user_res.data:
-            return user_res.data[0]["id"]
-        return None
-    except Exception as e:
-        # Be specific about duplicate errors
-        if "23505" in str(e):
-            # This is a unique constraint violation, not a critical error
-            return None
-        st.error(f"Error creating user: {e}")
-        raise e
-
 def get_user_by_username(username):
-    """Fetches a user by username to check if they exist."""
+    supabase = _get_client()
     try:
         res = supabase.schema("public").table("users").select("id").eq("username", username).execute()
-        if res.data:
-            return res.data[0]["id"]
-        return None
+        return res.data[0]["id"] if res.data else None
     except Exception as e:
         st.error(f"Error checking user existence: {e}")
         return None
