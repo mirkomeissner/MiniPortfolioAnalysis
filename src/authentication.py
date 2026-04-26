@@ -13,6 +13,10 @@ from types import SimpleNamespace
 
 
 # --- AUTH FUNCTIONS ---
+from types import SimpleNamespace
+# Importiere hier deine Mail-Funktion (z.B. aus mailer.py)
+# from mailer import send_duplicate_info_mail 
+
 def register_user(email, password, username):
     """
     Handles user registration with a stealth check for existing emails 
@@ -20,11 +24,20 @@ def register_user(email, password, username):
     """
     try:
         # 1. Pre-check: Does the email already exist in our public.users table?
-        # We use this to manually handle the "silent success" logic.
         if check_existing_email(email):
+            
+            # --- INSERT EMAIL SENDING HERE ---
+            # This is the perfect spot because we know the user exists, 
+            # but we haven't told the UI yet.
+            try:
+                # send_duplicate_info_mail(email)
+                pass # Replace 'pass' with your function call
+            except Exception as mail_err:
+                # We log the mail error silently to console
+                print(f"Silent mail log: Failed to send info mail to {email}: {mail_err}")
+            # ----------------------------------
+
             # Logically, we act as if the registration was successful.
-            # We return a mock object that mimics a successful Supabase response.
-            # This triggers the success message in the UI without creating a duplicate.
             return SimpleNamespace(user=True)
 
         # 2. Proceed with actual Supabase registration if email is new
@@ -38,17 +51,20 @@ def register_user(email, password, username):
         return response
 
     except Exception as e:
-        # Handle actual errors (e.g., connection issues, password too weak)
-        # Note: If 'User Enumeration Protection' is OFF in Supabase, 
-        # this block would also catch "User already registered" errors.
-        error_msg = str(e)
+        error_msg = str(e).lower()
         
         # Double check: if Supabase throws the error despite our pre-check
-        if "already registered" in error_msg.lower():
+        if "already registered" in error_msg:
+            # You could also trigger the mail here as a fallback
             return SimpleNamespace(user=True)
             
         st.error(f"Error with registration: {e}")
         return None
+
+
+
+
+
 
 def check_password():
     if "logged_in" not in st.session_state:
