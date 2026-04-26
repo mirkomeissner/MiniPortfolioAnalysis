@@ -2,3 +2,4 @@
 supabase
 yfinance
 pandas
+resend

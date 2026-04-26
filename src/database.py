@@ -68,7 +68,25 @@ def auth_update_user(data):
     supabase = _get_client()
     return supabase.auth.update_user(data)
 
-
+def check_existing_email(email: str) -> bool:
+    """
+    Prüft in der public.users Tabelle, ob eine E-Mail bereits existiert.
+    Nutzt den Admin-Client, um RLS zu umgehen.
+    """
+    admin_supabase = get_admin_client()
+    try:
+        # Wir suchen nach der E-Mail und lassen uns nur die ID zurückgeben
+        res = admin_supabase.table("users") \
+            .select("id") \
+            .eq("email", email) \
+            .execute()
+        
+        # Wenn Daten zurückkommen, existiert die E-Mail
+        return len(res.data) > 0
+    except Exception as e:
+        # Im Fehlerfall (z.B. Verbindungsprobleme) loggen wir es
+        print(f"Fehler bei check_existing_email: {e}")
+        return False
 
 
 
