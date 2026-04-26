@@ -7,17 +7,45 @@ from .database import (
     auth_logout,
     auth_update_user
 )
+from types import SimpleNamespace
+
+
 
 # --- AUTH FUNCTIONS ---
-
 def register_user(email, password, username):
+    """
+    Handles user registration with a stealth check for existing emails 
+    to prevent user enumeration while maintaining a good UX.
+    """
     try:
+        # 1. Pre-check: Does the email already exist in our public.users table?
+        # We use this to manually handle the "silent success" logic.
+        if check_existing_email(email):
+            # Logically, we act as if the registration was successful.
+            # We return a mock object that mimics a successful Supabase response.
+            # This triggers the success message in the UI without creating a duplicate.
+            return SimpleNamespace(user=True)
+
+        # 2. Proceed with actual Supabase registration if email is new
         response = auth_register(email, password, username)
+        
         if response.user:
+            # Auto-approve if the email is listed in admin secrets
             if email in st.secrets.get("ADMIN_EMAILS", []):
                 db_approve_user(response.user.id)
+                
         return response
+
     except Exception as e:
+        # Handle actual errors (e.g., connection issues, password too weak)
+        # Note: If 'User Enumeration Protection' is OFF in Supabase, 
+        # this block would also catch "User already registered" errors.
+        error_msg = str(e)
+        
+        # Double check: if Supabase throws the error despite our pre-check
+        if "already registered" in error_msg.lower():
+            return SimpleNamespace(user=True)
+            
         st.error(f"Error with registration: {e}")
         return None
 
