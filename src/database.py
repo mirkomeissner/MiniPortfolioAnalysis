@@ -1,5 +1,6 @@
 import streamlit as st
 from supabase import create_client, Client
+from datetime import datetime
 
 # --- CLIENT INITIALIZATION ---
 
@@ -171,6 +172,12 @@ def save_asset_static_data(asset_data):
 
 def update_asset_static_data(isin, updated_data):
     supabase = _get_client()
+    if "updated_at" not in updated_data:
+        updated_data["updated_at"] = datetime.now().isoformat()
+    if "updated_by" not in updated_data:
+        user_id = st.session_state.get("user_id")
+        if user_id:
+            updated_data["updated_by"] = user_id
     try:
         return supabase.schema("shared").table("asset_static_data").update(updated_data).eq("isin", isin).execute()
     except Exception as e:
