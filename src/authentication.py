@@ -5,7 +5,8 @@ from .database import (
     auth_login,
     auth_register,
     auth_logout,
-    auth_update_user
+    auth_update_user,
+    check_existing_email
 )
 from types import SimpleNamespace
 
