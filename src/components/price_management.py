@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
 
-from src.database import get_asset_prices, get_fx_rates
+import src.database as database
 from src.utils.ui_components import apply_advanced_filters
 
 
 def _build_asset_prices_df():
-    raw_data = get_asset_prices()
+    raw_data = database.get_asset_prices()
     df = pd.DataFrame(raw_data)
     if df.empty:
         return pd.DataFrame([], columns=["ISIN", "Name", "Price Date", "Price Close"])
@@ -25,7 +25,7 @@ def _build_asset_prices_df():
 
 
 def _build_fx_rates_df():
-    raw_data = get_fx_rates()
+    raw_data = database.get_fx_rates()
     df = pd.DataFrame(raw_data)
     if df.empty:
         return pd.DataFrame([], columns=["Currency", "Date", "Exchange Rate"])

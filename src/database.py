@@ -116,13 +116,12 @@ def get_country_region_map():
     res = supabase.schema("shared").table("country_region_mapping").select("country, region_code").execute()
     return {item['country']: item['region_code'] for item in res.data}
 
-@st.cache_data(ttl=600)
 def get_asset_prices():
     supabase = _get_client()
     try:
         res = (supabase.schema("shared").table("asset_prices")
                .select("isin, price_date, price_close, asset_static_data!fk_prices_isin(name)")
-               .order("isin", asc=True)
+               .order("isin")
                .order("price_date", desc=True)
                .execute())
         return res.data if res.data else []
@@ -130,19 +129,41 @@ def get_asset_prices():
         st.error(f"Error loading asset prices: {e}")
         return []
 
-@st.cache_data(ttl=600)
 def get_fx_rates():
     supabase = _get_client()
     try:
         res = (supabase.schema("shared").table("exchange_rates")
                .select("currency, rate_date, exchange_rate")
-               .order("currency", asc=True)
+               .order("currency")
                .order("rate_date", desc=True)
                .execute())
         return res.data if res.data else []
     except Exception as e:
         st.error(f"Error loading FX rates: {e}")
         return []
+
+def get_asset_price_start_date(isin):
+    supabase = _get_client()
+    try:
+        res = supabase.schema("shared").table("asset_static_data").select("price_start_date").eq("isin", isin).single().execute()
+        return res.data.get("price_start_date") if res.data else None
+    except Exception as e:
+        st.error(f"Error loading asset start date: {e}")
+        return None
+
+def get_asset_price_start_dates(isins):
+    if not isins:
+        return {}
+    supabase = _get_client()
+    try:
+        res = supabase.schema("shared").table("asset_static_data").select("isin, price_start_date").in_("isin", isins).execute()
+        return {item["isin"]: item.get("price_start_date") for item in res.data} if res.data else {}
+    except Exception as e:
+        st.error(f"Error loading asset start dates: {e}")
+        return {}
+
+def update_asset_start_date(isin, start_date):
+    return update_asset_static_data(isin, {"price_start_date": start_date})
 
 def save_asset_static_data(asset_data):
     supabase = _get_client()
