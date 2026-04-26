@@ -7,7 +7,7 @@ def send_duplicate_info_mail(email):
     to register with an existing email address.
     """
     try:
-        resend.api_key = st.secrets["RESEND_API_KEY"]
+        resend.api_key = st.secrets["RESEND_KEY"]
         
         params = {
             "from": "MiniPortfolioAnalysis <onboarding@resend.dev>", # Start-Adresse von Resend
