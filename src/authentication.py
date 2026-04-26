@@ -1,4 +1,6 @@
+from types import SimpleNamespace
 import streamlit as st
+from .utils import send_duplicate_info_mail
 from .database import (
     db_get_user_profile, 
     db_approve_user,
@@ -8,14 +10,11 @@ from .database import (
     auth_update_user,
     check_existing_email
 )
-from types import SimpleNamespace
+
 
 
 
 # --- AUTH FUNCTIONS ---
-from types import SimpleNamespace
-# Importiere hier deine Mail-Funktion (z.B. aus mailer.py)
-# from mailer import send_duplicate_info_mail 
 
 def register_user(email, password, username):
     """
@@ -24,28 +23,28 @@ def register_user(email, password, username):
     """
     try:
         # 1. Pre-check: Does the email already exist in our public.users table?
-        if check_existing_email(email):
-            
-            # --- INSERT EMAIL SENDING HERE ---
-            # This is the perfect spot because we know the user exists, 
-            # but we haven't told the UI yet.
+        # We normalize the email to lowercase for the check.
+        clean_email = email.strip().lower()
+        
+        if check_existing_email(clean_email):
+            # --- EMAIL SENDING ---
+            # We found a duplicate. We trigger the notification mail silently.
             try:
-                # send_duplicate_info_mail(email)
-                pass # Replace 'pass' with your function call
+                send_duplicate_info_mail(clean_email)
             except Exception as mail_err:
-                # We log the mail error silently to console
-                print(f"Silent mail log: Failed to send info mail to {email}: {mail_err}")
-            # ----------------------------------
+                # We log the mail error only to the server console to keep the UI clean
+                print(f"Silent mail log: Failed to send info mail to {clean_email}: {mail_err}")
 
-            # Logically, we act as if the registration was successful.
+            # Logically, we return a mock success object to the UI.
+            # This triggers the "Check your emails" message without revealing the user exists.
             return SimpleNamespace(user=True)
 
         # 2. Proceed with actual Supabase registration if email is new
         response = auth_register(email, password, username)
         
-        if response.user:
+        if response and hasattr(response, 'user') and response.user:
             # Auto-approve if the email is listed in admin secrets
-            if email in st.secrets.get("ADMIN_EMAILS", []):
+            if clean_email in st.secrets.get("ADMIN_EMAILS", []):
                 db_approve_user(response.user.id)
                 
         return response
@@ -53,9 +52,13 @@ def register_user(email, password, username):
     except Exception as e:
         error_msg = str(e).lower()
         
-        # Double check: if Supabase throws the error despite our pre-check
-        if "already registered" in error_msg:
-            # You could also trigger the mail here as a fallback
+        # Fallback: If the pre-check failed or Supabase 'Enumeration Protection' is OFF
+        if "already registered" in error_msg or "already exists" in error_msg:
+            # Trigger mail here too, just in case the pre-check was skipped
+            try:
+                send_duplicate_info_mail(email.strip().lower())
+            except:
+                pass
             return SimpleNamespace(user=True)
             
         st.error(f"Error with registration: {e}")
