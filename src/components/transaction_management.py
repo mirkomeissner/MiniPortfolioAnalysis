@@ -22,6 +22,9 @@ from src.database import (
     get_import_settings,
     save_import_settings,
     get_missing_isins,
+    get_asset_price_start_date,
+    get_asset_price_start_dates,
+    update_asset_start_date,
     save_asset_static_data
 )
 
@@ -435,6 +438,20 @@ def render_import_preview_screen():
                 except Exception as e:
                     st.error(f"Database Error: {e}")
 
+                # 3a. Update price_start_date for imported ISINs if needed
+                price_start_map = get_asset_price_start_dates(unique_isins)
+                for isin_val in unique_isins:
+                    try:
+                        relevant_dates = pd.to_datetime(final_sel.loc[final_sel[map_isin].astype(str).str.strip() == isin_val, map_date])
+                        if relevant_dates.empty:
+                            continue
+                        earliest_date = relevant_dates.min().date().isoformat()
+                        current_start = price_start_map.get(isin_val)
+                        if current_start is None or earliest_date < current_start:
+                            update_asset_start_date(isin_val, earliest_date)
+                    except Exception:
+                        continue
+
         # 4. FINALIZE & SAVE SETTINGS
         save_import_settings(user_id, acc_code, {
             "type_column": type_column, "type_mapping": type_mapping,
@@ -651,6 +668,12 @@ def render_transaction_form():
             try:
                 # Save to database and cleanup
                 save_transaction(new_payload)
+
+                # Update asset price start date if transaction is earlier than current stored start date
+                current_start = get_asset_price_start_date(clean_isin)
+                if current_start is None or db_date_str < current_start:
+                    update_asset_start_date(clean_isin, db_date_str)
+
                 st.success(f"Transaction saved successfully! (EUR {calc_eur:.2f})")
                 st.cache_data.clear()
                 st.session_state["view"] = "list"

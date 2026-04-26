@@ -1,5 +1,6 @@
 import streamlit as st
 from supabase import create_client, Client
+from datetime import datetime
 
 # --- CLIENT INITIALIZATION ---
 
@@ -116,12 +117,67 @@ def get_country_region_map():
     res = supabase.schema("shared").table("country_region_mapping").select("country, region_code").execute()
     return {item['country']: item['region_code'] for item in res.data}
 
+def get_asset_prices():
+    supabase = _get_client()
+    try:
+        res = (supabase.schema("shared").table("asset_prices")
+               .select("isin, price_date, price_close, asset_static_data!fk_prices_isin(name)")
+               .order("isin")
+               .order("price_date", desc=True)
+               .execute())
+        return res.data if res.data else []
+    except Exception as e:
+        st.error(f"Error loading asset prices: {e}")
+        return []
+
+def get_fx_rates():
+    supabase = _get_client()
+    try:
+        res = (supabase.schema("shared").table("exchange_rates")
+               .select("currency, rate_date, exchange_rate")
+               .order("currency")
+               .order("rate_date", desc=True)
+               .execute())
+        return res.data if res.data else []
+    except Exception as e:
+        st.error(f"Error loading FX rates: {e}")
+        return []
+
+def get_asset_price_start_date(isin):
+    supabase = _get_client()
+    try:
+        res = supabase.schema("shared").table("asset_static_data").select("price_start_date").eq("isin", isin).single().execute()
+        return res.data.get("price_start_date") if res.data else None
+    except Exception as e:
+        st.error(f"Error loading asset start date: {e}")
+        return None
+
+def get_asset_price_start_dates(isins):
+    if not isins:
+        return {}
+    supabase = _get_client()
+    try:
+        res = supabase.schema("shared").table("asset_static_data").select("isin, price_start_date").in_("isin", isins).execute()
+        return {item["isin"]: item.get("price_start_date") for item in res.data} if res.data else {}
+    except Exception as e:
+        st.error(f"Error loading asset start dates: {e}")
+        return {}
+
+def update_asset_start_date(isin, start_date):
+    return update_asset_static_data(isin, {"price_start_date": start_date})
+
 def save_asset_static_data(asset_data):
     supabase = _get_client()
     return supabase.schema("shared").table("asset_static_data").insert(asset_data).execute()
 
 def update_asset_static_data(isin, updated_data):
     supabase = _get_client()
+    if "updated_at" not in updated_data:
+        updated_data["updated_at"] = datetime.now().isoformat()
+    if "updated_by" not in updated_data:
+        user_id = st.session_state.get("user_id")
+        if user_id:
+            updated_data["updated_by"] = user_id
     try:
         return supabase.schema("shared").table("asset_static_data").update(updated_data).eq("isin", isin).execute()
     except Exception as e:
@@ -141,7 +197,7 @@ def get_all_assets_with_labels():
     supabase = _get_client()
     flattened_data = []
     try:
-        columns = ("isin, name, currency, ticker, industry, country, ref_price_source(label), "
+        columns = ("isin, name, currency, ticker, price_start_date, industry, country, ref_price_source(label), "
                    "ref_instrument_type(label), ref_asset_class(label), ref_region(label), "
                    "ref_sector(label), closed_on, created_at, created_by:users!fk_static_created_by(username), "
                    "updated_by:users!fk_static_updated_by(username), updated_at")
@@ -155,7 +211,7 @@ def get_all_assets_with_labels():
                     "Region": (row.get("ref_region") or {}).get("label"),
                     "Sector": (row.get("ref_sector") or {}).get("label"), "Industry": row.get("industry"),
                     "Country": row.get("country"), "Price Source": (row.get("ref_price_source") or {}).get("label"),
-                    "Closed On": row.get("closed_on"), "Created At": row.get("created_at"),
+                    "Price Start Date": row.get("price_start_date"), "Closed On": row.get("closed_on"), "Created At": row.get("created_at"),
                     "Created By": (row.get("created_by") or {}).get("username"),
                     "Updated At": row.get("updated_at"), "Updated By": (row.get("updated_by") or {}).get("username")
                 })

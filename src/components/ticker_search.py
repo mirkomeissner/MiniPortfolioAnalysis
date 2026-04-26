@@ -1,6 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+from datetime import datetime
 from src.utils import ensure_reference_data, extract_code, yfinance_search_component
 from src.database import save_asset_static_data, get_ref_options, get_country_region_map
 
@@ -22,7 +23,8 @@ def handle_save_request(row, isin):
         "name": row["Name"],
         "currency": row["Currency"],
         "ticker": row["Ticker"],
-        "price_source_code": "YFN", 
+        "price_start_date": datetime.now().date().isoformat(),
+        "price_source_code": "YFN",
         "instrument_type_code": extract_code(row["InstrumentType"]),
         "asset_class_code": extract_code(row["AssetClass"]),
         "region_code": extract_code(row["Region"]),

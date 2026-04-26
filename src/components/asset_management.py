@@ -72,7 +72,7 @@ def render_list_view():
     column_order = [
         "ISIN", "Name", "Ticker", "Currency", "Type", 
         "Asset Class", "Region", "Sector", "Industry", 
-        "Country", "Price Source", "Closed On", 
+        "Country", "Price Source", "Price Start Date", "Closed On", 
         "Created At", "Created By", "Updated At", "Updated By"
     ]
     existing_cols = [c for c in column_order if c in filtered_df.columns]
