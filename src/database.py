@@ -116,6 +116,34 @@ def get_country_region_map():
     res = supabase.schema("shared").table("country_region_mapping").select("country, region_code").execute()
     return {item['country']: item['region_code'] for item in res.data}
 
+@st.cache_data(ttl=600)
+def get_asset_prices():
+    supabase = _get_client()
+    try:
+        res = (supabase.schema("shared").table("asset_prices")
+               .select("isin, price_date, price_close, asset_static_data!fk_prices_isin(name)")
+               .order("isin", asc=True)
+               .order("price_date", desc=True)
+               .execute())
+        return res.data if res.data else []
+    except Exception as e:
+        st.error(f"Error loading asset prices: {e}")
+        return []
+
+@st.cache_data(ttl=600)
+def get_fx_rates():
+    supabase = _get_client()
+    try:
+        res = (supabase.schema("shared").table("exchange_rates")
+               .select("currency, rate_date, exchange_rate")
+               .order("currency", asc=True)
+               .order("rate_date", desc=True)
+               .execute())
+        return res.data if res.data else []
+    except Exception as e:
+        st.error(f"Error loading FX rates: {e}")
+        return []
+
 def save_asset_static_data(asset_data):
     supabase = _get_client()
     return supabase.schema("shared").table("asset_static_data").insert(asset_data).execute()

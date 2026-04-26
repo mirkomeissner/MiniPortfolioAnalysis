@@ -5,7 +5,7 @@ st.set_page_config(page_title="Asset Manager", layout="wide")
 
 if check_password():  
     # ERST HIER: Komponenten importieren, nachdem der Login erfolgreich war
-    from src.components import asset_table_view, transaction_table_view, admin_approval_page, accounts_settings_view, price_table_view
+    from src.components import asset_table_view, transaction_table_view, admin_approval_page, accounts_settings_view, price_management_view
 
     st.sidebar.title(f"User: {st.session_state['user_name']}")  
 
@@ -41,7 +41,7 @@ if check_password():
         asset_table_view()  
 
     elif menu == "Price Data": 
-        price_table_view()  
+        price_management_view()  
  
     elif menu == "Transactions": 
         transaction_table_view()
