@@ -52,7 +52,7 @@ def _reload_all_fx_rates():
             if not currency or currency.strip().upper() == "EUR":
                 continue
 
-            symbol = f"EUR{currency.upper()}"
+            symbol = f"EUR{currency.upper()}=X"
             try:
                 ticker = my_yf.Ticker(symbol)
                 history = ticker.history(
@@ -131,5 +131,46 @@ def price_management_view():
         if not is_admin:
             st.info("Only admin users can reload FX rates.")
 
-        fx_table_view()
+        # fx_table_view()
+
+
+        import yfinance as yf
+
+        
+        # Button zum Auslösen der Abfrage
+        if st.button('Kurse abrufen'):
+            with st.spinner('Daten werden von Yahoo Finance geladen...'):
+                try:
+                    # Ticker für EUR/USD
+                    ticker_symbol = "EURUSD=X"
+                    
+                    # Abfrage für den spezifischen Zeitraum
+                    # Start: 2026-01-15, Ende: 2026-02-15
+                    df = yf.download(
+                        ticker_symbol, 
+                        start="2025-04-06", 
+                        end="2026-04-28",
+                        interval="1d"
+                    )
+        
+                    if not df.empty:
+                        st.success(f"Daten für {ticker_symbol} erfolgreich geladen!")
+                        
+                        # Formatierung der Tabelle (nur die wichtigsten Spalten)
+                        display_df = df[['Open', 'High', 'Low', 'Close']]
+                        
+                        # Ausgabe als interaktive Tabelle
+                        st.dataframe(display_df, use_container_width=True)
+                        
+                        # Optional: Ein kleiner Chart zur Visualisierung
+                        st.line_chart(df['Close'])
+                    else:
+                        st.warning("Keine Daten für diesen Zeitraum gefunden.")
+                        
+                except Exception as e:
+                    st.error(f"Ein Fehler ist aufgetreten: {e}")
+        else:
+            st.info("Klicke auf den Button, um die Abfrage zu starten.")
+
+
 
