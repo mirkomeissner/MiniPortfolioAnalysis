@@ -190,7 +190,7 @@ def update_asset_start_dates_bulk(payload_list):
     if not payload_list:
         return None
     
-    supabase = _get_client()
+    supabase = get_admin_client()
     now = datetime.now().isoformat()
     user_id = st.session_state.get("user_id")
     
