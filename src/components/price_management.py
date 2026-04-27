@@ -148,8 +148,8 @@ def price_management_view():
                     # Start: 2026-01-15, Ende: 2026-02-15
                     df = yf.download(
                         ticker_symbol, 
-                        start="2026-01-15", 
-                        end="2026-02-15",
+                        start="2026-04-06", 
+                        end="2026-04-10",
                         interval="1d"
                     )
         
