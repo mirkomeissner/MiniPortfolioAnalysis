@@ -354,3 +354,8 @@ def update_account(user_id, account_code, description):
 def delete_account(user_id, account_code):
     supabase = _get_client()
     return supabase.schema("public").table("accounts").delete().eq("user_id", user_id).eq("account_code", account_code).execute()
+
+def delete_all_transactions(user_id):
+    """Deletes all transactions for the given user_id"""
+    supabase = _get_client()
+    return supabase.schema("public").table("transactions").delete().eq("user_id", user_id).execute()

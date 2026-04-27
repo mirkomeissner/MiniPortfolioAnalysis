@@ -26,7 +26,8 @@ from src.database import (
     get_asset_price_start_dates,
     update_asset_start_date,
     update_asset_start_dates_bulk,
-    save_asset_static_data
+    save_asset_static_data,
+    delete_all_transactions
 )
 
 def transaction_table_view():
@@ -502,6 +503,39 @@ def render_import_preview_screen():
 
 
 
+@st.dialog("Delete All Transactions - Confirm")
+def confirm_delete_all_first():
+    """First confirmation dialog for deleting all transactions"""
+    st.warning("⚠️ This action will **permanently delete ALL your transactions**.")
+    st.write("This cannot be undone.")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("❌ Cancel", use_container_width=True):
+            st.session_state["delete_all_confirmed_first"] = False
+            st.rerun()
+    with col2:
+        if st.button("⚠️ I understand, continue", use_container_width=True, type="secondary"):
+            st.session_state["delete_all_confirmed_first"] = True
+            st.rerun()
+
+
+@st.dialog("Delete All Transactions - Final Confirmation")
+def confirm_delete_all_final():
+    """Second confirmation dialog for deleting all transactions"""
+    st.error("🚨 FINAL WARNING: All transactions will be permanently deleted!")
+    st.write("Please confirm one more time.")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("❌ Cancel", use_container_width=True):
+            st.session_state["delete_all_confirmed_first"] = False
+            st.session_state["delete_all_confirmed_final"] = False
+            st.rerun()
+    with col2:
+        if st.button("🗑️ Yes, delete all transactions", use_container_width=True, type="primary"):
+            st.session_state["delete_all_confirmed_final"] = True
+            st.rerun()
+
+
 def render_list_view():
     """
     Displays the transaction table with advanced filtering and formatted columns.
@@ -510,7 +544,7 @@ def render_list_view():
     st.title("Transactions")
     
     # --- 1. NAVIGATION & ACTION BUTTONS ---
-    col_btn1, col_btn2, _ = st.columns([1, 1, 4])
+    col_btn1, col_btn2, col_btn3, _ = st.columns([1, 1, 1, 3])
     with col_btn1:
         if st.button("➕ New Transaction", use_container_width=True):
             st.session_state["view"] = "form"
@@ -522,6 +556,27 @@ def render_list_view():
                 del st.session_state["scroll_done"]
             st.session_state["view"] = "import_upload"
             st.rerun()
+    with col_btn3:
+        if st.button("🗑️ Delete All", use_container_width=True):
+            st.session_state["delete_all_confirmed_first"] = False
+            st.session_state["delete_all_confirmed_final"] = False
+            confirm_delete_all_first()
+    
+    # Handle the deletion process
+    if st.session_state.get("delete_all_confirmed_first") and not st.session_state.get("delete_all_confirmed_final"):
+        confirm_delete_all_final()
+    
+    if st.session_state.get("delete_all_confirmed_final"):
+        try:
+            delete_all_transactions(st.session_state["user_id"])
+            st.session_state["delete_all_confirmed_first"] = False
+            st.session_state["delete_all_confirmed_final"] = False
+            st.success("✅ All transactions have been deleted successfully!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error deleting transactions: {e}")
+            st.session_state["delete_all_confirmed_first"] = False
+            st.session_state["delete_all_confirmed_final"] = False
 
     # --- 2. DATA RETRIEVAL ---
     raw_data = get_all_transactions()
