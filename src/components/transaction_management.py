@@ -533,6 +533,7 @@ def confirm_delete_all_final():
     with col2:
         if st.button("🗑️ Yes, delete all transactions", use_container_width=True, type="primary"):
             st.session_state["delete_all_confirmed_final"] = True
+            st.rerun()
 
 
 def render_list_view():
