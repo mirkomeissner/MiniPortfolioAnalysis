@@ -89,7 +89,6 @@ def _reload_all_fx_rates():
     if records:
         database.save_fx_rates_bulk(records)
         st.success(f"Reloaded FX rates for {len(currency_start_dates)} currency(s).")
-        st.experimental_rerun()
     else:
         st.info("No FX rate records were updated.")
 
