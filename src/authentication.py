@@ -185,7 +185,7 @@ def user_settings_ui():
                         auth_update_user({"data": {"username": new_username}})
                         st.session_state["user_name"] = new_username
                         st.success("✅ Username updated successfully!")
-                        st.experimental_rerun()
+                        st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error: {e}")
                 else:
