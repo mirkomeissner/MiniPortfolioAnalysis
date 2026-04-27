@@ -1,8 +1,11 @@
+import datetime
+
 import streamlit as st
 import pandas as pd
 
 import src.database as database
 from src.utils.ui_components import apply_advanced_filters
+from src.utils.yf_wrapper import my_yf
 
 
 def _build_asset_prices_df():
@@ -36,6 +39,61 @@ def _build_fx_rates_df():
     })
 
 
+def _reload_all_fx_rates():
+    currency_start_dates = database.get_non_eur_asset_currency_start_dates()
+    if not currency_start_dates:
+        st.warning("No non-EUR currencies with a price start date were found.")
+        return
+
+    today = datetime.date.today()
+    records = []
+    with st.spinner("Reloading FX rates from yfinance..."):
+        for currency, start_date in currency_start_dates.items():
+            if not currency or currency.strip().upper() == "EUR":
+                continue
+
+            symbol = f"EUR{currency.upper()}"
+            try:
+                ticker = my_yf.Ticker(symbol)
+                history = ticker.history(
+                    start=start_date,
+                    end=(today + datetime.timedelta(days=1)).isoformat(),
+                    interval="1d"
+                )
+            except Exception as e:
+                st.error(f"Failed to fetch {symbol}: {e}")
+                continue
+
+            if history is None or history.empty:
+                st.info(f"No FX history available for {symbol}.")
+                continue
+
+            close_column = "Close" if "Close" in history.columns else "close" if "close" in history.columns else None
+            if not close_column:
+                st.error(f"Unexpected history format for {symbol}.")
+                continue
+
+            for row_date, row in history.iterrows():
+                try:
+                    rate_date = row_date.date()
+                    rate_value = float(row[close_column])
+                except Exception:
+                    continue
+
+                records.append({
+                    "currency": currency.upper(),
+                    "rate_date": rate_date.isoformat(),
+                    "exchange_rate": rate_value
+                })
+
+    if records:
+        database.save_fx_rates_bulk(records)
+        st.success(f"Reloaded FX rates for {len(currency_start_dates)} currency(s).")
+        st.experimental_rerun()
+    else:
+        st.info("No FX rate records were updated.")
+
+
 def price_table_view():
     st.subheader("Asset Prices")
     df = _build_asset_prices_df()
@@ -67,5 +125,12 @@ def price_management_view():
         price_table_view()
 
     with fx_tab:
+        is_admin = st.session_state.get("is_admin", False)
+        if st.button("Reload all FX rates", disabled=not is_admin, use_container_width=True):
+            _reload_all_fx_rates()
+
+        if not is_admin:
+            st.info("Only admin users can reload FX rates.")
+
         fx_table_view()
 

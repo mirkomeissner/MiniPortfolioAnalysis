@@ -22,12 +22,29 @@ class MockTicker:
         }
 
     def history(self, *args, **kwargs):
-        """Simuliert die history() Methode für Volumen-Berechnungen."""
+        """Simuliert die history() Methode für historische Kurse."""
         import pandas as pd
         import numpy as np
-        dates = pd.date_range(end=pd.Timestamp.now(), periods=14)
+
+        start = kwargs.get("start")
+        end = kwargs.get("end")
+        if start is None:
+            start = pd.Timestamp.now() - pd.Timedelta(days=14)
+        else:
+            start = pd.to_datetime(start)
+
+        if end is None:
+            end = pd.Timestamp.now()
+        else:
+            end = pd.to_datetime(end)
+
+        if start > end:
+            start, end = end, start
+
+        dates = pd.date_range(start=start, end=end, freq="D")
         return pd.DataFrame({
-            "Volume": np.random.randint(100000, 1000000, size=14)
+            "Close": np.round(np.random.uniform(0.5, 2.0, size=len(dates)), 6),
+            "Volume": np.random.randint(100000, 1000000, size=len(dates))
         }, index=dates)
 
 class MockSearch:

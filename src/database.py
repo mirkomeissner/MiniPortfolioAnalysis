@@ -157,6 +157,46 @@ def get_fx_rates():
         st.error(f"Error loading FX rates: {e}")
         return []
 
+def get_non_eur_asset_currency_start_dates():
+    """Returns the earliest price_start_date for every non-EUR asset currency."""
+    supabase = _get_client()
+    try:
+        res = (supabase.schema("shared").table("asset_static_data")
+               .select("currency, price_start_date")
+               .neq("currency", "EUR")
+               .execute())
+        if not res.data:
+            return {}
+
+        currency_dates = {}
+        for item in res.data:
+            currency = item.get("currency")
+            start_date = item.get("price_start_date")
+            if not currency or not start_date:
+                continue
+
+            if currency not in currency_dates or start_date < currency_dates[currency]:
+                currency_dates[currency] = start_date
+
+        return currency_dates
+    except Exception as e:
+        st.error(f"Error loading asset currency start dates: {e}")
+        return {}
+
+
+def save_fx_rates_bulk(payload_list):
+    """Upserts FX rate records into the exchange_rates table."""
+    if not payload_list:
+        return None
+
+    supabase = get_admin_client()
+    try:
+        return supabase.schema("shared").table("exchange_rates").upsert(payload_list).execute()
+    except Exception as e:
+        st.error(f"Error saving FX rates: {e}")
+        raise e
+
+
 def get_asset_price_start_date(isin):
     supabase = _get_client()
     try:
