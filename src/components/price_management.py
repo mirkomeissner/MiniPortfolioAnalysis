@@ -142,7 +142,7 @@ def price_management_view():
             with st.spinner('Daten werden von Yahoo Finance geladen...'):
                 try:
                     # Ticker für EUR/USD
-                    ticker_symbol = "EURUSD"
+                    ticker_symbol = "EURUSD=X"
                     
                     # Abfrage für den spezifischen Zeitraum
                     # Start: 2026-01-15, Ende: 2026-02-15
