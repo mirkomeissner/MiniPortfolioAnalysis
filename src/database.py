@@ -183,25 +183,34 @@ def update_asset_start_date(isin, start_date):
 def update_asset_start_dates_bulk(payload_list):
     """
     Bulk update price_start_date for multiple existing ISINs.
-
-    Supabase / PostgREST does not support a single bulk update request with
-    different values per row unless you use upsert-like semantics.
-    The calling code ensures assets exist before this helper is called,
-    so this remains a safe bulk update path.
+    
+    Uses individual update requests since partial bulk updates require custom SQL logic.
+    The calling code ensures assets exist before this helper is called.
     """
+    if not payload_list:
+        return None
+    
     supabase = _get_client()
     now = datetime.now().isoformat()
     user_id = st.session_state.get("user_id")
+    
+    results = []
     for item in payload_list:
-        if "updated_at" not in item:
-            item["updated_at"] = now
-        if "updated_by" not in item and user_id:
-            item["updated_by"] = user_id
-    try:
-        return supabase.schema("shared").table("asset_static_data").upsert(payload_list, on_conflict="isin").execute()
-    except Exception as e:
-        st.error(f"Error updating asset start dates in bulk: {e}")
-        raise e
+        try:
+            update_data = {
+                "price_start_date": item["price_start_date"],
+                "updated_at": now,
+            }
+            if user_id:
+                update_data["updated_by"] = user_id
+            
+            result = supabase.schema("shared").table("asset_static_data").update(update_data).eq("isin", item["isin"]).execute()
+            results.append(result)
+        except Exception as e:
+            st.error(f"Error updating {item['isin']}: {e}")
+            raise e
+    
+    return results
 
 def save_asset_static_data(asset_data):
     supabase = _get_client()

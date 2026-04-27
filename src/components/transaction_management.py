@@ -319,9 +319,32 @@ def render_import_preview_screen():
         
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
-                asset_payloads = [{"isin": m_isin, "name": m_isin, "created_by": user_id, "updated_by": None} for m_isin in missing_isins]
+                # Pre-calculate the earliest transaction date per ISIN so new assets can be created
+                # with the correct price_start_date immediately.
+                min_dates = {}
+                for isin_val in missing_isins:
+                    relevant_dates = pd.to_datetime(final_sel.loc[final_sel[map_isin].astype(str).str.strip() == isin_val, map_date])
+                    if relevant_dates.empty:
+                        continue
+                    min_dates[isin_val] = relevant_dates.min().date().isoformat()
+
+                now_ts = datetime.now().isoformat()
+                asset_payloads = []
+                for m_isin in missing_isins:
+                    payload = {
+                        "isin": m_isin,
+                        "name": m_isin,
+                        "created_at": now_ts,
+                        "updated_at": None,
+                        "created_by": user_id,
+                        "updated_by": None
+                    }
+                    if m_isin in min_dates:
+                        payload["price_start_date"] = min_dates[m_isin]
+                    asset_payloads.append(payload)
+
                 try:
-                    save_asset_static_data(asset_payloads) 
+                    save_asset_static_data(asset_payloads)
                 except Exception as e:
                     if "duplicate" not in str(e).lower(): st.error(f"Asset provisioning error: {e}")
                 status.update(label="Asset provisioning complete!", state="complete")
