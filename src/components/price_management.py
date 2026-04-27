@@ -52,7 +52,7 @@ def _reload_all_fx_rates():
             if not currency or currency.strip().upper() == "EUR":
                 continue
 
-            symbol = f"EUR{currency.upper()}"
+            symbol = f"EUR{currency.upper()}=X"
             try:
                 ticker = my_yf.Ticker(symbol)
                 history = ticker.history(
