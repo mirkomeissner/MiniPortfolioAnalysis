@@ -158,7 +158,7 @@ def user_settings_ui():
     user_data = db_get_user_profile(st.session_state["user_id"])
     if not user_data: return
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.subheader("Change Password")
         with st.form("change_pwd_form"):
@@ -191,7 +191,7 @@ def user_settings_ui():
                 else:
                     st.warning("Please enter a different username.")
 
-        st.markdown("---")
+    with col3:
         st.subheader("Edit Email Address")
         current_email = st.session_state.get("user_email", "") 
         pending_email = user_data.get("pending_email")
