@@ -158,7 +158,7 @@ def user_settings_ui():
     user_data = db_get_user_profile(st.session_state["user_id"])
     if not user_data: return
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.subheader("Change Password")
         with st.form("change_pwd_form"):
@@ -173,6 +173,25 @@ def user_settings_ui():
  
     
     with col2:
+        st.subheader("Edit Username")
+        current_username = st.session_state.get("user_name", user_data.get("username", ""))
+        st.write(f"Current Username: `{current_username}`")
+
+        with st.form("edit_username_form"):
+            new_username = st.text_input("New Username", value=current_username)
+            if st.form_submit_button("Update Username"):
+                if new_username and new_username != current_username:
+                    try:
+                        auth_update_user({"data": {"username": new_username}})
+                        st.session_state["user_name"] = new_username
+                        st.success("✅ Username updated successfully!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error: {e}")
+                else:
+                    st.warning("Please enter a different username.")
+
+    with col3:
         st.subheader("Edit Email Address")
         current_email = st.session_state.get("user_email", "") 
         pending_email = user_data.get("pending_email")
@@ -187,6 +206,7 @@ def user_settings_ui():
                     try:
                         auth_update_user({"email": new_email})
                         st.success("✅ Email update initiated!")
-                    except Exception as e: st.error(f"❌ Error: {e}")
+                    except Exception as e:
+                        st.error(f"❌ Error: {e}")
 
 
