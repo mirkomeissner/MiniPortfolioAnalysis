@@ -349,12 +349,13 @@ GRANT SELECT ON ALL TABLES IN SCHEMA shared TO authenticated;
 GRANT INSERT ON shared.asset_static_data TO authenticated;
 -- UPDATE auf shared bleibt dem Admin vorbehalten (service_role)
 
--- Service Role (Dein Admin-Client) darf immer alles
-GRANT ALL ON SCHEMA public, shared TO service_role;
+
+
+-- ==========================================================
+-- GRANTS FOR SERVICE_ROLE (ADMIN-CLIENT)
+-- ==========================================================
+
+GRANT USAGE ON SCHEMA public, shared TO service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public, shared TO service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public, shared TO service_role;
-
-
-
-
-
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public, shared TO service_role;
