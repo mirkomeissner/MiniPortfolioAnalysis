@@ -133,3 +133,50 @@ def price_management_view():
 
         fx_table_view()
 
+
+
+
+        import streamlit as st
+        import yfinance as yf
+        
+        # Layout-Einstellungen
+        st.set_page_config(page_title="FX Kurs-Check", layout="centered")
+        st.title("EUR/USD Kurs-Historie 📈")
+        
+        # Button zum Auslösen der Abfrage
+        if st.button('Kurse abrufen'):
+            with st.spinner('Daten werden von Yahoo Finance geladen...'):
+                try:
+                    # Ticker für EUR/USD
+                    ticker_symbol = "EURUSD=X"
+                    
+                    # Abfrage für den spezifischen Zeitraum
+                    # Start: 2026-01-15, Ende: 2026-02-15
+                    df = yf.download(
+                        ticker_symbol, 
+                        start="2026-01-15", 
+                        end="2026-02-15",
+                        interval="1d"
+                    )
+        
+                    if not df.empty:
+                        st.success(f"Daten für {ticker_symbol} erfolgreich geladen!")
+                        
+                        # Formatierung der Tabelle (nur die wichtigsten Spalten)
+                        display_df = df[['Open', 'High', 'Low', 'Close']]
+                        
+                        # Ausgabe als interaktive Tabelle
+                        st.dataframe(display_df, use_container_width=True)
+                        
+                        # Optional: Ein kleiner Chart zur Visualisierung
+                        st.line_chart(df['Close'])
+                    else:
+                        st.warning("Keine Daten für diesen Zeitraum gefunden.")
+                        
+                except Exception as e:
+                    st.error(f"Ein Fehler ist aufgetreten: {e}")
+        else:
+            st.info("Klicke auf den Button, um die Abfrage zu starten.")
+
+
+
