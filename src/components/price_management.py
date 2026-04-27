@@ -131,7 +131,7 @@ def price_management_view():
         if not is_admin:
             st.info("Only admin users can reload FX rates.")
 
-        fx_table_view()
+        # fx_table_view()
 
 
 
