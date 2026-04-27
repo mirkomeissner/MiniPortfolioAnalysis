@@ -134,14 +134,8 @@ def price_management_view():
         # fx_table_view()
 
 
-
-
-        import streamlit as st
         import yfinance as yf
-        
-        # Layout-Einstellungen
-        st.set_page_config(page_title="FX Kurs-Check", layout="centered")
-        st.title("EUR/USD Kurs-Historie 📈")
+
         
         # Button zum Auslösen der Abfrage
         if st.button('Kurse abrufen'):
