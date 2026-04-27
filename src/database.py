@@ -20,10 +20,6 @@ def _get_client() -> Client:
     
     return client
 
-def get_client() -> Client:
-    """Exportiert den Standard-Client für Auth-Aufrufe."""
-    return _get_client()
-
 # --- AUTH & USER DB OPERATIONS ---
 
 def db_get_user_profile(user_id):
@@ -184,6 +180,29 @@ def get_asset_price_start_dates(isins):
 def update_asset_start_date(isin, start_date):
     return update_asset_static_data(isin, {"price_start_date": start_date})
 
+def update_asset_start_dates_bulk(payload_list):
+    """
+    Bulk update price_start_date for multiple existing ISINs.
+
+    Supabase / PostgREST does not support a single bulk update request with
+    different values per row unless you use upsert-like semantics.
+    The calling code ensures assets exist before this helper is called,
+    so this remains a safe bulk update path.
+    """
+    supabase = _get_client()
+    now = datetime.now().isoformat()
+    user_id = st.session_state.get("user_id")
+    for item in payload_list:
+        if "updated_at" not in item:
+            item["updated_at"] = now
+        if "updated_by" not in item and user_id:
+            item["updated_by"] = user_id
+    try:
+        return supabase.schema("shared").table("asset_static_data").upsert(payload_list, on_conflict="isin").execute()
+    except Exception as e:
+        st.error(f"Error updating asset start dates in bulk: {e}")
+        raise e
+
 def save_asset_static_data(asset_data):
     supabase = _get_client()
     return supabase.schema("shared").table("asset_static_data").insert(asset_data).execute()
@@ -302,27 +321,6 @@ def save_import_settings(user_id, account_code, config):
     supabase = _get_client()
     payload = {"user_id": user_id, "account_code": account_code, "mapping_config": config}
     supabase.schema("public").table("user_import_settings").upsert(payload).execute()
-
-# --- USER PROFILE HELPERS ---
-
-def get_user_email(user_id):
-    supabase = _get_client()
-    try:
-        res = supabase.schema("public").table("users").select("email").eq("id", user_id).execute()
-        return res.data[0].get("email") if res.data else None
-    except: return None
-
-def update_user_email(user_id, email):
-    supabase = _get_client()
-    try: supabase.schema("public").table("users").update({"email": email}).eq("id", user_id).execute()
-    except Exception as e: raise e
-
-def get_user_by_username(username):
-    supabase = _get_client()
-    try:
-        res = supabase.schema("public").table("users").select("id").eq("username", username).execute()
-        return res.data[0]["id"] if res.data else None
-    except: return None
 
 # --- ACCOUNT MANAGEMENT FUNCTIONS ---
 
