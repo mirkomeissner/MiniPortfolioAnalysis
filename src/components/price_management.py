@@ -4,8 +4,8 @@ import streamlit as st
 import pandas as pd
 
 import src.database as database
-from src.utils.ui_components import apply_advanced_filters
-from src.utils.yf_wrapper import my_yf
+from src.utils import apply_advanced_filters
+from src.utils import my_yf
 from src.utils import fetch_and_fill_gaps
 
 
