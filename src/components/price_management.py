@@ -6,7 +6,7 @@ import pandas as pd
 import src.database as database
 from src.utils import apply_advanced_filters
 from src.utils import my_yf
-from src.utils import fetch_and_fill_gaps
+
 
 
 def _build_asset_prices_df():
