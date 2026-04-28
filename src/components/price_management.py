@@ -50,7 +50,7 @@ def fetch_and_fill_price_gaps(ticker_symbol, start_date, end_date):
     # Use a 7-day buffer to ensure we have a valid closing price to start with
     fetch_start = start_date - datetime.timedelta(days=7)
     
-    ticker = yf.Ticker(ticker_symbol)
+    ticker = my_yf.Ticker(ticker_symbol)
     history = ticker.history(
         start=fetch_start.isoformat(),
         end=(end_date + datetime.timedelta(days=1)).isoformat(), # End is exclusive in yf
