@@ -6,8 +6,6 @@ from src.database import (
     get_country_region_map,
     get_transaction_type_logic
 )
-import datetime
-import pandas as pd
 
 
 
@@ -96,59 +94,4 @@ def reset_reference_data():
     """Hilfsfunktion, um den Cache zu leeren (z.B. nach Account-Erstellung)"""
     if 'ref_data_loaded' in st.session_state:
         del st.session_state['ref_data_loaded']
-
-
-
-
-
-
-
-
-
-
-def fetch_and_fill_gaps(symbol, start_date, end_date, yf_ticker_obj):
-    """
-    Generische Funktion zum Abruf von yfinance-Daten mit Gap-Filling.
-    Gibt eine Liste von Records zurück.
-    """
-    records = []
-    # 7-Tage-Puffer für die Initialisierung des ersten Kurses
-    fetch_start = start_date - datetime.timedelta(days=7)
-    
-    history = yf_ticker_obj.history(
-        start=fetch_start.isoformat(),
-        end=(end_date + datetime.timedelta(days=1)).isoformat(),
-        interval="1d"
-    )
-    
-    if history is None or history.empty:
-        return []
-
-    history.columns = [c.capitalize() for c in history.columns]
-    history.index = history.index.date
-    
-    last_valid_rate = None
-    last_valid_origin = None
-
-    # Initialisierung mit dem Puffer-Zeitraum
-    hist_before = history[history.index <= start_date]
-    if not hist_before.empty:
-        last_valid_rate = float(hist_before.iloc[-1]["Close"])
-        last_valid_origin = hist_before.index[-1]
-
-    # Kalender-Loop über die eigentliche Lücke
-    gap_days = pd.date_range(start=start_date, end=end_date, freq='D').date
-    for current_day in gap_days:
-        if current_day in history.index:
-            last_valid_rate = float(history.loc[current_day, "Close"])
-            last_valid_origin = current_day
-        
-        if last_valid_rate is not None:
-            records.append({
-                "date": current_day,
-                "value": last_valid_rate,
-                "origin": last_valid_origin
-            })
-    return records
-
 
