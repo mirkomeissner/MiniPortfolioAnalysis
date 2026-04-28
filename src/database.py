@@ -151,7 +151,6 @@ def get_fx_rates():
                .select("currency, rate_date, exchange_rate")
                .order("currency")
                .order("rate_date", desc=True)
-               .limit(50000)
                .execute())
         return res.data if res.data else []
     except Exception as e:
