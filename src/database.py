@@ -149,7 +149,7 @@ def get_fx_rates():
     supabase = _get_client()
     try:
         res = (supabase.schema("shared").table("exchange_rates")
-               .select("currency, rate_date, exchange_rate")
+               .select("currency, rate_date, exchange_rate, rate_date_origin, created_at, updated_at")
                .order("currency")
                .order("rate_date", desc=True)
                .execute())
