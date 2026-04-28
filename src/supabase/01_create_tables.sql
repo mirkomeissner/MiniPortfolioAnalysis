@@ -156,10 +156,14 @@ CREATE INDEX IF NOT EXISTS idx_asset_prices_isin_date ON shared.asset_prices (is
 
 
 -- Historical foreign exchange rates relative to EUR
+-- each date of the year will be available
+-- weekends and non business days will be copied from the last available business day
 CREATE TABLE IF NOT EXISTS shared.exchange_rates (
     currency VARCHAR(3) NOT NULL, -- Format for yfinance: 'EURUSD', 'EURCHF' etc.
     rate_date DATE NOT NULL,
     exchange_rate NUMERIC(20, 10) NOT NULL,
+    rate_date_origin DATE NOT NULL, -- stores the original date of the fx rate
+    
     -- Primary key: ensures one rate per pair per day
     PRIMARY KEY (currency, rate_date),
 
