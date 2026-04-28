@@ -116,7 +116,7 @@ def _load_missing_fx_rates():
                     hist_before = history[history.index <= start]
                     if not hist_before.empty:
                         last_valid_rate = float(hist_before.iloc[-1]["Close"])
-                        last_valid_origin = historical_before.index[-1]
+                        last_valid_origin = hist_before.index[-1]
 
                     # Loop über jeden Kalendertag der Lücke (Gap-Filling)
                     gap_days = pd.date_range(start=start, end=end, freq='D').date
