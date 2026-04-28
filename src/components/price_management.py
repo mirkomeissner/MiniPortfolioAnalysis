@@ -81,6 +81,10 @@ def fetch_and_fill_price_gaps(symbol, start_date, end_date, source_df):
     return results
 
 def _load_missing_fx_rates():
+    """
+    Orchestrates the FX update process with special handling for GBX (Pence Sterling).
+    Fetches EURGBP=X for GBX and multiplies by 100.
+    """
     target_starts_raw = database.get_non_eur_asset_currency_start_dates()
     current_bounds = database.get_fx_rate_bounds()
     
@@ -91,19 +95,30 @@ def _load_missing_fx_rates():
     today = datetime.date.today()
     limit_date = today - datetime.timedelta(days=1)
     
-    # 1. Identify all required symbols and the overall earliest start date
+    # 1. Identify all required symbols and handle GBX mapping
     currencies = [c.upper() for c in target_starts_raw.keys()]
-    symbols = [f"EUR{c}=X" for c in currencies]
+    
+    # Mapping for special currencies that don't have their own Yahoo FX pair
+    # GBX (Pence) -> use GBP (Pound)
+    fx_mapping = {
+        "GBX": "GBP"
+    }
+
+    # Build unique symbols list for download
+    symbols = []
+    for c in currencies:
+        base_curr = fx_mapping.get(c, c)
+        symbol = f"EUR{base_curr}=X"
+        if symbol not in symbols:
+            symbols.append(symbol)
     
     # Find global minimum start to fetch everything in one bulk request
     global_min_start = min([pd.to_datetime(d).date() for d in target_starts_raw.values()])
-    # Add buffer for gap initialization
     fetch_start = global_min_start - datetime.timedelta(days=7)
 
     all_records = []
 
     with st.spinner("Downloading FX data bundle..."):
-        # Bulk download using the proxy
         bundle_df = my_yf.download(
             symbols,
             start=fetch_start.isoformat(),
@@ -112,14 +127,18 @@ def _load_missing_fx_rates():
             threads=True
         )
 
-# 2. Process each currency locally
+    # 2. Process each currency locally
     for currency in currencies:
-        symbol = f"EUR{currency}=X"
+        # Determine which symbol to look for in the downloaded bundle
+        base_curr = fx_mapping.get(currency, currency)
+        symbol = f"EUR{base_curr}=X"
+        
         target_start = pd.to_datetime(target_starts_raw[currency]).date()
         
+        # Extract history from bundle
         if len(symbols) > 1:
-            if symbol not in bundle_df: continue
-            # FIX: Use .dropna() to remove days where THIS currency has no data
+            if symbol not in bundle_df:
+                continue
             history = bundle_df[symbol].dropna(subset=["Close"])
         else:
             history = bundle_df.dropna(subset=["Close"])
@@ -141,10 +160,15 @@ def _load_missing_fx_rates():
         for start, end in fetch_ranges:
             gap_data = fetch_and_fill_price_gaps(symbol, start, end, history)
             for entry in gap_data:
+                # Apply conversion factor if necessary (e.g., GBP -> GBX)
+                final_rate = entry["value"]
+                if currency == "GBX":
+                    final_rate = final_rate * 100
+                
                 all_records.append({
                     "currency": currency,
                     "rate_date": entry["date"].isoformat(),
-                    "exchange_rate": entry["value"],
+                    "exchange_rate": final_rate,
                     "rate_date_origin": entry["origin"].isoformat()
                 })
 
