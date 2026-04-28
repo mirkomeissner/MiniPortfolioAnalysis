@@ -177,6 +177,20 @@ CREATE TABLE IF NOT EXISTS shared.exchange_rates (
 CREATE INDEX IF NOT EXISTS idx_exchange_rates_curr_date ON shared.exchange_rates (currency, rate_date DESC);
 
 
+CREATE OR REPLACE VIEW shared.v_exchange_rate_bounds AS
+SELECT 
+    currency, 
+    MIN(rate_date) as min_date, 
+    MAX(rate_date) as max_date
+FROM shared.exchange_rates
+GROUP BY currency;
+
+
+
+
+
+
+
 -- --- PUBLIC SCHEMA TABLES (User specific) ---
 
 -- User brokerage/bank accounts
