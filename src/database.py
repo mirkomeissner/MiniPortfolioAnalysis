@@ -184,6 +184,25 @@ def get_non_eur_asset_currency_start_dates():
         return {}
 
 
+def get_fx_rate_bounds():
+    """Gibt min und max Datum pro Währung aus der DB zurück."""
+    supabase = get_admin_client()
+    # Wir gruppieren in der DB, um nur minimale Daten zu übertragen
+    response = supabase.schema("shared").table("exchange_rates") \
+        .select("currency, rate_date") \
+        .execute()
+    
+    if not response.data:
+        return {}
+
+    df = pd.DataFrame(response.data)
+    df['rate_date'] = pd.to_datetime(df['rate_date']).dt.date
+    
+    # Gruppieren nach Währung und Min/Max extrahieren
+    bounds = df.groupby('currency')['rate_date'].agg(['min', 'max']).to_dict('index')
+    return bounds
+
+
 def save_fx_rates_bulk(payload_list):
     """Upserts FX rate records into the exchange_rates table."""
     if not payload_list:
