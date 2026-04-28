@@ -40,7 +40,7 @@ def _build_fx_rates_df():
 
 
 
-def _reload_all_fx_rates():
+def _load_missing_fx_rates():
     # 1. Gewünschte Startdaten laut Assets
     target_starts = database.get_non_eur_asset_currency_start_dates()
     # 2. Vorhandene Daten in der DB
@@ -162,11 +162,11 @@ def price_management_view():
 
     with fx_tab:
         is_admin = st.session_state.get("is_admin", False)
-        if st.button("Reload all FX rates", disabled=not is_admin, use_container_width=True):
-            _reload_all_fx_rates()
+        if st.button("Load missing FX rates", disabled=not is_admin, use_container_width=True):
+            _load_missing_fx_rates()
 
         if not is_admin:
-            st.info("Only admin users can reload FX rates.")
+            st.info("Only admin users can load FX rates.")
 
         fx_table_view()
 
