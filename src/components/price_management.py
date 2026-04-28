@@ -41,12 +41,12 @@ def _build_fx_rates_df():
 
 
 def _load_missing_fx_rates():
-    # 1. Gewünschte Startdaten laut Assets
-    target_starts = database.get_non_eur_asset_currency_start_dates()
-    # 2. Vorhandene Daten in der DB
+    # 1. Gewünschte Startdaten laut Assets (kommen als Strings aus der DB)
+    target_starts_raw = database.get_non_eur_asset_currency_start_dates()
+    # 2. Vorhandene Daten in der DB (bereits Date-Objekte durch get_fx_rate_bounds)
     current_bounds = database.get_fx_rate_bounds()
     
-    if not target_starts:
+    if not target_starts_raw:
         st.warning("No non-EUR currencies found.")
         return
 
@@ -54,31 +54,31 @@ def _load_missing_fx_rates():
     all_records = []
 
     with st.spinner("Checking for missing FX rates..."):
-        for currency, target_start in target_starts.items():
+        for currency, target_start_str in target_starts_raw.items():
             currency = currency.upper()
-            bounds = current_bounds.get(currency)
             
+            # --- FIX: String zu Date konvertieren ---
+            target_start = pd.to_datetime(target_start_str).date()
+            
+            bounds = current_bounds.get(currency)
             fetch_ranges = []
 
             if not bounds:
-                # Fall A: Währung gar nicht in DB -> Komplett laden
                 fetch_ranges.append((target_start, today))
             else:
                 db_min = bounds['min']
                 db_max = bounds['max']
 
-                # Fall B: Historische Lücke (Asset-Start ist früher als DB-Bestand)
                 if target_start < db_min:
                     fetch_ranges.append((target_start, db_min - datetime.timedelta(days=1)))
                 
-                # Fall C: Aktualitäts-Lücke (DB-Stand ist älter als heute)
                 if db_max < today:
                     fetch_ranges.append((db_max + datetime.timedelta(days=1), today))
 
             # --- Daten abrufen pro identifizierter Lücke ---
             for start, end in fetch_ranges:
                 symbol = f"EUR{currency}=X"
-                # Puffer für Gap-Filling (7 Tage zurück)
+                # Jetzt funktioniert die Subtraktion, da 'start' ein Date-Objekt ist
                 fetch_start = start - datetime.timedelta(days=7)
                 
                 try:
@@ -95,7 +95,6 @@ def _load_missing_fx_rates():
                     history.columns = [c.capitalize() for c in history.columns]
                     history.index = history.index.date
                     
-                    # Lückenfüller Logik innerhalb des Fensters
                     last_valid_rate = None
                     last_valid_origin = None
 
@@ -105,7 +104,6 @@ def _load_missing_fx_rates():
                         last_valid_rate = float(hist_before.iloc[-1]["Close"])
                         last_valid_origin = hist_before.index[-1]
 
-                    # Loop nur über die spezifische Lücke
                     gap_days = pd.date_range(start=start, end=end, freq='D').date
                     for current_day in gap_days:
                         if current_day in history.index:
@@ -122,7 +120,6 @@ def _load_missing_fx_rates():
                 except Exception as e:
                     st.error(f"Error updating {currency} from {start} to {end}: {e}")
 
-    # 3. Speichern
     if all_records:
         database.save_fx_rates_bulk(all_records)
         st.success(f"Added {len(all_records)} missing FX rate entries.")
