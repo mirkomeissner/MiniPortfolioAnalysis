@@ -163,6 +163,8 @@ CREATE TABLE IF NOT EXISTS shared.exchange_rates (
     rate_date DATE NOT NULL,
     exchange_rate NUMERIC(20, 10) NOT NULL,
     rate_date_origin DATE NOT NULL, -- stores the original date of the fx rate
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
     
     -- Primary key: ensures one rate per pair per day
     PRIMARY KEY (currency, rate_date),
