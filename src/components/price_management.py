@@ -39,6 +39,7 @@ def _build_fx_rates_df():
     })
 
 
+
 def _reload_all_fx_rates():
     currency_start_dates = database.get_non_eur_asset_currency_start_dates()
     if not currency_start_dates:
@@ -47,12 +48,15 @@ def _reload_all_fx_rates():
 
     today = datetime.date.today()
     records = []
+    
     with st.spinner("Reloading FX rates from yfinance..."):
         for currency, start_date in currency_start_dates.items():
             if not currency or currency.strip().upper() == "EUR":
                 continue
 
-            symbol = f"EUR{currency.upper()}=X"
+            currency = currency.upper()
+            symbol = f"EUR{currency}=X"
+            
             try:
                 ticker = my_yf.Ticker(symbol)
                 history = ticker.history(
@@ -68,27 +72,41 @@ def _reload_all_fx_rates():
                 st.info(f"No FX history available for {symbol}.")
                 continue
 
-            close_column = "Close" if "Close" in history.columns else "close" if "close" in history.columns else None
-            if not close_column:
-                st.error(f"Unexpected history format for {symbol}.")
+            # Spaltennamen normalisieren
+            history.columns = [c.capitalize() for c in history.columns]
+            if "Close" not in history.columns:
                 continue
 
-            for row_date, row in history.iterrows():
-                try:
-                    rate_date = row_date.date()
-                    rate_value = float(row[close_column])
-                except Exception:
-                    continue
+            # --- Lückenfüller Logik ---
+            
+            # Wir erstellen einen Datumsbereich vom Startdatum bis heute
+            all_days = pd.date_range(start=start_date, end=today, freq='D').date
+            
+            # Wir mappen die vorhandenen yfinance-Daten (Index ist DatetimeIndex)
+            # Wir konvertieren den Index zu .date(), um den Vergleich zu vereinfachen
+            history.index = history.index.date
+            
+            last_valid_rate = None
+            last_valid_origin = None
 
-                records.append({
-                    "currency": currency.upper(),
-                    "rate_date": rate_date.isoformat(),
-                    "exchange_rate": rate_value
-                })
+            for current_day in all_days:
+                if current_day in history.index:
+                    # Wir haben einen echten Kurs von yfinance
+                    last_valid_rate = float(history.loc[current_day, "Close"])
+                    last_valid_origin = current_day
+                
+                # Wenn wir bereits mindestens einen Kurs gesehen haben, füllen wir ab da auf
+                if last_valid_rate is not None:
+                    records.append({
+                        "currency": currency,
+                        "rate_date": current_day.isoformat(),
+                        "exchange_rate": last_valid_rate,
+                        "rate_date_origin": last_valid_origin.isoformat()
+                    })
 
     if records:
         database.save_fx_rates_bulk(records)
-        st.success(f"Reloaded FX rates for {len(currency_start_dates)} currency(s).")
+        st.success(f"Reloaded FX rates and filled gaps for {len(currency_start_dates)} currencies.")
     else:
         st.info("No FX rate records were updated.")
 
