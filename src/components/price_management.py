@@ -41,7 +41,7 @@ def _build_fx_rates_df():
 
 
 def _load_missing_fx_rates():
-"""
+    """
     Lädt fehlende FX-Kurse von yfinance und füllt Lücken (Wochenenden) auf.
     Sichert durch T-1 Logik ab, dass nur finale Schlusskurse gespeichert werden.
     """
