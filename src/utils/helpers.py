@@ -7,6 +7,8 @@ from src.database import (
     get_transaction_type_logic
 )
 
+
+
 def extract_code(label: str) -> str:
     """
     Extracts the code part from a label string like 'EQU (Equity)'.

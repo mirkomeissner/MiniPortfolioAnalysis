@@ -1,6 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client
-from datetime import datetime
+import datetime
+from datetime import datetime as dt_class 
 
 # --- CLIENT INITIALIZATION ---
 
@@ -184,6 +185,29 @@ def get_non_eur_asset_currency_start_dates():
         return {}
 
 
+def get_fx_rate_bounds():
+    supabase = get_admin_client()
+    try:
+        # Wir lesen die View aus
+        response = supabase.schema("shared").table("v_exchange_rate_bounds").select("*").execute()
+        
+        if not response.data:
+            return {}
+
+        # Hier nutzen wir das Modul 'datetime' und daraus die Klasse 'date'
+        return {
+            item['currency']: {
+                'min': datetime.date.fromisoformat(item['min_date']),
+                'max': datetime.date.fromisoformat(item['max_date'])
+            }
+            for item in response.data
+        }
+    except Exception as e:
+        # Falls die View noch nicht existiert oder leer ist
+        print(f"Fehler in get_fx_rate_bounds: {e}")
+        return {}
+
+
 def save_fx_rates_bulk(payload_list):
     """Upserts FX rate records into the exchange_rates table."""
     if not payload_list:
@@ -191,7 +215,12 @@ def save_fx_rates_bulk(payload_list):
 
     supabase = get_admin_client()
     try:
-        return supabase.schema("shared").table("exchange_rates").upsert(payload_list).execute()
+        # Hinweis: Supabase upsert nutzt den Primary Key (currency, rate_date)
+        # Um Duplikate zu vermeiden und Werte zu aktualisieren.
+        return supabase.schema("shared").table("exchange_rates").upsert(
+            payload_list, 
+            on_conflict="currency, rate_date"
+        ).execute()
     except Exception as e:
         st.error(f"Error saving FX rates: {e}")
         raise e
@@ -231,7 +260,7 @@ def update_asset_start_dates_bulk(payload_list):
         return None
     
     supabase = get_admin_client()
-    now = datetime.now().isoformat()
+    now = dt_class.now().isoformat()
     user_id = st.session_state.get("user_id")
     
     results = []
@@ -259,7 +288,7 @@ def save_asset_static_data(asset_data):
 def update_asset_static_data(isin, updated_data):
     supabase = _get_client()
     if "updated_at" not in updated_data:
-        updated_data["updated_at"] = datetime.now().isoformat()
+        updated_data["updated_at"] = dt_class.now().isoformat()
     if "updated_by" not in updated_data:
         user_id = st.session_state.get("user_id")
         if user_id:
