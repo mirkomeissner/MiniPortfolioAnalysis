@@ -32,11 +32,14 @@ def _build_fx_rates_df():
     raw_data = database.get_fx_rates()
     df = pd.DataFrame(raw_data)
     if df.empty:
-        return pd.DataFrame([], columns=["Currency", "Date", "Exchange Rate"])
+        return pd.DataFrame([], columns=["Currency", "Date", "Exchange Rate", "Date Original", "Created At", "Updated At"])
     return df.rename(columns={
         "currency": "Currency",
         "rate_date": "Date",
-        "exchange_rate": "Exchange Rate"
+        "exchange_rate": "Exchange Rate",
+        "rate_date_original": "Date Original",
+        "created_at": "Created At",
+        "updated_at": "Updated At"
     })
 
 
