@@ -41,110 +41,130 @@ def _build_fx_rates_df():
 
 
 
+
+def fetch_and_fill_price_gaps(ticker_symbol, start_date, end_date):
+    """
+    Core Logic: Fetches data from yfinance and fills calendar gaps (weekends/holidays).
+    Returns a list of dictionaries containing 'date', 'value', and 'origin'.
+    """
+    # Use a 7-day buffer to ensure we have a valid closing price to start with
+    fetch_start = start_date - datetime.timedelta(days=7)
+    
+    ticker = yf.Ticker(ticker_symbol)
+    history = ticker.history(
+        start=fetch_start.isoformat(),
+        end=(end_date + datetime.timedelta(days=1)).isoformat(), # End is exclusive in yf
+        interval="1d"
+    )
+    
+    if history is None or history.empty:
+        return []
+
+    # Standardize column names (yfinance can be inconsistent)
+    history.columns = [c.capitalize() for c in history.columns]
+    history.index = history.index.date
+    
+    results = []
+    last_valid_rate = None
+    last_valid_origin = None
+
+    # Initialization: Find the most recent price on or before the target start_date
+    hist_before = history[history.index <= start_date]
+    if not hist_before.empty:
+        last_valid_rate = float(hist_before.iloc[-1]["Close"])
+        last_valid_origin = hist_before.index[-1]
+
+    # Iterate through every calendar day in the missing range (gap-filling)
+    gap_days = pd.date_range(start=start_date, end=end_date, freq='D').date
+    for current_day in gap_days:
+        # Update price if yfinance provides a real data point for this day
+        if current_day in history.index:
+            last_valid_rate = float(history.loc[current_day, "Close"])
+            last_valid_origin = current_day
+        
+        # Only append if we have found at least one valid price (handling early history)
+        if last_valid_rate is not None:
+            results.append({
+                "date": current_day,
+                "value": last_valid_rate,
+                "origin": last_valid_origin
+            })
+    return results
+
+
+
+
+
+
+
 def _load_missing_fx_rates():
     """
-    Lädt fehlende FX-Kurse von yfinance und füllt Lücken (Wochenenden) auf.
-    Sichert durch T-1 Logik ab, dass nur finale Schlusskurse gespeichert werden.
+    Orchestrates the FX update process: identifies gaps in DB, calls helper, 
+    and saves results. Implements T-1 logic to ensure only EOD prices are saved.
     """
-    # 1. Gewünschte Startdaten laut Assets (Strings aus DB)
+    # 1. Retrieve metadata from database
+    # target_starts: dict {currency: start_date_str}
     target_starts_raw = database.get_non_eur_asset_currency_start_dates()
-    
-    # 2. Vorhandene Datenbereiche in der DB (bereits date-Objekte)
+    # current_bounds: dict {currency: {'min': date, 'max': date}}
     current_bounds = database.get_fx_rate_bounds()
     
     if not target_starts_raw:
-        st.warning("Keine Währungen (außer EUR) mit Startdatum gefunden.")
+        st.warning("No non-EUR asset currencies found in database.")
         return
 
-    # T-1 LOGIK: Wir laden nur bis GESTERN, um keine Intraday-Kurse zu speichern
+    # T-1 Logic: Only fetch data until yesterday to avoid unstable intraday prices
     today = datetime.date.today()
     limit_date = today - datetime.timedelta(days=1)
     
     all_records = []
 
-    with st.spinner("Prüfe FX-Lücken und lade Daten von yfinance..."):
+    with st.spinner("Updating FX rates..."):
         for currency, target_start_str in target_starts_raw.items():
             currency = currency.upper()
-            
-            # Konvertierung String -> Date-Objekt für Berechnungen
             target_start = pd.to_datetime(target_start_str).date()
             
+            # Determine which date ranges are actually missing from the DB
             bounds = current_bounds.get(currency)
             fetch_ranges = []
 
             if not bounds:
-                # Fall A: Währung komplett neu -> Start bis gestern
+                # Case A: Currency not in DB -> fetch from asset start to yesterday
                 if target_start <= limit_date:
                     fetch_ranges.append((target_start, limit_date))
             else:
-                db_min = bounds['min']
-                db_max = bounds['max']
-
-                # Fall B: Historische Lücke (Asset startet vor DB-Einträgen)
-                if target_start < db_min:
-                    fetch_ranges.append((target_start, db_min - datetime.timedelta(days=1)))
+                # Case B: Check for historical gaps (before existing data)
+                if target_start < bounds['min']:
+                    fetch_ranges.append((target_start, bounds['min'] - datetime.timedelta(days=1)))
                 
-                # Fall C: Aktualitäts-Lücke (DB endet vor gestern)
-                if db_max < limit_date:
-                    fetch_ranges.append((db_max + datetime.timedelta(days=1), limit_date))
+                # Case C: Check for freshness gaps (after existing data)
+                if bounds['max'] < limit_date:
+                    fetch_ranges.append((bounds['max'] + datetime.timedelta(days=1), limit_date))
 
-            # --- Datenabruf für die berechneten Lücken ---
+            # 2. Process identified gaps using the generic helper
             for start, end in fetch_ranges:
                 symbol = f"EUR{currency}=X"
+                gap_data = fetch_and_fill_price_gaps(symbol, start, end)
                 
-                # 7-Tage-Puffer für die Lückenfüller-Initialisierung
-                fetch_start = start - datetime.timedelta(days=7)
-                
-                try:
-                    ticker = my_yf.Ticker(symbol)
-                    history = ticker.history(
-                        start=fetch_start.isoformat(),
-                        end=(end + datetime.timedelta(days=1)).isoformat(), # +1 weil exklusiv
-                        interval="1d"
-                    )
-                    
-                    if history is None or history.empty:
-                        continue
+                # Map generic results to the specific FX table schema
+                for entry in gap_data:
+                    all_records.append({
+                        "currency": currency,
+                        "rate_date": entry["date"].isoformat(),
+                        "exchange_rate": entry["value"],
+                        "rate_date_origin": entry["origin"].isoformat()
+                    })
 
-                    # Normalisierung der yfinance-Daten
-                    history.columns = [c.capitalize() for c in history.columns]
-                    history.index = history.index.date
-                    
-                    last_valid_rate = None
-                    last_valid_origin = None
-
-                    # Initialisierung des "letzten Kurses" vor dem Lücken-Beginn
-                    hist_before = history[history.index <= start]
-                    if not hist_before.empty:
-                        last_valid_rate = float(hist_before.iloc[-1]["Close"])
-                        last_valid_origin = hist_before.index[-1]
-
-                    # Loop über jeden Kalendertag der Lücke (Gap-Filling)
-                    gap_days = pd.date_range(start=start, end=end, freq='D').date
-                    for current_day in gap_days:
-                        # Haben wir einen echten Kurs für diesen Tag?
-                        if current_day in history.index:
-                            last_valid_rate = float(history.loc[current_day, "Close"])
-                            last_valid_origin = current_day
-                        
-                        # Nur hinzufügen, wenn wir einen Basiswert gefunden haben
-                        if last_valid_rate is not None:
-                            all_records.append({
-                                "currency": currency,
-                                "rate_date": current_day.isoformat(),
-                                "exchange_rate": last_valid_rate,
-                                "rate_date_origin": last_valid_origin.isoformat()
-                            })
-                            
-                except Exception as e:
-                    st.error(f"Fehler bei {symbol} ({start} bis {end}): {e}")
-
-    # 3. Bulk-Save in die Datenbank
+    # 3. Bulk save to database
     if all_records:
-        database.save_fx_rates_bulk(all_records)
-        st.success(f"{len(all_records)} FX-Datensätze erfolgreich aktualisiert.")
+        try:
+            database.save_fx_rates_bulk(all_records)
+            st.success(f"Successfully processed {len(all_records)} FX records.")
+        except Exception as e:
+            st.error(f"Failed to save records to database: {e}")
     else:
-        st.info("Alle Kurse sind bereits auf dem Stand von gestern (End-of-Day).")
+        st.info("Everything is up to date (End-of-Day).")
+
+
 
 
 def price_table_view():
