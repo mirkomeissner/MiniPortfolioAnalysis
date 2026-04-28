@@ -112,17 +112,17 @@ def _load_missing_fx_rates():
             threads=True
         )
 
-    # 2. Process each currency locally
+# 2. Process each currency locally
     for currency in currencies:
         symbol = f"EUR{currency}=X"
         target_start = pd.to_datetime(target_starts_raw[currency]).date()
         
-        # Extract individual history from the bundle
         if len(symbols) > 1:
             if symbol not in bundle_df: continue
-            history = bundle_df[symbol]
+            # FIX: Use .dropna() to remove days where THIS currency has no data
+            history = bundle_df[symbol].dropna(subset=["Close"])
         else:
-            history = bundle_df # yf returns flat DF for single ticker
+            history = bundle_df.dropna(subset=["Close"])
 
         bounds = current_bounds.get(currency)
         fetch_ranges = []

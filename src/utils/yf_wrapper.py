@@ -7,8 +7,8 @@ import yfinance as yf
 
 def _generate_mock_data(start, end):
     """
-    Helper to create synthetic price dataframes.
-    Simulates daily closing prices and volume.
+    Helper to create synthetic price dataframes with realistic market gaps.
+    Simulates missing data for weekends (standard) and random holidays.
     """
     s_date = pd.to_datetime(start if start else (pd.Timestamp.now() - pd.Timedelta(days=30)))
     e_date = pd.to_datetime(end if end else pd.Timestamp.now())
@@ -16,15 +16,28 @@ def _generate_mock_data(start, end):
     if s_date > e_date:
         s_date, e_date = e_date, s_date
         
-    dates = pd.date_range(start=s_date, end=e_date, freq="D")
+    # 1. Create a full range of calendar days
+    full_range = pd.date_range(start=s_date, end=e_date, freq="D")
     
-    return pd.DataFrame({
-        "Open": np.round(np.random.uniform(1.0, 1.2, size=len(dates)), 6),
-        "High": np.round(np.random.uniform(1.0, 1.2, size=len(dates)), 6),
-        "Low": np.round(np.random.uniform(1.0, 1.2, size=len(dates)), 6),
-        "Close": np.round(np.random.uniform(1.0, 1.2, size=len(dates)), 6),
-        "Volume": np.random.randint(1000, 10000, size=len(dates))
-    }, index=dates)
+    # 2. Filter out weekends (Saturday = 5, Sunday = 6)
+    # This is exactly what yfinance does for FX and Stocks
+    trading_days = full_range[full_range.dayofweek < 5]
+    
+    # 3. Optional: Randomly drop a few more days (simulating holidays)
+    # 5% chance that a trading day is "missing"
+    mask = np.random.choice([True, False], size=len(trading_days), p=[0.95, 0.05])
+    trading_days = trading_days[mask]
+    
+    # 4. Generate the data only for those specific trading days
+    df = pd.DataFrame({
+        "Open": np.round(np.random.uniform(1.0, 1.2, size=len(trading_days)), 6),
+        "High": np.round(np.random.uniform(1.0, 1.2, size=len(trading_days)), 6),
+        "Low": np.round(np.random.uniform(1.0, 1.2, size=len(trading_days)), 6),
+        "Close": np.round(np.random.uniform(1.0, 1.2, size=len(trading_days)), 6),
+        "Volume": np.random.randint(1000, 10000, size=len(trading_days))
+    }, index=trading_days)
+    
+    return df
 
 # --- MOCK CLASSES ---
 
