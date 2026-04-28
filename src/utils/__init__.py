@@ -5,8 +5,7 @@ from .helpers import (
     get_option_index_by_label,
     get_selectbox_options_and_index,
     ensure_reference_data, 
-    reset_reference_data,
-    fetch_and_fill_gaps
+    reset_reference_data
 )
 from .ui_components import (
     apply_advanced_filters, 
@@ -25,8 +24,7 @@ __all__ = [
     'get_option_index_by_label',
     'get_selectbox_options_and_index',
     'ensure_reference_data',
-    'reset_reference_data',
-    'fetch_and_fill_gaps',
+    'reset_reference_data'
     'apply_advanced_filters',
     'get_average_volume_7d',
     'map_yahoo_to_ref',
