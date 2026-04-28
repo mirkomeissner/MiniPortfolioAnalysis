@@ -191,7 +191,12 @@ def save_fx_rates_bulk(payload_list):
 
     supabase = get_admin_client()
     try:
-        return supabase.schema("shared").table("exchange_rates").upsert(payload_list).execute()
+        # Hinweis: Supabase upsert nutzt den Primary Key (currency, rate_date)
+        # Um Duplikate zu vermeiden und Werte zu aktualisieren.
+        return supabase.schema("shared").table("exchange_rates").upsert(
+            payload_list, 
+            on_conflict="currency, rate_date"
+        ).execute()
     except Exception as e:
         st.error(f"Error saving FX rates: {e}")
         raise e
