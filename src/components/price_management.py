@@ -41,74 +41,93 @@ def _build_fx_rates_df():
 
 
 def _reload_all_fx_rates():
-    currency_start_dates = database.get_non_eur_asset_currency_start_dates()
-    if not currency_start_dates:
-        st.warning("No non-EUR currencies with a price start date were found.")
+    # 1. Gewünschte Startdaten laut Assets
+    target_starts = database.get_non_eur_asset_currency_start_dates()
+    # 2. Vorhandene Daten in der DB
+    current_bounds = database.get_fx_rate_bounds()
+    
+    if not target_starts:
+        st.warning("No non-EUR currencies found.")
         return
 
     today = datetime.date.today()
-    records = []
-    
-    with st.spinner("Reloading FX rates from yfinance..."):
-        for currency, start_date in currency_start_dates.items():
-            if not currency or currency.strip().upper() == "EUR":
-                continue
+    all_records = []
 
+    with st.spinner("Checking for missing FX rates..."):
+        for currency, target_start in target_starts.items():
             currency = currency.upper()
-            symbol = f"EUR{currency}=X"
+            bounds = current_bounds.get(currency)
             
-            try:
-                ticker = my_yf.Ticker(symbol)
-                history = ticker.history(
-                    start=start_date,
-                    end=(today + datetime.timedelta(days=1)).isoformat(),
-                    interval="1d"
-                )
-            except Exception as e:
-                st.error(f"Failed to fetch {symbol}: {e}")
-                continue
+            fetch_ranges = []
 
-            if history is None or history.empty:
-                st.info(f"No FX history available for {symbol}.")
-                continue
+            if not bounds:
+                # Fall A: Währung gar nicht in DB -> Komplett laden
+                fetch_ranges.append((target_start, today))
+            else:
+                db_min = bounds['min']
+                db_max = bounds['max']
 
-            # Spaltennamen normalisieren
-            history.columns = [c.capitalize() for c in history.columns]
-            if "Close" not in history.columns:
-                continue
-
-            # --- Lückenfüller Logik ---
-            
-            # Wir erstellen einen Datumsbereich vom Startdatum bis heute
-            all_days = pd.date_range(start=start_date, end=today, freq='D').date
-            
-            # Wir mappen die vorhandenen yfinance-Daten (Index ist DatetimeIndex)
-            # Wir konvertieren den Index zu .date(), um den Vergleich zu vereinfachen
-            history.index = history.index.date
-            
-            last_valid_rate = None
-            last_valid_origin = None
-
-            for current_day in all_days:
-                if current_day in history.index:
-                    # Wir haben einen echten Kurs von yfinance
-                    last_valid_rate = float(history.loc[current_day, "Close"])
-                    last_valid_origin = current_day
+                # Fall B: Historische Lücke (Asset-Start ist früher als DB-Bestand)
+                if target_start < db_min:
+                    fetch_ranges.append((target_start, db_min - datetime.timedelta(days=1)))
                 
-                # Wenn wir bereits mindestens einen Kurs gesehen haben, füllen wir ab da auf
-                if last_valid_rate is not None:
-                    records.append({
-                        "currency": currency,
-                        "rate_date": current_day.isoformat(),
-                        "exchange_rate": last_valid_rate,
-                        "rate_date_origin": last_valid_origin.isoformat()
-                    })
+                # Fall C: Aktualitäts-Lücke (DB-Stand ist älter als heute)
+                if db_max < today:
+                    fetch_ranges.append((db_max + datetime.timedelta(days=1), today))
 
-    if records:
-        database.save_fx_rates_bulk(records)
-        st.success(f"Reloaded FX rates and filled gaps for {len(currency_start_dates)} currencies.")
+            # --- Daten abrufen pro identifizierter Lücke ---
+            for start, end in fetch_ranges:
+                symbol = f"EUR{currency}=X"
+                # Puffer für Gap-Filling (7 Tage zurück)
+                fetch_start = start - datetime.timedelta(days=7)
+                
+                try:
+                    ticker = my_yf.Ticker(symbol)
+                    history = ticker.history(
+                        start=fetch_start.isoformat(),
+                        end=(end + datetime.timedelta(days=1)).isoformat(),
+                        interval="1d"
+                    )
+                    
+                    if history is None or history.empty:
+                        continue
+
+                    history.columns = [c.capitalize() for c in history.columns]
+                    history.index = history.index.date
+                    
+                    # Lückenfüller Logik innerhalb des Fensters
+                    last_valid_rate = None
+                    last_valid_origin = None
+
+                    # Initialisierung mit Puffer
+                    hist_before = history[history.index <= start]
+                    if not hist_before.empty:
+                        last_valid_rate = float(hist_before.iloc[-1]["Close"])
+                        last_valid_origin = hist_before.index[-1]
+
+                    # Loop nur über die spezifische Lücke
+                    gap_days = pd.date_range(start=start, end=end, freq='D').date
+                    for current_day in gap_days:
+                        if current_day in history.index:
+                            last_valid_rate = float(history.loc[current_day, "Close"])
+                            last_valid_origin = current_day
+                        
+                        if last_valid_rate is not None:
+                            all_records.append({
+                                "currency": currency,
+                                "rate_date": current_day.isoformat(),
+                                "exchange_rate": last_valid_rate,
+                                "rate_date_origin": last_valid_origin.isoformat()
+                            })
+                except Exception as e:
+                    st.error(f"Error updating {currency} from {start} to {end}: {e}")
+
+    # 3. Speichern
+    if all_records:
+        database.save_fx_rates_bulk(all_records)
+        st.success(f"Added {len(all_records)} missing FX rate entries.")
     else:
-        st.info("No FX rate records were updated.")
+        st.info("Everything up to date. No requests sent to yfinance.")
 
 
 def price_table_view():
