@@ -37,7 +37,7 @@ def _build_fx_rates_df():
         "currency": "Currency",
         "rate_date": "Date",
         "exchange_rate": "Exchange Rate",
-        "rate_date_original": "Date Original",
+        "rate_date_origin": "Date Original",
         "created_at": "Created At",
         "updated_at": "Updated At"
     })
