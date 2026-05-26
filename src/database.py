@@ -136,7 +136,7 @@ def get_asset_prices():
     supabase = _get_client()
     try:
         res = (supabase.schema("shared").table("asset_prices")
-               .select("isin, price_date, price_close, price_close_original, dividend_cash, split_factor, asset_static_data!fk_prices_isin(name)")
+               .select("isin, price_date, price_close, price_close_original, dividend_cash, split_factor, asset_static_data!fk_prices_isin(name, currency, price_currency)")
                .order("isin")
                .order("price_date", desc=True)
                .execute())

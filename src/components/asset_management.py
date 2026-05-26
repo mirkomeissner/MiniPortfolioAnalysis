@@ -17,51 +17,147 @@ from src.utils import (
     yfinance_search_component
 )
 
-# --- New embedded ticker search helpers ---
-
-def handle_save_request(row, isin):
-    current_user_id = st.session_state.get('user_id')
-    asset_entry = {
-        "isin": isin,
-        "name": row["Name"],
-        "currency": row["Currency"],
-        "ticker": row["Ticker"],
-        "price_currency": row["Currency"],
-        "price_start_date": datetime.now().date().isoformat(),
-        "price_source_code": "TGO" if row["Currency"] == "USD" else "MKS",
-        "instrument_type_code": extract_code(row["InstrumentType"]),
-        "asset_class_code": extract_code(row["AssetClass"]),
-        "region_code": extract_code(row["Region"]),
-        "sector_code": extract_code(row["Sector_GICS"]),
-        "industry": row["Industry"],
-        "country": row["Country"],
-        "created_by": current_user_id,
-        "updated_by": None
-    }
-
-    try:
-        save_asset_static_data(asset_entry)
-        st.success(f"✅ {row['Ticker']} saved successfully!")
-        st.cache_data.clear()
-        st.session_state["view"] = "list"
-        st.rerun()
-    except Exception as e:
-        st.error(f"Error saving data: {e}")
-
-
 def ticker_search_view():
     st.subheader("🔍 Search New Asset")
     ensure_reference_data()
 
+    # --- NEU: Version Tracker für Formular-Reset ---
+    if "new_asset_form_version" not in st.session_state:
+        st.session_state["new_asset_form_version"] = 0
+    v = st.session_state["new_asset_form_version"]
+
+    # Only reset previous yfinance results when a new search session starts
+    if st.session_state.get("last_search_input") != st.session_state.get("current_search_input"):
+        reload_keys = ["ticker_search_results_df", "ticker_search_editor", "ticker_search_ticker_select"]
+        for key in reload_keys:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.session_state["current_search_input"] = st.session_state.get("last_search_input")
+        st.session_state["new_asset_form_version"] = 0
+        v = 0
+
     search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. AU000000DRO2 or Apple")
+    st.session_state["last_search_input"] = search_input
+    
     selected_row, edited_df = yfinance_search_component(search_input, session_key_prefix="ticker_search", allow_isin_edit=True)
 
     if selected_row is not None and edited_df is not None:
-        if st.button("Save to Database", type="primary"):
+        if st.button("Prefill Asset with loaded Data", type="primary"):
             if not selected_row["ISIN"] or len(selected_row["ISIN"]) < 5:
-                st.error("Please enter a valid ISIN in the table above before saving.")
+                st.error("Please enter a valid ISIN in the table above before prefilling.")
             else:
-                handle_save_request(selected_row, selected_row["ISIN"])
+                # Pre-fill the form fields with the selected data (same as "Update Asset with Reloaded Data")
+                st.session_state["prefill_name"] = selected_row["Name"]
+                st.session_state["prefill_ticker"] = selected_row["Ticker"]
+                st.session_state["prefill_currency"] = selected_row["Currency"]
+                st.session_state["prefill_price_currency"] = selected_row["Currency"]
+                st.session_state["prefill_asset_class"] = selected_row["AssetClass"]
+                st.session_state["prefill_region"] = selected_row["Region"]
+                st.session_state["prefill_sector"] = selected_row["Sector_GICS"]
+                st.session_state["prefill_instrument_type"] = selected_row["InstrumentType"]
+                st.session_state["prefill_industry"] = selected_row["Industry"]
+                st.session_state["prefill_country"] = selected_row["Country"]
+                st.session_state["prefill_isin"] = selected_row["ISIN"]
+                # Pre-fill Price Source with YFN
+                price_source_option = next((s for s in st.session_state['opt_source'] if s.startswith("YFN")), None)
+                if price_source_option:
+                    st.session_state["prefill_price_source"] = price_source_option
+                
+                # Increment version to force widget updates
+                st.session_state["new_asset_form_version"] += 1
+                
+                st.success("Form pre-filled with loaded data. Please review and save below.")
+                st.rerun()
+    
+    # --- MAIN EDIT FORM FOR NEW ASSET ---
+    # Only show the form if prefill data is available
+    if "prefill_isin" in st.session_state:
+        st.markdown("---")
+        st.subheader("📝 Review & Edit New Asset Data")
+        
+        with st.form("new_asset_form"):
+            col1, col2 = st.columns(2)
+            isin = col1.text_input("ISIN (Primary Key)", value=st.session_state.get("prefill_isin", ""), key=f"new_fn_isin_{v}")
+            gap = "&nbsp;" * 6
+
+            # Pre-fill form fields with session state values
+            name = col1.text_input(f"Name{gap}", value=st.session_state.get("prefill_name", ""), key=f"new_fn_{v}")       
+            ticker = col2.text_input(f"Ticker{gap}", value=st.session_state.get("prefill_ticker", ""), key=f"new_ft_{v}")
+            currency = col2.text_input(f"Currency{gap}", value=st.session_state.get("prefill_currency", ""), key=f"new_fc_{v}")
+            price_currency = col2.text_input(f"Price Currency{gap}", value=st.session_state.get("prefill_price_currency", ""), key=f"new_fpc_{v}") 
+
+            asset_class_options, asset_class_index = get_selectbox_options_and_index(st.session_state['opt_asset'], st.session_state.get("prefill_asset_class", ""))
+            asset_class = col1.selectbox(f"Asset Class{gap}", asset_class_options, index=asset_class_index, key=f"new_fac_{v}")
+            
+            region_options, region_index = get_selectbox_options_and_index(st.session_state['opt_region'], st.session_state.get("prefill_region", ""))
+            region = col2.selectbox(f"Region{gap}", region_options, index=region_index, key=f"new_fr_{v}")
+            
+            sector_options, sector_index = get_selectbox_options_and_index(st.session_state['opt_gics'], st.session_state.get("prefill_sector", ""))
+            sector = col1.selectbox(f"Sector{gap}", sector_options, index=sector_index, key=f"new_fs_{v}")
+            
+            instr_type_options, instr_type_index = get_selectbox_options_and_index(st.session_state['opt_type'], st.session_state.get("prefill_instrument_type", ""))
+            instr_type = col2.selectbox(f"Instrument Type{gap}", instr_type_options, index=instr_type_index, key=f"new_fit_{v}")
+            
+            source_options, source_index = get_selectbox_options_and_index(st.session_state['opt_source'], st.session_state.get("prefill_price_source", ""))
+            source = col1.selectbox(f"Price Source{gap}", source_options, index=source_index, key=f"new_fps_{v}")
+            
+            industry = col2.text_input(f"Industry{gap}", value=st.session_state.get("prefill_industry", ""), key=f"new_fi_{v}")
+            country = col1.text_input(f"Country{gap}", value=st.session_state.get("prefill_country", ""), key=f"new_fcty_{v}")
+
+            col_save, col_cancel = st.columns(2)
+            with col_save:
+                if st.form_submit_button("Save to Database", type="primary"):
+                    if not isin or len(isin) < 5:
+                        st.error("Please enter a valid ISIN before saving.")
+                    else:
+                        # Helper function to extract code or return None for null selections
+                        def extract_code_or_none(selected_value):
+                            if selected_value == "(None)":
+                                return None
+                            return extract_code(selected_value)
+                        
+                        new_asset_entry = {
+                            "isin": isin,
+                            "name": name,
+                            "currency": currency,
+                            "ticker": ticker,
+                            "price_currency": price_currency,
+                            "price_start_date": datetime.now().date().isoformat(),
+                            "price_source_code": extract_code_or_none(source),
+                            "instrument_type_code": extract_code_or_none(instr_type),
+                            "asset_class_code": extract_code_or_none(asset_class),
+                            "region_code": extract_code_or_none(region),
+                            "sector_code": extract_code_or_none(sector),
+                            "industry": industry,
+                            "country": country,
+                            "created_by": st.session_state.get('user_id'),
+                            "updated_by": None
+                        }
+
+                        try:
+                            save_asset_static_data(new_asset_entry)
+                            st.success(f"✅ {ticker} saved successfully!")
+                            st.cache_data.clear()
+                            # Clear prefill data
+                            for key in ["prefill_name", "prefill_ticker", "prefill_currency", "prefill_price_currency", "prefill_asset_class", 
+                                       "prefill_region", "prefill_sector", "prefill_instrument_type", "prefill_industry", "prefill_country", 
+                                       "prefill_price_source", "prefill_isin", "new_asset_form_version"]:
+                                if key in st.session_state:
+                                    del st.session_state[key]
+                            st.session_state["view"] = "list"
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error saving data: {e}")
+            
+            with col_cancel:
+                if st.form_submit_button("Cancel", type="secondary"):
+                    # Clear prefill data
+                    for key in ["prefill_name", "prefill_ticker", "prefill_currency", "prefill_price_currency", "prefill_asset_class", 
+                               "prefill_region", "prefill_sector", "prefill_instrument_type", "prefill_industry", "prefill_country", 
+                               "prefill_price_source", "prefill_isin", "new_asset_form_version"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
 
 
 

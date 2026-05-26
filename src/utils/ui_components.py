@@ -196,21 +196,24 @@ def yfinance_search_component(search_input, session_key_prefix="search", allow_i
     if results_key in st.session_state:
         df = st.session_state[results_key]
         st.subheader("1. Review & Edit Data")
-        if allow_isin_edit:
-            st.info("The ISIN is mandatory for saving. If the field is empty, please enter it manually in the table below.")
+        st.info("Review the data loaded from Yahoo Finance. All fields are read-only for your reference.")
         
         column_config = {
-            "ISIN": st.column_config.TextColumn("ISIN" + (" (Edit if empty)" if allow_isin_edit else ""), disabled=not allow_isin_edit),
+            "ISIN": st.column_config.TextColumn("ISIN", disabled=True),
             "Ticker": st.column_config.TextColumn("Ticker", disabled=True),
+            "Name": st.column_config.TextColumn("Name", disabled=True),
             "Price": st.column_config.NumberColumn("Price", format="%.2f", disabled=True),
             "Currency": st.column_config.TextColumn("Curr", disabled=True),
+            "Exchange": st.column_config.TextColumn("Exchange", disabled=True),
+            "Industry": st.column_config.TextColumn("Industry", disabled=True),
+            "Country": st.column_config.TextColumn("Country", disabled=True),
             "Volume (avg 7d)": st.column_config.NumberColumn("Vol (7d Avg)", disabled=True),
             "Sector Raw": st.column_config.TextColumn("Sector Raw", disabled=True),
-            "Sector_GICS": st.column_config.SelectboxColumn("Sector GICS", options=st.session_state['opt_gics'], required=True),
+            "Sector_GICS": st.column_config.TextColumn("Sector GICS", disabled=True),
             "Type Raw": st.column_config.TextColumn("Type Raw", disabled=True),
-            "InstrumentType": st.column_config.SelectboxColumn("Type", options=st.session_state['opt_type'], required=True),
-            "Region": st.column_config.SelectboxColumn("Region", options=st.session_state['opt_region'], required=True),
-            "AssetClass": st.column_config.SelectboxColumn("Asset Class", options=st.session_state['opt_asset'], required=True)
+            "InstrumentType": st.column_config.TextColumn("Type", disabled=True),
+            "Region": st.column_config.TextColumn("Region", disabled=True),
+            "AssetClass": st.column_config.TextColumn("Asset Class", disabled=True)
         }
         
         edited_df = st.data_editor(df, column_config=column_config, use_container_width=True, hide_index=True, key=editor_key)
