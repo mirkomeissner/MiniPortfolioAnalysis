@@ -14,19 +14,33 @@ def _build_asset_prices_df():
     raw_data = database.get_asset_prices()
     df = pd.DataFrame(raw_data)
     if df.empty:
-        return pd.DataFrame([], columns=["ISIN", "Name", "Price Date", "Price Close"])
+        return pd.DataFrame([], columns=["ISIN", "Name", "Price Date", "Price Close", "Currency", "Price Close Original", "Currency Original", "Dividend Cash", "Split Factor"])
 
     if "asset_static_data" in df.columns:
         df["Name"] = df["asset_static_data"].apply(
             lambda x: x.get("name") if isinstance(x, dict) else None
         )
+        df["Currency"] = df["asset_static_data"].apply(
+            lambda x: x.get("currency") if isinstance(x, dict) else None
+        )
+        df["Currency Original"] = df["asset_static_data"].apply(
+            lambda x: x.get("price_currency") if isinstance(x, dict) else None
+        )
         df = df.drop(columns=["asset_static_data"])
 
-    return df.rename(columns={
+    df = df.rename(columns={
         "isin": "ISIN",
         "price_date": "Price Date",
-        "price_close": "Price Close"
+        "price_close": "Price Close",
+        "price_close_original": "Price Close Original",
+        "dividend_cash": "Dividend Cash",
+        "split_factor": "Split Factor"
     })
+    
+    # Reorder columns to desired order
+    column_order = ["ISIN", "Name", "Price Date", "Price Close", "Currency", "Price Close Original", "Currency Original", "Dividend Cash", "Split Factor"]
+    available_cols = [col for col in column_order if col in df.columns]
+    return df[available_cols]
 
 
 def _build_fx_rates_df():
