@@ -2,6 +2,7 @@ import datetime
 
 import streamlit as st
 import pandas as pd
+import requests
 
 import src.database as database
 from src.utils import apply_advanced_filters
@@ -197,6 +198,62 @@ def price_table_view():
 
     filtered_df = apply_advanced_filters(df, "asset_prices")
     st.dataframe(filtered_df, use_container_width=True)
+
+# --- AB HIER: Tiingo API Button am Ende des Screens ---
+    st.markdown("---")
+    st.subheader("Booking Holdings (BKNG) Tiingo Abfrage")
+    
+    if st.button("BKNG Kurse der letzten 60 Tage laden", use_container_width=True):
+        if "TIINGO_API_KEY" not in st.secrets:
+            st.error("Bitte definiere 'TIINGO_API_KEY' in deiner secrets.toml!")
+        else:
+            tiingo_token = st.secrets["TIINGO_API_KEY"]
+            
+            # Zeitraum berechnen
+            end_date = datetime.date.today().strftime('%Y-%m-%d')
+            start_date = (datetime.date.today() - datetime.timedelta(days=60)).strftime('%Y-%m-%d')
+            
+            ticker = "BKNG"
+            url = f"https://api.tiingo.com/tiingo/daily/{ticker}/prices?startDate={start_date}&endDate={end_date}"
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Token {tiingo_token}'
+            }
+            
+            with st.spinner("Historische Daten werden von Tiingo abgerufen..."):
+                try:
+                    response = requests.get(url, headers=headers)
+                    if response.status_code == 200:
+                        tiingo_data = response.json()
+                        
+                        if tiingo_data:
+                            # In DataFrame konvertieren & aufbereiten
+                            tiingo_df = pd.DataFrame(tiingo_data)
+                            tiingo_df['Datum'] = pd.to_datetime(tiingo_df['date']).dt.date
+                            
+                            # Umbenennung laut Vorgabe
+                            tiingo_df.rename(columns={
+                                'close': 'Close', 
+                                'adjClose': 'Adjusted Close',
+                                'divCash': 'Dividende ($)',
+                                'splitFactor': 'Split-Faktor'
+                            }, inplace=True)
+                            
+                            # Gewünschte Spalten filtern und sortieren (Neueste zuerst)
+                            output_df = tiingo_df[['Datum', 'Close', 'Adjusted Close', 'Dividende ($)', 'Split-Faktor']]
+                            output_df = output_df.sort_values(by="Datum", ascending=False).reset_index(drop=True)
+                            
+                            # Reine Tabellenausgabe
+                            st.dataframe(output_df, use_container_width=True)
+                        else:
+                            st.warning("Keine Daten für diesen Zeitraum bei Tiingo gefunden.")
+                    else:
+                        st.error(f"Fehler bei der Tiingo-API: Statuscode {response.status_code}")
+                except Exception as e:
+                    st.error(f"Fehler bei der Tiingo-Abfrage: {e}")
+
+
+
 
 
 def fx_table_view():
