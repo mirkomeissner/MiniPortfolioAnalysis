@@ -118,7 +118,7 @@ def map_yahoo_to_asset_class(quote_type, symbol_name=""):
     return "EQU"
 
 
-def yfinance_search_component(search_input, session_key_prefix="search", allow_isin_edit=True):
+def yfinance_search_component(search_input, session_key_prefix="search"):
     """
     Reusable component for yfinance search with results grid and selection.
     
@@ -195,7 +195,7 @@ def yfinance_search_component(search_input, session_key_prefix="search", allow_i
 
     if results_key in st.session_state:
         df = st.session_state[results_key]
-        st.subheader("1. Review & Edit Data")
+        st.subheader("1. Review Data")
         st.info("Review the data loaded from Yahoo Finance. All fields are read-only for your reference.")
         
         column_config = {

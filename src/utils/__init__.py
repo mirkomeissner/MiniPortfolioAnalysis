@@ -16,6 +16,7 @@ from .ui_components import (
     yfinance_search_component
 )
 from .yf_wrapper import my_yf
+from .tiingo_wrapper import my_tiingo
 from .email_service import send_duplicate_info_mail
 
 __all__ = [
@@ -32,5 +33,6 @@ __all__ = [
     'map_yahoo_to_asset_class',
     'yfinance_search_component',
     'my_yf',
+    'my_tiingo',
     'send_duplicate_info_mail',
 ]
