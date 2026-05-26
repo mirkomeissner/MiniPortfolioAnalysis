@@ -14,8 +14,202 @@ from src.utils import (
     get_selectbox_options_and_index,
     ensure_reference_data, 
     apply_advanced_filters,
-    yfinance_search_component
+    yfinance_search_component,
+    my_yf,
+    my_tiingo
 )
+
+def asset_form_component(mode="new", asset=None, version=0):
+    """
+    Zentrale, wiederverwendbare UI-Komponente für das Asset-Formular.
+    
+    :param mode: "new" für Neuanlage, "edit" für Bearbeitung
+    :param asset: Das originale Asset-Dict aus der Datenbank (nur bei "edit")
+    :param version: Die aktuelle form_version / new_asset_form_version für den Reset-Key
+    """
+    ensure_reference_data()
+    
+    # Präfixe für Keys und Formular-ID bestimmen
+    form_id = "new_asset_form" if mode == "new" else "edit_form"
+    key_prefix = "new_f" if mode == "new" else "f"
+    gap = "&nbsp;" * 6
+    
+    # Hilfsfunktion für Labels (zeigt Originalwert nur im Edit-Modus)
+    def get_label(label_text, field_key):
+        if mode == "edit" and asset and field_key in asset:
+            return f"{label_text}{gap}:blue[(original: {asset[field_key]})]"
+        return f"{label_text}{gap}"
+
+    # Hilfsfunktion für Default-Werte
+    def get_default_value(prefill_key, asset_key):
+        if mode == "edit" and asset:
+            return st.session_state.get(f"prefill_{prefill_key}", asset.get(asset_key, ""))
+        return st.session_state.get(f"prefill_{prefill_key}", "")
+
+    with st.form(form_id):
+        col1, col2 = st.columns(2)
+        
+        # ISIN Steuerung (Bei "new" editierbar, bei "edit" gesperrt)
+        if mode == "new":
+            isin = col1.text_input("ISIN (Primary Key)", value=st.session_state.get("prefill_isin", ""), key=f"{key_prefix}n_isin_{version}")
+        else:
+            isin = st.session_state.get("edit_isin")
+            col1.text_input("ISIN (Primary Key)", value=isin, disabled=True)
+
+        # Textfelder
+        name = col1.text_input(get_label("Name", "Name"), value=get_default_value("name", "Name"), key=f"{key_prefix}n_{version}")       
+        ticker = col2.text_input(get_label("Ticker", "Ticker"), value=get_default_value("ticker", "Ticker"), key=f"{key_prefix}t_{version}")
+        currency = col2.text_input(get_label("Currency", "Currency"), value=get_default_value("currency", "Currency"), key=f"{key_prefix}c_{version}")
+        price_currency = col2.text_input(get_label("Price Currency", "Price Currency"), value=get_default_value("price_currency", "Price Currency"), key=f"{key_prefix}pc_{version}") 
+
+        # Selectboxen mit Index-Ermittlung
+        asset_class_opt, asset_class_idx = get_selectbox_options_and_index(
+            st.session_state['opt_asset'], get_default_value("asset_class", "Asset Class")
+        )
+        asset_class = col1.selectbox(get_label("Asset Class", "Asset Class"), asset_class_opt, index=asset_class_idx, key=f"{key_prefix}ac_{version}")
+        
+        region_opt, region_idx = get_selectbox_options_and_index(
+            st.session_state['opt_region'], get_default_value("region", "Region")
+        )
+        region = col2.selectbox(get_label("Region", "Region"), region_opt, index=region_idx, key=f"{key_prefix}r_{version}")
+        
+        sector_opt, sector_idx = get_selectbox_options_and_index(
+            st.session_state['opt_gics'], get_default_value("sector", "Sector")
+        )
+        sector = col1.selectbox(get_label("Sector", "Sector"), sector_opt, index=sector_idx, key=f"{key_prefix}s_{version}")
+        
+        instr_type_opt, instr_type_idx = get_selectbox_options_and_index(
+            st.session_state['opt_type'], get_default_value("instrument_type", "Type")
+        )
+        instr_type = col2.selectbox(get_label("Instrument Type", "Type"), instr_type_opt, index=instr_type_idx, key=f"{key_prefix}it_{version}")
+        
+        source_opt, source_idx = get_selectbox_options_and_index(
+            st.session_state['opt_source'], get_default_value("price_source", "Price Source")
+        )
+        source = col1.selectbox(get_label("Price Source", "Price Source"), source_opt, index=source_idx, key=f"{key_prefix}ps_{version}")
+        
+        # Restliche Textfelder
+        industry = col2.text_input(get_label("Industry", "Industry"), value=get_default_value("industry", "Industry"), key=f"{key_prefix}i_{version}")
+        country = col1.text_input(get_label("Country", "Country"), value=get_default_value("country", "Country"), key=f"{key_prefix}cty_{version}")
+
+        # --- NEU: BUTTON-ZEILE (Nebeneinander platziert) ---
+        st.markdown(" ") # Kleiner Abstandhalter
+        btn_col1, btn_col2 = st.columns([1, 1])
+        
+        with btn_col1:
+            submit_btn_label = "Save to Database" if mode == "new" else "Save Changes"
+            submit_clicked = st.form_submit_button(submit_btn_label, type="primary")
+            
+        with btn_col2:
+            check_price_clicked = st.form_submit_button("🔍 Check Current Price", type="secondary")
+
+        # --- LOGIK: PREIS PRÜFEN (Abfangen vor der Speicherlogik) ---
+        if check_price_clicked:
+            if not ticker:
+                st.error("Please enter a Ticker first to check prices.")
+            else:
+                source_code = extract_code(source) if source != "(None)" else ""
+                
+                with st.spinner(f"Fetching price for '{ticker}' via {source_code}..."):
+                    price = None
+                    curr = None
+                    
+                    if source_code == "YFN":
+                        try:
+                            # Ticker-Objekt über den geladenen Proxy abfragen
+                            ticker_obj = my_yf.Ticker(ticker)
+                            # Im echten yfinance liegt der Kurs oft in .info; im Mock ebenfalls vorhanden
+                            price = ticker_obj.info.get("currentPrice") or ticker_obj.info.get("regularMarketPrice")
+                            curr = ticker_obj.info.get("currency")
+                            
+                            # Fallback falls history herhalten muss (falls .info leer ist)
+                            if price is None:
+                                hist = ticker_obj.history(period="1d")
+                                if not hist.empty:
+                                    price = hist["Close"].iloc[-1]
+                        except Exception as e:
+                            st.error(f"Error fetching from Yahoo Finance: {e}")
+                            
+                    elif source_code == "TGO":
+                        try:
+                            # Abfrage über den neuen Tiingo Wrapper
+                            res = my_tiingo.get_latest_price(ticker)
+                            price = res.get("price")
+                            curr = res.get("currency")
+                        except Exception as e:
+                            st.error(f"Error fetching from Tiingo: {e}")
+                    else:
+                        st.warning(f"No pricing integration available for Price Source code: '{source_code}'. Please use YFN or TGO.")
+                    
+                    # Ergebnis visualisieren
+                    if price is not None:
+                        st.info(f"**Latest Price:** {price:,.4f} {curr if curr else ''}")
+                    elif source_code in ["YFN", "TGO"]:
+                        st.error(f"Could not extract a valid price for Ticker '{ticker}'. Check if symbol is correct.")
+
+        # --- LOGIK BEIM SPEICHERN ---
+        if submit_clicked:
+            if mode == "new" and (not isin or len(isin) < 5):
+                st.error("Please enter a valid ISIN before saving.")
+                return
+
+            def extract_code_or_none(selected_value):
+                return None if selected_value == "(None)" else extract_code(selected_value)
+
+            # Gemeinsames Payload-Mapping
+            payload = {
+                "name": name,
+                "ticker": ticker,
+                "currency": currency,
+                "price_currency": price_currency,
+                "asset_class_code": extract_code_or_none(asset_class),
+                "region_code": extract_code_or_none(region),
+                "sector_code": extract_code_or_none(sector),
+                "instrument_type_code": extract_code_or_none(instr_type),
+                "price_source_code": extract_code_or_none(source),
+                "industry": industry,
+                "country": country,
+            }
+
+            try:
+                if mode == "new":
+                    payload.update({
+                        "isin": isin,
+                        "price_start_date": datetime.now().date().isoformat(),
+                        "created_by": st.session_state.get('user_id'),
+                        "updated_by": None
+                    })
+                    save_asset_static_data(payload)
+                    st.success(f"✅ {ticker} saved successfully!")
+                else:
+                    payload.update({
+                        "updated_at": datetime.now().isoformat(),
+                        "updated_by": st.session_state.get("user_id")
+                    })
+                    update_asset_static_data(isin, payload)
+                    st.success("Asset updated successfully!")
+                
+                st.cache_data.clear()
+                
+                # Session State aufräumen
+                keys_to_clear = [
+                    "prefill_name", "prefill_ticker", "prefill_currency", "prefill_price_currency", 
+                    "prefill_asset_class", "prefill_region", "prefill_sector", "prefill_instrument_type", 
+                    "prefill_industry", "prefill_country", "prefill_price_source", "prefill_isin",
+                    "new_asset_form_version", "form_version", "last_edit_isin", "last_search_input"
+                ]
+                for key in keys_to_clear:
+                    if key in st.session_state:
+                        del st.session_state[key]
+
+                st.session_state["view"] = "list"
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error saving data: {e}")
+
+
+
+
 
 def ticker_search_view():
     st.subheader("🔍 Search New Asset")
@@ -39,7 +233,7 @@ def ticker_search_view():
     search_input = st.text_input("Enter ISIN, Ticker or Name", placeholder="e.g. AU000000DRO2 or Apple")
     st.session_state["last_search_input"] = search_input
     
-    selected_row, edited_df = yfinance_search_component(search_input, session_key_prefix="ticker_search", allow_isin_edit=True)
+    selected_row, edited_df = yfinance_search_component(search_input, session_key_prefix="ticker_search")
 
     if selected_row is not None and edited_df is not None:
         if st.button("Prefill Asset with loaded Data", type="primary"):
@@ -74,90 +268,8 @@ def ticker_search_view():
     if "prefill_isin" in st.session_state:
         st.markdown("---")
         st.subheader("📝 Review & Edit New Asset Data")
-        
-        with st.form("new_asset_form"):
-            col1, col2 = st.columns(2)
-            isin = col1.text_input("ISIN (Primary Key)", value=st.session_state.get("prefill_isin", ""), key=f"new_fn_isin_{v}")
-            gap = "&nbsp;" * 6
 
-            # Pre-fill form fields with session state values
-            name = col1.text_input(f"Name{gap}", value=st.session_state.get("prefill_name", ""), key=f"new_fn_{v}")       
-            ticker = col2.text_input(f"Ticker{gap}", value=st.session_state.get("prefill_ticker", ""), key=f"new_ft_{v}")
-            currency = col2.text_input(f"Currency{gap}", value=st.session_state.get("prefill_currency", ""), key=f"new_fc_{v}")
-            price_currency = col2.text_input(f"Price Currency{gap}", value=st.session_state.get("prefill_price_currency", ""), key=f"new_fpc_{v}") 
-
-            asset_class_options, asset_class_index = get_selectbox_options_and_index(st.session_state['opt_asset'], st.session_state.get("prefill_asset_class", ""))
-            asset_class = col1.selectbox(f"Asset Class{gap}", asset_class_options, index=asset_class_index, key=f"new_fac_{v}")
-            
-            region_options, region_index = get_selectbox_options_and_index(st.session_state['opt_region'], st.session_state.get("prefill_region", ""))
-            region = col2.selectbox(f"Region{gap}", region_options, index=region_index, key=f"new_fr_{v}")
-            
-            sector_options, sector_index = get_selectbox_options_and_index(st.session_state['opt_gics'], st.session_state.get("prefill_sector", ""))
-            sector = col1.selectbox(f"Sector{gap}", sector_options, index=sector_index, key=f"new_fs_{v}")
-            
-            instr_type_options, instr_type_index = get_selectbox_options_and_index(st.session_state['opt_type'], st.session_state.get("prefill_instrument_type", ""))
-            instr_type = col2.selectbox(f"Instrument Type{gap}", instr_type_options, index=instr_type_index, key=f"new_fit_{v}")
-            
-            source_options, source_index = get_selectbox_options_and_index(st.session_state['opt_source'], st.session_state.get("prefill_price_source", ""))
-            source = col1.selectbox(f"Price Source{gap}", source_options, index=source_index, key=f"new_fps_{v}")
-            
-            industry = col2.text_input(f"Industry{gap}", value=st.session_state.get("prefill_industry", ""), key=f"new_fi_{v}")
-            country = col1.text_input(f"Country{gap}", value=st.session_state.get("prefill_country", ""), key=f"new_fcty_{v}")
-
-            col_save, col_cancel = st.columns(2)
-            with col_save:
-                if st.form_submit_button("Save to Database", type="primary"):
-                    if not isin or len(isin) < 5:
-                        st.error("Please enter a valid ISIN before saving.")
-                    else:
-                        # Helper function to extract code or return None for null selections
-                        def extract_code_or_none(selected_value):
-                            if selected_value == "(None)":
-                                return None
-                            return extract_code(selected_value)
-                        
-                        new_asset_entry = {
-                            "isin": isin,
-                            "name": name,
-                            "currency": currency,
-                            "ticker": ticker,
-                            "price_currency": price_currency,
-                            "price_start_date": datetime.now().date().isoformat(),
-                            "price_source_code": extract_code_or_none(source),
-                            "instrument_type_code": extract_code_or_none(instr_type),
-                            "asset_class_code": extract_code_or_none(asset_class),
-                            "region_code": extract_code_or_none(region),
-                            "sector_code": extract_code_or_none(sector),
-                            "industry": industry,
-                            "country": country,
-                            "created_by": st.session_state.get('user_id'),
-                            "updated_by": None
-                        }
-
-                        try:
-                            save_asset_static_data(new_asset_entry)
-                            st.success(f"✅ {ticker} saved successfully!")
-                            st.cache_data.clear()
-                            # Clear prefill data
-                            for key in ["prefill_name", "prefill_ticker", "prefill_currency", "prefill_price_currency", "prefill_asset_class", 
-                                       "prefill_region", "prefill_sector", "prefill_instrument_type", "prefill_industry", "prefill_country", 
-                                       "prefill_price_source", "prefill_isin", "new_asset_form_version"]:
-                                if key in st.session_state:
-                                    del st.session_state[key]
-                            st.session_state["view"] = "list"
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error saving data: {e}")
-            
-            with col_cancel:
-                if st.form_submit_button("Cancel", type="secondary"):
-                    # Clear prefill data
-                    for key in ["prefill_name", "prefill_ticker", "prefill_currency", "prefill_price_currency", "prefill_asset_class", 
-                               "prefill_region", "prefill_sector", "prefill_instrument_type", "prefill_industry", "prefill_country", 
-                               "prefill_price_source", "prefill_isin", "new_asset_form_version"]:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    st.rerun()
+        asset_form_component(mode="new", version=v)     
 
 
 
@@ -167,8 +279,19 @@ def asset_table_view():
 
     if current_view == "search":
         if st.button("⬅ Back to List"):
+            keys_to_clear = [
+                "prefill_name", "prefill_ticker", "prefill_currency", "prefill_price_currency", 
+                "prefill_asset_class", "prefill_region", "prefill_sector", "prefill_instrument_type", 
+                "prefill_industry", "prefill_country", "prefill_price_source", "prefill_isin",
+                "new_asset_form_version", "last_search_input", "current_search_input"
+            ]
+            for key in keys_to_clear:
+                if key in st.session_state:
+                    del st.session_state[key]
+                    
             st.session_state["view"] = "list"
             st.rerun()
+
         ticker_search_view()
 
     elif current_view == "edit":
@@ -264,6 +387,16 @@ def render_edit_view():
 
     with col_back:
         if st.button("⬅ Cancel"):
+            keys_to_clear = [
+                "prefill_name", "prefill_ticker", "prefill_currency", "prefill_price_currency", 
+                "prefill_asset_class", "prefill_region", "prefill_sector", "prefill_instrument_type", 
+                "prefill_industry", "prefill_country", "prefill_price_source", "form_version", 
+                "last_edit_isin"
+            ]
+            for key in keys_to_clear:
+                if key in st.session_state:
+                    del st.session_state[key]
+                    
             st.session_state["view"] = "list"
             st.rerun()
 
@@ -306,12 +439,7 @@ def render_edit_view():
     if closed_val:
         st.warning(f"This asset was closed on {closed_val}")
 
-    # st.write("---")
-
-    # --- RELOAD FROM YAHOO FINANCE ---
-    # search_input = st.text_input("Enter ISIN, Ticker or Name for reload", placeholder="e.g. AU000000DRO2 or Apple", key="reload_search_input")
-    
-    selected_row, edited_df = yfinance_search_component(search_input = isin, session_key_prefix="reload", allow_isin_edit=False)
+    selected_row, edited_df = yfinance_search_component(search_input=isin, session_key_prefix="reload")
     
     if selected_row is not None and edited_df is not None:
         if st.button("Update Asset with Reloaded Data", type="primary"):
@@ -337,80 +465,5 @@ def render_edit_view():
             st.success("Form pre-filled with reloaded data. Please review and save below.")
             st.rerun()
 
-    # st.write("---")
-
-    # --- MAIN EDIT FORM ---
-    # REPLACEMENT 1: Using our central loader instead of the long IF-block
-    ensure_reference_data()
-
-    with st.form("edit_form"):
-        col1, col2 = st.columns(2)
-        col1.text_input("ISIN (Primary Key)", value=isin, disabled=True)
-        gap = "&nbsp;" * 6
-
-        # --- NEU: key= Parameter mit Version v hinzugefügt ---
-        name = col1.text_input(f"Name{gap}:blue[(original: {asset['Name']})]", value=st.session_state.get("prefill_name", asset["Name"]), key=f"fn_{v}")       
-        ticker = col2.text_input(f"Ticker{gap}:blue[(original: {asset['Ticker']})]", value=st.session_state.get("prefill_ticker", asset["Ticker"]), key=f"ft_{v}")
-        currency = col2.text_input(f"Currency{gap}:blue[(original: {asset['Currency']})]", value=st.session_state.get("prefill_currency", asset["Currency"]), key=f"fc_{v}")
-        price_currency = col2.text_input(f"Price Currency{gap}:blue[(original: {asset['Price Currency']})]", value=st.session_state.get("prefill_price_currency", asset["Price Currency"]), key=f"fpc_{v}") 
-
-        
-        # Hinweis: Die Keys hier (z.B. asset["Asset Class"]) müssen 
-        # exakt so heißen wie im flattened_data dict der database.py!
-        asset_class_options, asset_class_index = get_selectbox_options_and_index(st.session_state['opt_asset'], st.session_state.get("prefill_asset_class", asset["Asset Class"]))
-        asset_class = col1.selectbox(f"Asset Class{gap}:blue[(original: {asset['Asset Class']})]", asset_class_options, index=asset_class_index, key=f"fac_{v}")
-        
-        region_options, region_index = get_selectbox_options_and_index(st.session_state['opt_region'], st.session_state.get("prefill_region", asset["Region"]))
-        region = col2.selectbox(f"Region{gap}:blue[(original: {asset['Region']})]", region_options, index=region_index, key=f"fr_{v}")
-        
-        sector_options, sector_index = get_selectbox_options_and_index(st.session_state['opt_gics'], st.session_state.get("prefill_sector", asset["Sector"]))
-        sector = col1.selectbox(f"Sector{gap}:blue[(original: {asset['Sector']})]", sector_options, index=sector_index, key=f"fs_{v}")
-        
-        instr_type_options, instr_type_index = get_selectbox_options_and_index(st.session_state['opt_type'], st.session_state.get("prefill_instrument_type", asset["Type"]))
-        instr_type = col2.selectbox(f"Instrument Type{gap}:blue[(original: {asset['Type']})]", instr_type_options, index=instr_type_index, key=f"fit_{v}")
-        
-        source_options, source_index = get_selectbox_options_and_index(st.session_state['opt_source'], st.session_state.get("prefill_price_source", asset["Price Source"]))
-        source = col1.selectbox(f"Price Source{gap}:blue[(original: {asset['Price Source']})]", source_options, index=source_index, key=f"fps_{v}")
-        
-        industry = col2.text_input(f"Industry{gap}:blue[(original: {asset['Industry']})]", value=st.session_state.get("prefill_industry", asset["Industry"]), key=f"fi_{v}")
-        country = col1.text_input(f"Country{gap}:blue[(original: {asset['Country']})]", value=st.session_state.get("prefill_country", asset["Country"]), key=f"fcty_{v}")
-
-        if st.form_submit_button("Save Changes", type="primary"):
-            # Helper function to extract code or return None for null selections
-            def extract_code_or_none(selected_value):
-                if selected_value == "(None)":
-                    return None
-                return extract_code(selected_value)
-            
-            updated_payload = {
-                "name": name,
-                "ticker": ticker,
-                "currency": currency,
-                "price_currency": price_currency,
-                "asset_class_code": extract_code_or_none(asset_class),
-                "region_code": extract_code_or_none(region),
-                "sector_code": extract_code_or_none(sector),
-                "instrument_type_code": extract_code_or_none(instr_type),
-                "price_source_code": extract_code_or_none(source),
-                "industry": industry,
-                "country": country,
-                "updated_at": datetime.now().isoformat(),
-                "updated_by": st.session_state.get("user_id")
-            }
-            update_asset_static_data(isin, updated_payload)
-            st.success("Asset updated successfully!")
-            # WICHTIG: Cache leeren, damit die Liste die neuen Daten zeigt
-            st.cache_data.clear() 
-            # Clear prefill data
-            for key in ["prefill_name", "prefill_ticker", "prefill_currency", "prefill_price_currency", "prefill_asset_class", 
-                       "prefill_region", "prefill_sector", "prefill_instrument_type", "prefill_industry", "prefill_country", "prefill_price_source", "form_version"]:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.session_state["view"] = "list"
-            st.rerun()
-
-
-
-
-
+    asset_form_component(mode="edit", asset=asset, version=v)
 
