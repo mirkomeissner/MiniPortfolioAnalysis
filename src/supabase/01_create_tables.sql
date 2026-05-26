@@ -130,6 +130,13 @@ CREATE OR REPLACE VIEW public.asset_static_data WITH (security_invoker = true) A
 
 ALTER TABLE shared.asset_static_data
     ADD COLUMN IF NOT EXISTS price_start_date DATE;
+ALTER TABLE shared.asset_static_data 
+    ADD COLUMN IF NOT EXISTS price_currency VARCHAR(3);
+
+ALTER TABLE shared.asset_static_data
+    ADD CONSTRAINT fk_static_price_currency 
+    FOREIGN KEY (price_currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL;
+
 
 -- Mapping for countries to regions
 CREATE TABLE IF NOT EXISTS shared.country_region_mapping (
@@ -146,6 +153,9 @@ CREATE TABLE IF NOT EXISTS shared.asset_prices (
     isin VARCHAR(12) NOT NULL,
     price_date DATE NOT NULL,
     price_close NUMERIC(20, 6) NOT NULL,
+    price_close_original NUMERIC(20, 6),
+    dividend_cash NUMERIC(20, 6) DEFAULT 0.0,
+    split_factor NUMERIC(20, 10) DEFAULT 1.0,
     -- Composite primary key: ensures one price per asset per day
     PRIMARY KEY (isin, price_date),
 

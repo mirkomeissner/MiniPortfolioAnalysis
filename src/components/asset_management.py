@@ -26,8 +26,9 @@ def handle_save_request(row, isin):
         "name": row["Name"],
         "currency": row["Currency"],
         "ticker": row["Ticker"],
+        "price_currency": row["Currency"],
         "price_start_date": datetime.now().date().isoformat(),
-        "price_source_code": "YFN",
+        "price_source_code": "TGO" if row["Currency"] == "USD" else "MKS",
         "instrument_type_code": extract_code(row["InstrumentType"]),
         "asset_class_code": extract_code(row["AssetClass"]),
         "region_code": extract_code(row["Region"]),
@@ -113,7 +114,7 @@ def render_list_view():
     column_order = [
         "ISIN", "Name", "Ticker", "Currency", "Type", 
         "Asset Class", "Region", "Sector", "Industry", 
-        "Country", "Price Source", "Price Start Date", "Closed On", 
+        "Country", "Price Source", "Price Currency", "Price Start Date", "Closed On", 
         "Created At", "Created By", "Updated At", "Updated By"
     ]
     existing_cols = [c for c in column_order if c in filtered_df.columns]
@@ -222,6 +223,7 @@ def render_edit_view():
             st.session_state["prefill_name"] = selected_row["Name"]
             st.session_state["prefill_ticker"] = selected_row["Ticker"]
             st.session_state["prefill_currency"] = selected_row["Currency"]
+            st.session_state["prefill_price_currency"] = selected_row["Currency"]
             st.session_state["prefill_asset_class"] = selected_row["AssetClass"]
             st.session_state["prefill_region"] = selected_row["Region"]
             st.session_state["prefill_sector"] = selected_row["Sector_GICS"]
@@ -254,6 +256,8 @@ def render_edit_view():
         name = col1.text_input(f"Name{gap}:blue[(original: {asset['Name']})]", value=st.session_state.get("prefill_name", asset["Name"]), key=f"fn_{v}")       
         ticker = col2.text_input(f"Ticker{gap}:blue[(original: {asset['Ticker']})]", value=st.session_state.get("prefill_ticker", asset["Ticker"]), key=f"ft_{v}")
         currency = col2.text_input(f"Currency{gap}:blue[(original: {asset['Currency']})]", value=st.session_state.get("prefill_currency", asset["Currency"]), key=f"fc_{v}")
+        price_currency = col2.text_input(f"Price Currency{gap}:blue[(original: {asset['Price Currency']})]", value=st.session_state.get("prefill_price_currency", asset["Price Currency"]), key=f"fpc_{v}") 
+
         
         # Hinweis: Die Keys hier (z.B. asset["Asset Class"]) müssen 
         # exakt so heißen wie im flattened_data dict der database.py!
@@ -286,6 +290,7 @@ def render_edit_view():
                 "name": name,
                 "ticker": ticker,
                 "currency": currency,
+                "price_currency": price_currency,
                 "asset_class_code": extract_code_or_none(asset_class),
                 "region_code": extract_code_or_none(region),
                 "sector_code": extract_code_or_none(sector),
@@ -301,7 +306,7 @@ def render_edit_view():
             # WICHTIG: Cache leeren, damit die Liste die neuen Daten zeigt
             st.cache_data.clear() 
             # Clear prefill data
-            for key in ["prefill_name", "prefill_ticker", "prefill_currency", "prefill_asset_class", 
+            for key in ["prefill_name", "prefill_ticker", "prefill_currency", "prefill_price_currency", "prefill_asset_class", 
                        "prefill_region", "prefill_sector", "prefill_instrument_type", "prefill_industry", "prefill_country", "prefill_price_source", "form_version"]:
                 if key in st.session_state:
                     del st.session_state[key]
