@@ -133,9 +133,20 @@ ALTER TABLE shared.asset_static_data
 ALTER TABLE shared.asset_static_data 
     ADD COLUMN IF NOT EXISTS price_currency VARCHAR(3);
 
-ALTER TABLE shared.asset_static_data
-    ADD CONSTRAINT fk_static_price_currency 
-    FOREIGN KEY (price_currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.table_constraints 
+        WHERE constraint_name = 'fk_static_price_currency' 
+          AND table_schema = 'shared'
+          AND table_name = 'asset_static_data'
+    ) THEN
+        ALTER TABLE shared.asset_static_data
+            ADD CONSTRAINT fk_static_price_currency 
+            FOREIGN KEY (price_currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL;
+    END IF;
+END $$;
 
 
 -- Mapping for countries to regions
