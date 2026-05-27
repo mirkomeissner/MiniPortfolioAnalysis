@@ -103,7 +103,7 @@ class MyYFinanceProxy:
             group_by = kwargs.get("group_by", "column")
             
             # 1. Vereinheitlichen: Mach aus einem String eine Liste
-            ticker_list = [tickers] if isinstance(tickers, str) else tickers
+            ticker_list = [tickers] if isinstance(tickers, str) else list(tickers)
             
             # 2. Generiere die einzelnen Mock-DataFrames
             all_dfs = {}

@@ -203,43 +203,55 @@ ON CONFLICT (country) DO UPDATE SET region_code = EXCLUDED.region_code;
 
 -- RESTORE BACKUP DATA
 
-INSERT INTO shared.asset_static_data (
-    isin,
-    name,
-    risk_currency,
-    instrument_type_code,
-    asset_class_code,
-    region_code,
-    sector_code,
-    industry,
-    country,
-    closed_on,
-    price_source_code,
-    price_currency,
-    price_start_date,
-    ticker,
-    created_at,
-    created_by,
-    updated_at,
-    updated_by
-)
-SELECT 
-    isin,
-    name,
-    risk_currency,
-    instrument_type_code,
-    asset_class_code,
-    region_code,
-    sector_code,
-    industry,
-    country,
-    closed_on,
-    price_source_code,
-    price_currency,
-    price_start_date,
-    ticker,
-    created_at,
-    created_by,
-    updated_at,
-    updated_by
-FROM backup.asset_static_data;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 
+        FROM information_schema.tables 
+        WHERE table_schema = 'backup' 
+          AND table_name = 'asset_static_data'
+    ) THEN
+        EXECUTE '
+            INSERT INTO shared.asset_static_data (
+                isin,
+                name,
+                risk_currency,
+                instrument_type_code,
+                asset_class_code,
+                region_code,
+                sector_code,
+                industry,
+                country,
+                closed_on,
+                price_source_code,
+                price_currency,
+                price_start_date,
+                ticker,
+                created_at,
+                created_by,
+                updated_at,
+                updated_by
+            )
+            SELECT 
+                isin,
+                name,
+                risk_currency,
+                instrument_type_code,
+                asset_class_code,
+                region_code,
+                sector_code,
+                industry,
+                country,
+                closed_on,
+                price_source_code,
+                price_currency,
+                price_start_date,
+                ticker,
+                created_at,
+                created_by,
+                updated_at,
+                updated_by
+            FROM backup.asset_static_data
+        ';
+    END IF;
+END $$;
