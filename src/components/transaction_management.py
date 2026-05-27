@@ -656,21 +656,19 @@ def render_list_view():
         }
     )
 
-
-
 def render_transaction_form():
     """Renders an improved transaction form with dynamic FX-Rate locking."""
+    # --- REPLACEMENT: CENTRAL REFERENCE DATA LOADING ---
+    # This replaces the manual 'if ref_trans_loaded not in st.session_state' block
+    # It ensures all required dropdown options are available in st.session_state
+    ensure_reference_data()
+
     st.subheader("Create New Transaction")
     
     # Navigation back to the list view
     if st.button("⬅ Cancel"):
         st.session_state["view"] = "list"
         st.rerun()
-
-    # --- REPLACEMENT: CENTRAL REFERENCE DATA LOADING ---
-    # This replaces the manual 'if ref_trans_loaded not in st.session_state' block
-    # It ensures all required dropdown options are available in st.session_state
-    ensure_reference_data()
 
     # Local UI options for currency
     currency_options = ["EUR", "USD", "CHF", "GBP", "JPY", "CAD"]
