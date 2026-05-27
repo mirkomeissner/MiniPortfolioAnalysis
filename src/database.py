@@ -159,27 +159,42 @@ def get_fx_rates():
         return []
 
 def get_non_eur_asset_currency_start_dates():
-    """Returns the earliest price_start_date for every non-EUR asset currency."""
+    """
+    Returns the earliest price_start_date for every non-EUR asset currency,
+    considering BOTH risk_currency and price_currency.
+    """
     supabase = _get_client()
     try:
+        # 1. Fetch both currency columns and the start date
         res = (supabase.schema("shared").table("asset_static_data")
-               .select("risk_currency, price_start_date")
-               .neq("risk_currency", "EUR")
+               .select("risk_currency, price_currency, price_start_date")
                .execute())
+        
         if not res.data:
             return {}
 
         currency_dates = {}
+        
+        # 2. Process every asset row
         for item in res.data:
-            currency = item.get("risk_currency")
             start_date = item.get("price_start_date")
-            if not currency or not start_date:
+            if not start_date:
                 continue
-
-            if currency not in currency_dates or start_date < currency_dates[currency]:
-                currency_dates[currency] = start_date
+            
+            # Extract both currencies per asset
+            r_curr = item.get("risk_currency")
+            p_curr = item.get("price_currency")
+            
+            # Helper to check and aggregate a currency
+            for curr in [r_curr, p_curr]:
+                if curr and curr.upper() != "EUR":
+                    curr_upper = curr.upper()
+                    # Keep the earliest date found for this currency
+                    if curr_upper not in currency_dates or start_date < currency_dates[curr_upper]:
+                        currency_dates[curr_upper] = start_date
 
         return currency_dates
+        
     except Exception as e:
         st.error(f"Error loading asset currency start dates: {e}")
         return {}
