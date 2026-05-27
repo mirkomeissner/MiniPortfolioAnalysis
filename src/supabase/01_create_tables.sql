@@ -100,9 +100,7 @@ CREATE TABLE IF NOT EXISTS shared.ref_transaction_logic (
 CREATE TABLE IF NOT EXISTS shared.asset_static_data (
     isin VARCHAR(12) PRIMARY KEY,
     name TEXT NOT NULL,
-    currency VARCHAR(3),
-    ticker TEXT,
-    price_source_code TEXT,
+    risk_currency VARCHAR(3),
     instrument_type_code TEXT,
     asset_class_code TEXT,
     region_code TEXT,
@@ -110,43 +108,27 @@ CREATE TABLE IF NOT EXISTS shared.asset_static_data (
     industry TEXT,
     country TEXT,
     closed_on DATE,
+    price_source_code TEXT,
+    price_currency VARCHAR(3),
+    price_start_date DATE,
+    ticker TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     created_by UUID,
     updated_at TIMESTAMPTZ,
     updated_by UUID,
 
-    CONSTRAINT fk_static_currency FOREIGN KEY (currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL,
-    CONSTRAINT fk_static_price_source FOREIGN KEY (price_source_code) REFERENCES shared.ref_price_source(code) ON DELETE SET NULL,
+    CONSTRAINT fk_static_risk_currency FOREIGN KEY (risk_currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_instrument_type FOREIGN KEY (instrument_type_code) REFERENCES shared.ref_instrument_type(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_asset_class FOREIGN KEY (asset_class_code) REFERENCES shared.ref_asset_class(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_region FOREIGN KEY (region_code) REFERENCES shared.ref_region(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_sector FOREIGN KEY (sector_code) REFERENCES shared.ref_sector(code) ON DELETE SET NULL,
+    CONSTRAINT fk_static_price_source FOREIGN KEY (price_source_code) REFERENCES shared.ref_price_source(code) ON DELETE SET NULL,
+    CONSTRAINT fk_static_price_currency FOREIGN KEY (price_currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL,
     CONSTRAINT fk_static_created_by FOREIGN KEY (created_by) REFERENCES public.users(id) ON DELETE SET NULL,
     CONSTRAINT fk_static_updated_by FOREIGN KEY (updated_by) REFERENCES public.users(id) ON DELETE SET NULL
 );
 
-
 CREATE OR REPLACE VIEW public.asset_static_data WITH (security_invoker = true) AS SELECT isin, name FROM shared.asset_static_data;
-
-ALTER TABLE shared.asset_static_data
-    ADD COLUMN IF NOT EXISTS price_start_date DATE;
-ALTER TABLE shared.asset_static_data 
-    ADD COLUMN IF NOT EXISTS price_currency VARCHAR(3);
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 
-        FROM information_schema.table_constraints 
-        WHERE constraint_name = 'fk_static_price_currency' 
-          AND table_schema = 'shared'
-          AND table_name = 'asset_static_data'
-    ) THEN
-        ALTER TABLE shared.asset_static_data
-            ADD CONSTRAINT fk_static_price_currency 
-            FOREIGN KEY (price_currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL;
-    END IF;
-END $$;
 
 
 -- Mapping for countries to regions
@@ -164,7 +146,6 @@ CREATE TABLE IF NOT EXISTS shared.asset_prices (
     isin VARCHAR(12) NOT NULL,
     price_date DATE NOT NULL,
     price_close NUMERIC(20, 6) NOT NULL,
-    price_close_original NUMERIC(20, 6),
     dividend_cash NUMERIC(20, 6) DEFAULT 0.0,
     split_factor NUMERIC(20, 10) DEFAULT 1.0,
     -- Composite primary key: ensures one price per asset per day
@@ -183,7 +164,7 @@ CREATE TABLE IF NOT EXISTS shared.exchange_rates (
     currency VARCHAR(3) NOT NULL, -- Format for yfinance: 'EURUSD', 'EURCHF' etc.
     rate_date DATE NOT NULL,
     exchange_rate NUMERIC(20, 10) NOT NULL,
-    rate_date_origin DATE NOT NULL, -- stores the original date of the fx rate
+    rate_date_original DATE NOT NULL, -- stores the original date of the fx rate
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ,
     

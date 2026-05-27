@@ -14,16 +14,13 @@ def _build_asset_prices_df():
     raw_data = database.get_asset_prices()
     df = pd.DataFrame(raw_data)
     if df.empty:
-        return pd.DataFrame([], columns=["ISIN", "Name", "Price Date", "Price Close", "Currency", "Price Close Original", "Currency Original", "Dividend Cash", "Split Factor"])
+        return pd.DataFrame([], columns=["ISIN", "Name", "Price Date", "Price Close", "Price Currency", "Dividend Cash", "Split Factor"])
 
     if "asset_static_data" in df.columns:
         df["Name"] = df["asset_static_data"].apply(
             lambda x: x.get("name") if isinstance(x, dict) else None
         )
-        df["Currency"] = df["asset_static_data"].apply(
-            lambda x: x.get("currency") if isinstance(x, dict) else None
-        )
-        df["Currency Original"] = df["asset_static_data"].apply(
+        df["Price Currency"] = df["asset_static_data"].apply(
             lambda x: x.get("price_currency") if isinstance(x, dict) else None
         )
         df = df.drop(columns=["asset_static_data"])
@@ -32,13 +29,12 @@ def _build_asset_prices_df():
         "isin": "ISIN",
         "price_date": "Price Date",
         "price_close": "Price Close",
-        "price_close_original": "Price Close Original",
         "dividend_cash": "Dividend Cash",
         "split_factor": "Split Factor"
     })
     
     # Reorder columns to desired order
-    column_order = ["ISIN", "Name", "Price Date", "Price Close", "Currency", "Price Close Original", "Currency Original", "Dividend Cash", "Split Factor"]
+    column_order = ["ISIN", "Name", "Price Date", "Price Close", "Price Currency", "Dividend Cash", "Split Factor"]
     available_cols = [col for col in column_order if col in df.columns]
     return df[available_cols]
 
@@ -52,7 +48,7 @@ def _build_fx_rates_df():
         "currency": "Currency",
         "rate_date": "Date",
         "exchange_rate": "Exchange Rate",
-        "rate_date_origin": "Date Original",
+        "rate_date_original": "Date Original",
         "created_at": "Created At",
         "updated_at": "Updated At"
     })
@@ -187,7 +183,7 @@ def _load_missing_fx_rates():
                     "currency": currency,
                     "rate_date": entry["date"].isoformat(),
                     "exchange_rate": final_rate,
-                    "rate_date_origin": entry["origin"].isoformat()
+                    "rate_date_original": entry["origin"].isoformat()
                 })
 
     # 3. Save to DB
