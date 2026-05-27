@@ -282,7 +282,7 @@ def update_asset_start_dates_bulk(payload_list):
     return results
 
 def save_asset_static_data(asset_data):
-    supabase = _get_client()
+    supabase = get_admin_client()
     return supabase.schema("shared").table("asset_static_data").insert(asset_data).execute()
 
 def update_asset_static_data(isin, updated_data):
