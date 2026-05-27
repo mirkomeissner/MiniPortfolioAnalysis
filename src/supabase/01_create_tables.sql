@@ -142,10 +142,13 @@ CREATE TABLE IF NOT EXISTS shared.country_region_mapping (
 );
 
 -- Historical price data for assets
+-- each date of the year will be available
+-- weekends and non business days will be copied from the last available business day
 CREATE TABLE IF NOT EXISTS shared.asset_prices (
     isin VARCHAR(12) NOT NULL,
     price_date DATE NOT NULL,
     price_close NUMERIC(20, 6) NOT NULL,
+    price_date_original DATE NOT NULL, -- stores the original date of the price
     dividend_cash NUMERIC(20, 6) DEFAULT 0.0,
     split_factor NUMERIC(20, 10) DEFAULT 1.0,
     -- Composite primary key: ensures one price per asset per day
@@ -155,6 +158,15 @@ CREATE TABLE IF NOT EXISTS shared.asset_prices (
 );
 -- Index for efficient time-series charting
 CREATE INDEX IF NOT EXISTS idx_asset_prices_isin_date ON shared.asset_prices (isin, price_date DESC);
+
+
+CREATE OR REPLACE VIEW shared.v_asset_price_bounds AS
+SELECT 
+    isin, 
+    MIN(price_date) as min_date, 
+    MAX(price_date) as max_date
+FROM shared.asset_prices
+GROUP BY isin;
 
 
 -- Historical foreign exchange rates relative to EUR
