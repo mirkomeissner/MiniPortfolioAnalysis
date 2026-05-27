@@ -6,7 +6,7 @@
 DROP VIEW IF EXISTS public.daily_holdings CASCADE;
 DROP VIEW IF EXISTS public.asset_static_data CASCADE;
 DROP VIEW IF EXISTS public.ref_transaction_type CASCADE;
-DROP VIEW IF EXISTS shared.users CASCADE;
+-- DROP VIEW IF EXISTS shared.users CASCADE;
 
 -- 2. Drop Tables in PUBLIC (User data)
 -- We use CASCADE to ensure associated policies and triggers are also removed
@@ -14,7 +14,7 @@ DROP TABLE IF EXISTS public.incremental_holdings CASCADE;
 DROP TABLE IF EXISTS public.user_import_settings CASCADE;
 DROP TABLE IF EXISTS public.transactions CASCADE;
 DROP TABLE IF EXISTS public.accounts CASCADE;
-DROP TABLE IF EXISTS public.users CASCADE;
+-- DROP TABLE IF EXISTS public.users CASCADE;
 
 -- 3. Drop Tables in SHARED (Global data)
 DROP TABLE IF EXISTS shared.exchange_rates CASCADE;

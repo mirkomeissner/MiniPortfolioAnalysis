@@ -100,27 +100,36 @@ class MyYFinanceProxy:
         if self.is_dev:
             start = kwargs.get("start")
             end = kwargs.get("end")
+            group_by = kwargs.get("group_by", "column")
             
-            # Handle single ticker string
-            if isinstance(tickers, str):
-                return _generate_mock_data(start, end)
+            # 1. Vereinheitlichen: Mach aus einem String eine Liste
+            ticker_list = [tickers] if isinstance(tickers, str) else tickers
             
-            # Handle multiple tickers: yfinance returns a MultiIndex DataFrame
-            # Structure: [Attribute (Close, Open...), Ticker]
+            # 2. Generiere die einzelnen Mock-DataFrames
             all_dfs = {}
-            for t in tickers:
+            for t in ticker_list:
                 all_dfs[t] = _generate_mock_data(start, end)
             
-            # Concatenate along columns to create MultiIndex structure
+            # 3. Erzeuge das MultiIndex-DataFrame (Standard: Ticker auf Level 0)
+            # Struktur hier: [Ticker, Attribute] (das entspricht group_by='ticker')
             combined_df = pd.concat(all_dfs, axis=1)
             
-            # Ensure the structure matches yfinance (Ticker is the second level)
-            # yf.download(group_by='ticker') usually produces [Ticker, PriceColumn]
-            if kwargs.get("group_by") == "ticker":
-                return combined_df
+            # Wenn yfinance standardmäßig (group_by='column') aufgerufen wird:
+            # Struktur wechseln zu: [Attribute, Ticker]
+            if group_by != "ticker":
+                combined_df = combined_df.swaplevel(0, 1, axis=1).sort_index(axis=1)
             
-            # Default yfinance behavior: [PriceColumn, Ticker]
-            return combined_df.swaplevel(0, 1, axis=1).sort_index(axis=1)
+            # 4. yfinance-Spezialverhalten für einzelne Ticker simulieren:
+            # Wenn nur ein Ticker angefragt wurde UND keep_multiindex NICHT True ist,
+            # bricht yfinance den MultiIndex auf ein normales DataFrame herunter.
+            if len(ticker_list) == 1 and not kwargs.get("keep_multiindex", False):
+                if group_by == "ticker":
+                    # Droppt das Attribut-Level, behält Ticker als Spalten? Nein, umgekehrt:
+                    return combined_df.xs(ticker_list[0], axis=1, level=0)
+                else:
+                    return combined_df.xs(ticker_list[0], axis=1, level=1)
+                    
+            return combined_df
         
         # Live Call
         return yf.download(tickers, **kwargs)

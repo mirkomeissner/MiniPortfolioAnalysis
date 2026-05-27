@@ -136,7 +136,7 @@ def get_asset_prices():
     supabase = _get_client()
     try:
         res = (supabase.schema("shared").table("asset_prices")
-               .select("isin, price_date, price_close, price_close_original, dividend_cash, split_factor, asset_static_data!fk_prices_isin(name, currency, price_currency)")
+               .select("isin, price_date, price_close, dividend_cash, split_factor, asset_static_data!fk_prices_isin(name, price_currency)")
                .order("isin")
                .order("price_date", desc=True)
                .execute())
@@ -149,7 +149,7 @@ def get_fx_rates():
     supabase = _get_client()
     try:
         res = (supabase.schema("shared").table("exchange_rates")
-               .select("currency, rate_date, exchange_rate, rate_date_origin, created_at, updated_at")
+               .select("currency, rate_date, exchange_rate, rate_date_original, created_at, updated_at")
                .order("currency")
                .order("rate_date", desc=True)
                .execute())
@@ -159,27 +159,42 @@ def get_fx_rates():
         return []
 
 def get_non_eur_asset_currency_start_dates():
-    """Returns the earliest price_start_date for every non-EUR asset currency."""
+    """
+    Returns the earliest price_start_date for every non-EUR asset currency,
+    considering BOTH risk_currency and price_currency.
+    """
     supabase = _get_client()
     try:
+        # 1. Fetch both currency columns and the start date
         res = (supabase.schema("shared").table("asset_static_data")
-               .select("currency, price_start_date")
-               .neq("currency", "EUR")
+               .select("risk_currency, price_currency, price_start_date")
                .execute())
+        
         if not res.data:
             return {}
 
         currency_dates = {}
+        
+        # 2. Process every asset row
         for item in res.data:
-            currency = item.get("currency")
             start_date = item.get("price_start_date")
-            if not currency or not start_date:
+            if not start_date:
                 continue
-
-            if currency not in currency_dates or start_date < currency_dates[currency]:
-                currency_dates[currency] = start_date
+            
+            # Extract both currencies per asset
+            r_curr = item.get("risk_currency")
+            p_curr = item.get("price_currency")
+            
+            # Helper to check and aggregate a currency
+            for curr in [r_curr, p_curr]:
+                if curr and curr.upper() != "EUR":
+                    curr_upper = curr.upper()
+                    # Keep the earliest date found for this currency
+                    if curr_upper not in currency_dates or start_date < currency_dates[curr_upper]:
+                        currency_dates[curr_upper] = start_date
 
         return currency_dates
+        
     except Exception as e:
         st.error(f"Error loading asset currency start dates: {e}")
         return {}
@@ -282,7 +297,7 @@ def update_asset_start_dates_bulk(payload_list):
     return results
 
 def save_asset_static_data(asset_data):
-    supabase = _get_client()
+    supabase = get_admin_client()
     return supabase.schema("shared").table("asset_static_data").insert(asset_data).execute()
 
 def update_asset_static_data(isin, updated_data):
@@ -312,7 +327,7 @@ def get_all_assets_with_labels():
     supabase = _get_client()
     flattened_data = []
     try:
-        columns = ("isin, name, currency, price_currency, ticker, price_start_date, industry, country, ref_price_source(label), "
+        columns = ("isin, name, risk_currency, price_currency, ticker, price_start_date, industry, country, ref_price_source(label), "
                    "ref_instrument_type(label), ref_asset_class(label), ref_region(label), "
                    "ref_sector(label), closed_on, created_at, created_by:users!fk_static_created_by(username), "
                    "updated_by:users!fk_static_updated_by(username), updated_at")
@@ -321,7 +336,7 @@ def get_all_assets_with_labels():
             for row in query.data:
                 flattened_data.append({
                     "ISIN": row.get("isin"), "Name": row.get("name"), "Ticker": row.get("ticker"),
-                    "Currency": row.get("currency"), "Type": (row.get("ref_instrument_type") or {}).get("label"),
+                    "Risk Currency": row.get("risk_currency"), "Type": (row.get("ref_instrument_type") or {}).get("label"),
                     "Asset Class": (row.get("ref_asset_class") or {}).get("label"),
                     "Region": (row.get("ref_region") or {}).get("label"),
                     "Sector": (row.get("ref_sector") or {}).get("label"), "Industry": row.get("industry"),
