@@ -59,7 +59,7 @@ def asset_form_component(mode="new", asset=None, version=0):
         # Textfelder
         name = col1.text_input(get_label("Name", "Name"), value=get_default_value("name", "Name"), key=f"{key_prefix}n_{version}")       
         ticker = col2.text_input(get_label("Ticker", "Ticker"), value=get_default_value("ticker", "Ticker"), key=f"{key_prefix}t_{version}")
-        currency = col2.text_input(get_label("Risk Currency", "Risk Currency"), value=get_default_value("currency", "Risk Currency"), key=f"{key_prefix}c_{version}")
+        risk_currency = col2.text_input(get_label("Risk Currency", "Risk Currency"), value=get_default_value("risk_currency", "Risk Currency"), key=f"{key_prefix}rc_{version}")
         price_currency = col2.text_input(get_label("Price Currency", "Price Currency"), value=get_default_value("price_currency", "Price Currency"), key=f"{key_prefix}pc_{version}") 
 
         # Selectboxen mit Index-Ermittlung
@@ -160,7 +160,7 @@ def asset_form_component(mode="new", asset=None, version=0):
             payload = {
                 "name": name,
                 "ticker": ticker,
-                "currency": currency,
+                "risk_currency": risk_currency,
                 "price_currency": price_currency,
                 "asset_class_code": extract_code_or_none(asset_class),
                 "region_code": extract_code_or_none(region),
@@ -193,7 +193,7 @@ def asset_form_component(mode="new", asset=None, version=0):
                 
                 # Session State aufräumen
                 keys_to_clear = [
-                    "prefill_name", "prefill_ticker", "prefill_currency", "prefill_price_currency", 
+                    "prefill_name", "prefill_ticker", "prefill_risk_currency", "prefill_price_currency", 
                     "prefill_asset_class", "prefill_region", "prefill_sector", "prefill_instrument_type", 
                     "prefill_industry", "prefill_country", "prefill_price_source", "prefill_isin",
                     "new_asset_form_version", "form_version", "last_edit_isin", "last_search_input"
@@ -243,7 +243,7 @@ def ticker_search_view():
                 # Pre-fill the form fields with the selected data (same as "Update Asset with Reloaded Data")
                 st.session_state["prefill_name"] = selected_row["Name"]
                 st.session_state["prefill_ticker"] = selected_row["Ticker"]
-                st.session_state["prefill_currency"] = selected_row.get("Risk Currency") or selected_row.get("Currency")
+                st.session_state["prefill_risk_currency"] = selected_row.get("Risk Currency") or selected_row.get("Currency")
                 st.session_state["prefill_price_currency"] = selected_row.get("Price Currency") or selected_row.get("Currency")
                 st.session_state["prefill_asset_class"] = selected_row["AssetClass"]
                 st.session_state["prefill_region"] = selected_row["Region"]
@@ -280,7 +280,7 @@ def asset_table_view():
     if current_view == "search":
         if st.button("⬅ Back to List"):
             keys_to_clear = [
-                "prefill_name", "prefill_ticker", "prefill_currency", "prefill_price_currency", 
+                "prefill_name", "prefill_ticker", "prefill_risk_currency", "prefill_price_currency", 
                 "prefill_asset_class", "prefill_region", "prefill_sector", "prefill_instrument_type", 
                 "prefill_industry", "prefill_country", "prefill_price_source", "prefill_isin",
                 "new_asset_form_version", "last_search_input", "current_search_input"
@@ -388,7 +388,7 @@ def render_edit_view():
     with col_back:
         if st.button("⬅ Cancel"):
             keys_to_clear = [
-                "prefill_name", "prefill_ticker", "prefill_currency", "prefill_price_currency", 
+                "prefill_name", "prefill_ticker", "prefill_risk_currency", "prefill_price_currency", 
                 "prefill_asset_class", "prefill_region", "prefill_sector", "prefill_instrument_type", 
                 "prefill_industry", "prefill_country", "prefill_price_source", "form_version", 
                 "last_edit_isin"
@@ -446,7 +446,7 @@ def render_edit_view():
             # Pre-fill the form fields with the selected data
             st.session_state["prefill_name"] = selected_row["Name"]
             st.session_state["prefill_ticker"] = selected_row["Ticker"]
-            st.session_state["prefill_currency"] = selected_row.get("Risk Currency") or selected_row.get("Currency")
+            st.session_state["prefill_risk_currency"] = selected_row.get("Risk Currency") or selected_row.get("Currency")
             st.session_state["prefill_price_currency"] = selected_row.get("Price Currency") or selected_row.get("Currency")
             st.session_state["prefill_asset_class"] = selected_row["AssetClass"]
             st.session_state["prefill_region"] = selected_row["Region"]
