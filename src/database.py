@@ -370,6 +370,37 @@ def get_asset_ref_options():
         return [f"{item['isin']} ({item['name']})" for item in res.data] if res.data else []
     except: return []
 
+
+def search_exchange_tickers(isin: str = None, name: str = None, active_only: bool = True):
+    """Search the shared.exchange_tickers master table by ISIN and/or partial Name."""
+    if not isin and not name:
+        return []
+
+    supabase = _get_client()
+    try:
+        query = supabase.schema("shared").table("exchange_tickers").select(
+            "ticker_code, exchange_code, price_source_code, name, country, currency, type, isin"
+        )
+
+        if active_only:
+            query = query.is_("is_active", True)
+
+        search_isin = isin.strip() if isin else None
+        search_name = name.strip() if name else None
+
+        if search_isin and search_name:
+            query = query.or_(f"isin.ilike.{search_isin},name.ilike.*{search_name}*")
+        elif search_isin:
+            query = query.ilike("isin", search_isin)
+        elif search_name:
+            query = query.ilike("name", f"%{search_name}%")
+
+        response = query.limit(200).order("name", desc=False).execute()
+        return response.data if response.data else []
+    except Exception as e:
+        st.error(f"Error searching exchange tickers: {e}")
+        return []
+
 def get_account_ref_options(user_id):
     supabase = _get_client()
     try:

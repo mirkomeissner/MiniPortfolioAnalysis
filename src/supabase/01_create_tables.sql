@@ -205,6 +205,76 @@ GROUP BY currency;
 
 
 
+-- Overhauled Exchange Table (Fully mapped to EODHD API fields + Source tracking)
+-- update via:
+-- https://eodhd.com/api/exchanges-list/?api_token=MY_TOKEN&fmt=json
+CREATE TABLE IF NOT EXISTS shared.ref_exchange (
+    code TEXT NOT NULL,                         -- EODHD Exchange code (e.g., 'US', 'XETRA', 'F')
+    price_source_code TEXT NOT NULL,            -- Reference to shared.ref_price_source (e.g., 'EODHD')
+    name TEXT NOT NULL,                         -- Short/Standard name of the exchange
+    operating_mic TEXT,                         -- MIC codes for operating venues (ISO 10383)
+    country TEXT,                               -- Country where the exchange operates
+    currency VARCHAR(3),                        -- Default trading currency
+    country_iso2 CHAR(2),                       -- ISO2 country code (e.g., 'US', 'DE')
+    country_iso3 CHAR(3),                       -- ISO3 country code (e.g., 'USA', 'DEU')
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- Composite Primary Key: Allows the same exchange code to exist for different vendors if necessary
+    PRIMARY KEY (code, price_source_code),
+    
+    CONSTRAINT fk_exchange_price_source FOREIGN KEY (price_source_code) REFERENCES shared.ref_price_source(code) ON DELETE RESTRICT,
+    CONSTRAINT fk_exchange_currency FOREIGN KEY (currency) REFERENCES shared.ref_currencies(code) ON DELETE SET NULL
+);
+
+
+-- Overhauled Ticker Table (Fully mapped to EODHD Exchange Symbol List API + Source tracking)
+-- update via:
+-- https://eodhd.com/api/exchange-symbol-list/US?api_token=MY_TOKEN&fmt=json
+-- XETRA + F + PA + AS + LSE + SW + TO + HK + NSE + SG
+CREATE TABLE IF NOT EXISTS shared.exchange_tickers (
+    ticker_code TEXT NOT NULL,                  -- 'Code' from API: The raw symbol (e.g., 'AAPL', 'BMW')
+    exchange_code TEXT NOT NULL,                -- 'Exchange' from API: e.g., 'US', 'XETRA'
+    price_source_code TEXT NOT NULL,            -- Hardcoded source tracking (e.g., 'EODHD')
+    name TEXT NOT NULL,                         -- 'Name' from API: Full company or instrument name
+    country TEXT,                               -- 'Country' from API: Country of listing
+    currency VARCHAR(3),                        -- 'Currency' from API: Trading currency
+    type TEXT,                                  -- 'Type' from API: e.g., 'Common Stock', 'ETF', 'Fund'
+    isin VARCHAR(12),                           -- 'Isin' from API: International Securities Identification Number
+    is_active BOOLEAN DEFAULT TRUE,             -- Custom flag to handle delisted or dead tickers
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
+
+    -- Composite Primary Key: Safely handles identical symbols across different exchanges and providers
+    PRIMARY KEY (ticker_code, exchange_code, price_source_code),
+    
+    -- Foreign Keys for data integrity
+    CONSTRAINT fk_tickers_exchange FOREIGN KEY (exchange_code, price_source_code) 
+        REFERENCES shared.ref_exchange(code, price_source_code) ON DELETE CASCADE,
+    CONSTRAINT fk_tickers_currency FOREIGN KEY (currency) 
+        REFERENCES shared.ref_currencies(code) ON DELETE SET NULL
+);
+
+-- Optimized indexes for fast API syncing and UI searching
+CREATE INDEX IF NOT EXISTS idx_exchange_tickers_isin ON shared.exchange_tickers (isin);
+CREATE INDEX IF NOT EXISTS idx_exchange_tickers_lookup ON shared.exchange_tickers (price_source_code, exchange_code, ticker_code);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 -- --- PUBLIC SCHEMA TABLES (User specific) ---
 
 -- User brokerage/bank accounts
