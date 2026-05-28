@@ -5,7 +5,8 @@ from src.database import (
     get_all_assets_with_labels, 
     update_asset_static_data, 
     get_ref_options,
-    save_asset_static_data
+    save_asset_static_data,
+    search_exchange_tickers
 )
 from src.utils import (
     extract_code, 
@@ -94,7 +95,7 @@ def asset_form_component(mode="new", asset=None, version=0):
 
         # --- NEU: BUTTON-ZEILE (Nebeneinander platziert) ---
         st.markdown(" ") # Kleiner Abstandhalter
-        btn_col1, btn_col2 = st.columns([1, 1])
+        btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 1])
         
         with btn_col1:
             submit_btn_label = "Save to Database" if mode == "new" else "Save Changes"
@@ -102,6 +103,9 @@ def asset_form_component(mode="new", asset=None, version=0):
             
         with btn_col2:
             check_price_clicked = st.form_submit_button("🔍 Check Current Price", type="secondary")
+
+        with btn_col3:
+            search_ticker_clicked = st.form_submit_button("🔎 Search Ticker", type="secondary")
 
         # --- LOGIK: PREIS PRÜFEN (Abfangen vor der Speicherlogik) ---
         if check_price_clicked:
@@ -146,6 +150,24 @@ def asset_form_component(mode="new", asset=None, version=0):
                         st.info(f"**Latest Price:** {price:,.4f} {curr if curr else ''}")
                     elif source_code in ["YFN", "TGO"]:
                         st.error(f"Could not extract a valid price for Ticker '{ticker}'. Check if symbol is correct.")
+
+        # --- LOGIK: SUCHE NACH TICKERDATEN ---
+        if search_ticker_clicked:
+            if not isin and not name:
+                st.error("Please enter either ISIN or Name to search tickers.")
+            else:
+                with st.spinner("Searching for matching tickers..."):
+                    try:
+                        results = search_exchange_tickers(isin=isin, name=name)
+                    except Exception as e:
+                        st.error(f"Error searching ticker master data: {e}")
+                        results = []
+
+                st.session_state[f"{form_id}_ticker_search_results"] = results
+                st.session_state[f"{form_id}_ticker_search_terms"] = {
+                    "isin": isin,
+                    "name": name,
+                }
 
         # --- LOGIK BEIM SPEICHERN ---
         if submit_clicked:
@@ -206,6 +228,32 @@ def asset_form_component(mode="new", asset=None, version=0):
                 st.rerun()
             except Exception as e:
                 st.error(f"Error saving data: {e}")
+
+    # Search results outside the form ensure the table remains visible after submit/rerun.
+    results_key = f"{form_id}_ticker_search_results"
+    if results_key in st.session_state:
+        results = st.session_state.get(results_key, []) or []
+        if results:
+            df_results = pd.DataFrame(results)
+            df_results = df_results.rename(columns={
+                "ticker_code": "Ticker",
+                "exchange_code": "Exchange",
+                "price_source_code": "Source",
+                "name": "Name",
+                "country": "Country",
+                "currency": "Currency",
+                "type": "Type",
+                "isin": "ISIN"
+            })[["Ticker", "Exchange", "Source", "Name", "Country", "Currency", "Type", "ISIN"]]
+            st.subheader("Ticker Search Results")
+            st.dataframe(df_results, use_container_width=True)
+        else:
+            st.warning("No matching tickers found for the entered ISIN/Name.")
+
+        # Keep the search terms visible for context
+        terms = st.session_state.get(f"{form_id}_ticker_search_terms", {})
+        if terms:
+            st.caption(f"Search terms: ISIN={terms.get('isin','')} Name={terms.get('name','')}")
 
 
 

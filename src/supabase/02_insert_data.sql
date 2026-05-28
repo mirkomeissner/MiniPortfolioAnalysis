@@ -39,7 +39,8 @@ VALUES
   ('GFN', 'GOOGLEFINANCE'),
   ('ARV', 'ARIVA'),
   ('TGO', 'TIINGO'),
-  ('MKS', 'MARKETSTACK')
+  ('MKS', 'MARKETSTACK'),
+  ('EODHD', 'EOD HISTORICAL DATA')
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 
@@ -109,6 +110,8 @@ values
   ('PHP', 'Philippine Peso'),
   ('TWD', 'New Taiwan Dollar'),
   ('VND', 'Vietnamese Dong'),
+  ('LKR', 'Sri Lankan Rupee'),
+  ('PKR', 'Pakistani Rupee'),
 
   -- Middle East & Africa
   ('ILS', 'Israeli New Shekel'),
@@ -118,6 +121,18 @@ values
   ('QAR', 'Qatari Rial'),
   ('ZAR', 'South African Rand'),
   ('EGP', 'Egyptian Pound'),
+  ('BWP', 'Botswana Pula'),
+  ('ZMW', 'Zambian Kwacha'),
+  ('KES', 'Kenyan Shilling'),
+  ('MUR', 'Mauritian Rupee'),
+  ('RWF', 'Rwanda Franc'),
+  ('TZS', 'Tanzanian Shilling'),
+  ('UGX', 'Ugandan Shilling'),
+  ('GHS', 'Ghanaian Cedi'),
+  ('NGN', 'Nigerian Naira'),
+  ('ZWL', 'Zimbabwean Dollar'),
+  ('MWK', 'Malawian Kwacha'),
+  ('MAD', 'Moroccan Dirham'),
 
   -- Americas
   ('MXN', 'Mexican Peso'),
@@ -194,6 +209,273 @@ INSERT INTO shared.country_region_mapping (country, region_code) VALUES
 ON CONFLICT (country) DO UPDATE SET region_code = EXCLUDED.region_code;
 
 
+
+------------------
+-- Ticker Data ---
+------------------
+
+
+-- EODHD
+
+CREATE EXTENSION IF NOT EXISTS http;
+
+
+WITH file_fetch AS (
+    -- 1. Download the JSON file dynamically from the current Supabase Storage Bucket
+    SELECT content::jsonb AS json_content
+    FROM http_get(
+        format('https://%s.supabase.co/storage/v1/object/public/imports/eodhd_exchanges.json', 
+               get_supabase_id())
+    )
+)
+-- 2. Insert into your shared table using the fetched JSON content
+INSERT INTO shared.ref_exchange (
+    code, 
+    price_source_code, 
+    name, 
+    operating_mic, 
+    country, 
+    currency, 
+    country_iso2, 
+    country_iso3
+)
+SELECT 
+    t."Code",
+    'EODHD' AS price_source_code, -- Explicitly tracking the source
+    t."Name",
+    NULLIF(t."OperatingMIC", ''),
+    t."Country",
+    CASE 
+        WHEN LENGTH(TRIM(t."Currency")) = 3 THEN TRIM(t."Currency")
+        ELSE NULL 
+    END AS currency,
+    NULLIF(t."CountryISO2", ''),
+    NULLIF(t."CountryISO3", '')
+FROM file_fetch,
+LATERAL jsonb_to_recordset(file_fetch.json_content) AS t(
+    "Code" TEXT, 
+    "Name" TEXT, 
+    "OperatingMIC" TEXT, 
+    "Country" TEXT, 
+    "Currency" TEXT, 
+    "CountryISO2" TEXT, 
+    "CountryISO3" TEXT
+)
+ON CONFLICT (code, price_source_code) 
+DO UPDATE SET 
+    name = EXCLUDED.name,
+    operating_mic = EXCLUDED.operating_mic,
+    country = EXCLUDED.country,
+    currency = EXCLUDED.currency,
+    country_iso2 = EXCLUDED.country_iso2,
+    country_iso3 = EXCLUDED.country_iso3;
+
+
+
+
+
+
+
+
+DO $$
+DECLARE
+    -- Liste hier ALLE deine hochgeladenen JSON-Dateien auf
+    file_list TEXT[] := ARRAY[
+        'eodhd_US.json', 
+        'eodhd_XETRA.json', 
+        'eodhd_F.json', 
+        'eodhd_PA.json', 
+        'eodhd_AS.json', 
+        'eodhd_LSE.json', 
+        'eodhd_SW.json'
+        -- hier bei Bedarf weitere Dateien anhängen
+    ];
+    current_file TEXT;
+    dynamic_url TEXT;
+    json_data JSONB;
+BEGIN
+    FOREACH current_file IN ARRAY file_list LOOP
+        
+        dynamic_url := format(
+            'https://%s.supabase.co/storage/v1/object/public/imports/%s', 
+            get_supabase_id(), 
+            current_file
+        );
+        
+        RAISE NOTICE 'Starte Import für Datei: %', current_file;
+
+        BEGIN
+            SELECT content::jsonb INTO json_data FROM http_get(dynamic_url);
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING 'Fehler beim Laden der Datei %: %', current_file, SQLERRM;
+            CONTINUE; 
+        END;
+
+        -- =========================================================================
+        -- SCHRITT 1: Fehlende Börsenplätze "on-the-fly" anlegen (Smart Update)
+        -- Jetzt mit automatischer ISO-Erkennung und Namens-Mapping für US-Märkte
+        -- =========================================================================
+        INSERT INTO shared.ref_exchange (
+            code, 
+            price_source_code, 
+            name, 
+            country, 
+            currency,
+            country_iso2,
+            country_iso3
+        )
+        SELECT DISTINCT 
+            t."Exchange",
+            'EODHD' AS price_source_code,
+            -- Bekannte US-Märkte direkt richtig benennen, ansonsten Fallback auf "Auto-Generated"
+            CASE 
+                WHEN t."Exchange" = 'NASDAQ'    THEN 'NASDAQ Stock Market'
+                WHEN t."Exchange" = 'NYSE'      THEN 'New York Stock Exchange'
+                WHEN t."Exchange" = 'PINK'      THEN 'OTC Markets (Pink Sheets)'
+                WHEN t."Exchange" = 'AMEX'      THEN 'NYSE American (AMEX)'
+                WHEN t."Exchange" = 'NYSE ARCA' THEN 'NYSE Arca'
+                WHEN t."Exchange" = 'BATS'      THEN 'Cboe BZX Options Exchange (BATS)'
+                ELSE 'Auto-Generated (' || t."Exchange" || ')'
+            END AS name,
+            t."Country",
+            -- Währungs-Absicherung
+            CASE 
+                WHEN LENGTH(TRIM(t."Currency")) = 3 THEN TRIM(t."Currency")
+                ELSE NULL 
+            END AS currency,
+            -- ISO-Codes automatisch setzen, wenn es ein US-Marktplatz ist
+            CASE WHEN t."Country" = 'USA' THEN 'US' ELSE NULL END AS country_iso2,
+            CASE WHEN t."Country" = 'USA' THEN 'USA' ELSE NULL END AS country_iso3
+        FROM jsonb_to_recordset(json_data) AS t("Exchange" TEXT, "Country" TEXT, "Currency" TEXT)
+        WHERE t."Exchange" IS NOT NULL AND t."Exchange" != ''
+        ON CONFLICT (code, price_source_code) DO NOTHING;
+
+        -- =========================================================================
+        -- SCHRITT 2: Ticker importieren (Jetzt garantiert ohne Foreign-Key-Fehler!)
+        -- =========================================================================
+        INSERT INTO shared.exchange_tickers (
+            ticker_code, 
+            exchange_code, 
+            price_source_code, 
+            name, 
+            country, 
+            currency, 
+            type, 
+            isin, 
+            is_active, 
+            updated_at
+        )
+        SELECT 
+            t."Code",
+            t."Exchange",
+            'EODHD' AS price_source_code,
+            t."Name",
+            t."Country",
+            CASE 
+                WHEN LENGTH(TRIM(t."Currency")) = 3 THEN TRIM(t."Currency")
+                ELSE NULL 
+            END AS currency,
+            t."Type",
+            NULLIF(t."Isin", ''),
+            TRUE AS is_active,
+            NOW() AS updated_at
+        FROM jsonb_to_recordset(json_data) AS t(
+            "Code" TEXT, "Exchange" TEXT, "Name" TEXT, "Country" TEXT, "Currency" TEXT, "Type" TEXT, "Isin" TEXT
+        )
+        ON CONFLICT (ticker_code, exchange_code, price_source_code) 
+        DO UPDATE SET 
+            name = EXCLUDED.name,
+            country = EXCLUDED.country,
+            currency = EXCLUDED.currency,
+            type = EXCLUDED.type,
+            isin = EXCLUDED.isin,
+            is_active = EXCLUDED.is_active,
+            updated_at = NOW();
+
+        RAISE NOTICE 'Datei % erfolgreich importiert.', current_file;
+    END LOOP;
+END $$;
+
+
+
+-- Tiingo
+
+DO $$
+DECLARE
+    dynamic_url TEXT;
+    csv_data TEXT;
+BEGIN
+    -- 1. URL zur unkomprimierten CSV im Storage zusammenbauen
+    dynamic_url := format(
+        'https://%s.supabase.co/storage/v1/object/public/imports/supported_tickers.csv', 
+        get_supabase_id()
+    );
+    
+    RAISE NOTICE 'Lade Tiingo CSV herunter...';
+    SELECT content INTO csv_data FROM http_get(dynamic_url);
+    
+    -- Temporäre Tabelle für das schnelle Parsen erstellen
+    CREATE TEMP TABLE IF NOT EXISTS temp_tiingo (
+        line TEXT
+    ) ON COMMIT DROP;
+
+    -- Gesamte CSV hocheffizient in Zeilen splitten und in Temp-Tabelle laden
+    INSERT INTO temp_tiingo
+    SELECT unnest(string_to_array(csv_data, chr(10)));
+
+    -- Header und leere Zeilen entfernen
+    DELETE FROM temp_tiingo WHERE line LIKE 'ticker,exchange%' OR line = '' OR line IS NULL;
+
+    -- =========================================================================
+    -- SCHRITT 1: Fehlende Exchanges on-the-fly anlegen (Duplikat-sicher dank DISTINCT)
+    -- =========================================================================
+    INSERT INTO shared.ref_exchange (code, price_source_code, name, country, currency)
+    SELECT DISTINCT 
+        TRIM(split_part(line, ',', 2)), 
+        'TGO' AS price_source_code,     
+        'Tiingo Market (' || TRIM(split_part(line, ',', 2)) || ')' AS name,
+        'Unknown' AS country,
+        CASE WHEN LENGTH(TRIM(split_part(line, ',', 4))) = 3 THEN TRIM(split_part(line, ',', 4)) ELSE NULL END AS currency
+    FROM temp_tiingo
+    WHERE TRIM(split_part(line, ',', 2)) != ''
+    ON CONFLICT (code, price_source_code) DO NOTHING;
+
+    -- =========================================================================
+    -- SCHRITT 2: Ticker importieren (Jetzt mit GROUP BY gegen interne CSV-Duplikate!)
+    -- =========================================================================
+    INSERT INTO shared.exchange_tickers (
+        ticker_code, 
+        exchange_code, 
+        price_source_code, 
+        name, 
+        country, 
+        currency, 
+        type, 
+        is_active, 
+        updated_at
+    )
+    SELECT 
+        TRIM(split_part(line, ',', 1)) AS ticker_code, 
+        TRIM(split_part(line, ',', 2)) AS exchange_code, 
+        'TGO' AS price_source_code,     
+        MAX(TRIM(split_part(line, ',', 1)) || ' (' || TRIM(split_part(line, ',', 3)) || ')') AS name,
+        'Unknown' AS country,
+        MAX(CASE WHEN LENGTH(TRIM(split_part(line, ',', 4))) = 3 THEN TRIM(split_part(line, ',', 4)) ELSE NULL END) AS currency,
+        MAX(TRIM(split_part(line, ',', 3))) AS type,
+        TRUE AS is_active,
+        NOW() AS updated_at
+    FROM temp_tiingo
+    WHERE TRIM(split_part(line, ',', 1)) != '' AND TRIM(split_part(line, ',', 2)) != ''
+    -- Das GROUP BY eliminiert alle identischen Zeilen-Kombinationen aus der Datei, BEVOR das Insert triggert!
+    GROUP BY TRIM(split_part(line, ',', 1)), TRIM(split_part(line, ',', 2))
+    ON CONFLICT (ticker_code, exchange_code, price_source_code) 
+    DO UPDATE SET 
+        type = EXCLUDED.type,
+        currency = EXCLUDED.currency,
+        updated_at = NOW();
+
+    RAISE NOTICE 'Tiingo CSV-Import erfolgreich und duplikatbereinigt abgeschlossen!';
+END $$;
 
 
 
