@@ -115,6 +115,7 @@ values
 
   -- Middle East & Africa
   ('ILS', 'Israeli New Shekel'),
+  ('ILA', 'Israeli Agorot'), -- Israeli minor unit (1/100 of ILS), used in some contexts
   ('TRY', 'Turkish Lira'),
   ('AED', 'UAE Dirham'),
   ('SAR', 'Saudi Riyal'),
@@ -219,7 +220,8 @@ ON CONFLICT (country) DO UPDATE SET region_code = EXCLUDED.region_code;
 
 CREATE EXTENSION IF NOT EXISTS http;
 
-
+-- update via:
+-- https://eodhd.com/api/exchanges-list/?api_token=MY_TOKEN&fmt=json
 WITH file_fetch AS (
     -- 1. Download the JSON file dynamically from the current Supabase Storage Bucket
     SELECT content::jsonb AS json_content
@@ -276,7 +278,8 @@ DO UPDATE SET
 
 
 
-
+-- update via:
+-- https://eodhd.com/api/exchange-symbol-list/US?api_token=MY_TOKEN&fmt=json
 DO $$
 DECLARE
     -- Liste hier ALLE deine hochgeladenen JSON-Dateien auf
@@ -287,7 +290,13 @@ DECLARE
         'eodhd_PA.json', 
         'eodhd_AS.json', 
         'eodhd_LSE.json', 
-        'eodhd_SW.json'
+        'eodhd_SW.json',
+        'eodhd_CO.json', 
+        'eodhd_ST.json', 
+        'eodhd_OL.json', 
+        'eodhd_MC.json', 
+        'eodhd_TA.json', 
+        'eodhd_WAR.json'
         -- hier bei Bedarf weitere Dateien anhängen
     ];
     current_file TEXT;

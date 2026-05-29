@@ -206,8 +206,6 @@ GROUP BY currency;
 
 
 -- Overhauled Exchange Table (Fully mapped to EODHD API fields + Source tracking)
--- update via:
--- https://eodhd.com/api/exchanges-list/?api_token=MY_TOKEN&fmt=json
 CREATE TABLE IF NOT EXISTS shared.ref_exchange (
     code TEXT NOT NULL,                         -- EODHD Exchange code (e.g., 'US', 'XETRA', 'F')
     price_source_code TEXT NOT NULL,            -- Reference to shared.ref_price_source (e.g., 'EODHD')
@@ -228,9 +226,6 @@ CREATE TABLE IF NOT EXISTS shared.ref_exchange (
 
 
 -- Overhauled Ticker Table (Fully mapped to EODHD Exchange Symbol List API + Source tracking)
--- update via:
--- https://eodhd.com/api/exchange-symbol-list/US?api_token=MY_TOKEN&fmt=json
--- XETRA + F + PA + AS + LSE + SW + TO + HK + NSE + SGX
 CREATE TABLE IF NOT EXISTS shared.exchange_tickers (
     ticker_code TEXT NOT NULL,                  -- 'Code' from API: The raw symbol (e.g., 'AAPL', 'BMW')
     exchange_code TEXT NOT NULL,                -- 'Exchange' from API: e.g., 'US', 'XETRA'
