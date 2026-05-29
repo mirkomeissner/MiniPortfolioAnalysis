@@ -61,8 +61,8 @@ def headless_load_missing_fx_rates():
     print("Starting API-optimized automated FX rates update...")
 
     # Fetch required start dates from assets and existing bounds from DB
-    target_starts_raw = database.get_non_eur_asset_currency_start_dates()
-    current_bounds = database.get_fx_rate_bounds()
+    target_starts_raw = database.get_non_eur_asset_currency_start_dates(use_admin=True)
+    current_bounds = database.get_fx_rate_bounds(use_admin=True)
 
     if not target_starts_raw:
         print("No non-EUR asset currencies found in the database.")

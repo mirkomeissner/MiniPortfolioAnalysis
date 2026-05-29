@@ -158,12 +158,12 @@ def get_fx_rates():
         st.error(f"Error loading FX rates: {e}")
         return []
 
-def get_non_eur_asset_currency_start_dates():
+def get_non_eur_asset_currency_start_dates(use_admin: bool = False):
     """
     Returns the earliest price_start_date for every non-EUR asset currency,
     considering BOTH risk_currency and price_currency.
-    """
-    supabase = _get_client()
+    """    
+    supabase = get_admin_client() if use_admin else _get_client()
     try:
         # 1. Fetch both currency columns and the start date
         res = (supabase.schema("shared").table("asset_static_data")
@@ -200,8 +200,8 @@ def get_non_eur_asset_currency_start_dates():
         return {}
 
 
-def get_fx_rate_bounds():
-    supabase = get_admin_client()
+def get_fx_rate_bounds(use_admin: bool = False):
+    supabase = get_admin_client() if use_admin else _get_client()
     try:
         # Wir lesen die View aus
         response = supabase.schema("shared").table("v_exchange_rate_bounds").select("*").execute()
