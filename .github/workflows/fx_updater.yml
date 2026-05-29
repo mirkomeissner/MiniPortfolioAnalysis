@@ -1,1 +1,12 @@
-# Dummy
+name: Scheduled FX Rates Updater
+
+on:
+  workflow_dispatch: # Das hier schaltet den Button für alle Branches frei!
+  schedule:
+    - cron: '30 4 * * *'
+
+jobs:
+  dummy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Main-Placeholder"
