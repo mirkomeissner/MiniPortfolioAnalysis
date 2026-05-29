@@ -23,15 +23,20 @@ import streamlit as st
 supabase_url = os.environ.get("SUPABASE_URL")
 supabase_key = os.environ.get("SUPABASE_SERVICE_KEY")
 
-# 2. Wenn wir bei GitHub Actions sind (Variablen sind da), füttern wir st.secrets künstlich
+# 2. Wenn wir bei GitHub Actions sind, füttern wir Streamlits internes Dictionary
 if supabase_url and supabase_key:
-    # Wir emulieren das Dictionary, damit nachfolgende Importe nicht abstürzen!
-    st.secrets["SUPABASE_URL"] = supabase_url
-    st.secrets["SUPABASE_SERVICE_KEY"] = supabase_key
+    # Wir umgehen den Schreibschutz, indem wir direkt das interne _secrets-Dict befüllen
+    if st.secrets._secrets is None:
+        st.secrets._secrets = {}
+    st.secrets._secrets["SUPABASE_URL"] = supabase_url
+    st.secrets._secrets["SUPABASE_SERVICE_KEY"] = supabase_key
 else:
     # 3. Wenn wir lokal im Codespace sind, prüfen wir ganz normal st.secrets
     if "SUPABASE_URL" not in st.secrets or "SUPABASE_SERVICE_KEY" not in st.secrets:
         raise ValueError("Weder GitHub-Umgebungsvariablen noch st.secrets (.toml) gefunden!")
+
+
+
 
 # Now it's safe to import internal modules
 import src.database as database
