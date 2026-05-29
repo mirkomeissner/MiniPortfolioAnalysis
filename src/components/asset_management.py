@@ -235,16 +235,23 @@ def asset_form_component(mode="new", asset=None, version=0):
         results = st.session_state.get(results_key, []) or []
         if results:
             df_results = pd.DataFrame(results)
+            
+            # Extract exchange name from nested ref_exchange object
+            df_results["exchange_name"] = df_results["ref_exchange"].apply(
+                lambda x: x["name"] if isinstance(x, dict) and "name" in x else "Unknown"
+            )
+            
             df_results = df_results.rename(columns={
                 "ticker_code": "Ticker",
                 "exchange_code": "Exchange",
+                "exchange_name": "Exchange Name",
                 "price_source_code": "Source",
                 "name": "Name",
                 "country": "Country",
                 "currency": "Currency",
                 "type": "Type",
                 "isin": "ISIN"
-            })[["Ticker", "Exchange", "Source", "Name", "Country", "Currency", "Type", "ISIN"]]
+            })[["Ticker", "Exchange", "Exchange Name", "Source", "Name", "Country", "Currency", "Type", "ISIN"]]
             st.subheader("Ticker Search Results")
             st.dataframe(df_results, use_container_width=True)
         else:

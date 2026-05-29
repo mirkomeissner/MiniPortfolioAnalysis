@@ -379,7 +379,7 @@ def search_exchange_tickers(isin: str = None, name: str = None, active_only: boo
     supabase = _get_client()
     try:
         query = supabase.schema("shared").table("exchange_tickers").select(
-            "ticker_code, exchange_code, price_source_code, name, country, currency, type, isin"
+            "ticker_code, exchange_code, price_source_code, name, country, currency, type, isin, ref_exchange(name)"
         )
 
         if active_only:
