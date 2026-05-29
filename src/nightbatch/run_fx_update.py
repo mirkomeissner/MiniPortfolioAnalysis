@@ -16,17 +16,26 @@ sys.path.append(project_root)
 # -------------------------------------------------------------------------
 # ENVIRONMENT & STREAMLIT EMULATION
 # -------------------------------------------------------------------------
-# Emulate st.secrets by injecting GitHub Environment Variables into streamlit
+import os
 import streamlit as st
-if "SUPABASE_URL" not in st.secrets:
-    st.secrets["SUPABASE_URL"] = os.getenv("SUPABASE_URL")
-if "SUPABASE_SERVICE_KEY" not in st.secrets:
-    st.secrets["SUPABASE_SERVICE_KEY"] = os.getenv("SUPABASE_SERVICE_KEY")
+
+# 1. Versuche, die Secrets aus den GitHub Umgebungsvariablen zu laden
+supabase_url = os.environ.get("SUPABASE_URL")
+supabase_key = os.environ.get("SUPABASE_SERVICE_KEY")
+
+# 2. Wenn wir bei GitHub Actions sind (Variablen sind da), füttern wir st.secrets künstlich
+if supabase_url and supabase_key:
+    # Wir emulieren das Dictionary, damit nachfolgende Importe nicht abstürzen!
+    st.secrets["SUPABASE_URL"] = supabase_url
+    st.secrets["SUPABASE_SERVICE_KEY"] = supabase_key
+else:
+    # 3. Wenn wir lokal im Codespace sind, prüfen wir ganz normal st.secrets
+    if "SUPABASE_URL" not in st.secrets or "SUPABASE_SERVICE_KEY" not in st.secrets:
+        raise ValueError("Weder GitHub-Umgebungsvariablen noch st.secrets (.toml) gefunden!")
 
 # Now it's safe to import internal modules
 import src.database as database
 from src.utils import my_yf
-# Import via the __init__.py package interface of the components folder
 from src.components import fetch_and_fill_price_gaps
 
 
