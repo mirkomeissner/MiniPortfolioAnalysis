@@ -17,19 +17,27 @@ if project_root not in sys.path:
 
 # 2. ENVIRONMENT & STREAMLIT EMULATION
 # -------------------------------------------------------------------------
+import os
 import streamlit as st
 
+# Wir laden alle drei Variablen sauber und getrennt aus der GitHub-Umgebung
 supabase_url = os.environ.get("SUPABASE_URL")
-supabase_key = os.environ.get("SUPABASE_SERVICE_KEY")
+supabase_service_key = os.environ.get("SUPABASE_SERVICE_KEY")
+supabase_key = os.environ.get("SUPABASE_KEY")
 
-if supabase_url and supabase_key:
+if supabase_url and supabase_service_key and supabase_key:
     if st.secrets._secrets is None:
         st.secrets._secrets = {}
+        
+    # Jeder Key landet genau da, wo er hingehört. Keine Kopien, keine Täuschung.
     st.secrets._secrets["SUPABASE_URL"] = supabase_url
-    st.secrets._secrets["SUPABASE_SERVICE_KEY"] = supabase_key
+    st.secrets._secrets["SUPABASE_SERVICE_KEY"] = supabase_service_key
+    st.secrets._secrets["SUPABASE_KEY"] = supabase_key
 else:
-    if "SUPABASE_URL" not in st.secrets or "SUPABASE_SERVICE_KEY" not in st.secrets:
-        raise ValueError("Weder GitHub-Umgebungsvariablen noch st.secrets (.toml) gefunden!")
+    if "SUPABASE_URL" not in st.secrets or "SUPABASE_SERVICE_KEY" not in st.secrets or "SUPABASE_KEY" not in st.secrets:
+        raise ValueError("Es fehlen benötigte Keys in den Umgebungsvariablen oder der secrets.toml!")
+
+
 
 
 # 3. INTERNE MODULE IMPORTIEREN (Jetzt weiß Python, wo 'src' liegt)

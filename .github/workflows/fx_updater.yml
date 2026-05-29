@@ -35,6 +35,7 @@ jobs:
         # GitHub zieht diese nun automatisch aus dem oben gewählten Environment!
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: python src/nightbatch/run_fx_update.py
 
 
