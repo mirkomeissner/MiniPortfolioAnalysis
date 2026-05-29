@@ -3,38 +3,37 @@ import sys
 import datetime
 import pandas as pd
 
+# 1. PATH SETUP (MUSS ganz nach oben!)
 # -------------------------------------------------------------------------
-# PATH SETUP
-# -------------------------------------------------------------------------
-# Get the directory of the current script (nightbatch/)
+# Verzeichnis des aktuellen Skripts (src/nightbatch/)
 script_dir = os.path.dirname(os.path.abspath(__file__))
-# Get the project root directory (one level up)
-project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
-# Append project root to sys.path so Python can find 'src' and 'components'
-sys.path.append(project_root)
+# Das Projekt-Hauptverzeichnis liegt ZWEI Ebenen höher (wegen src/nightbatch)
+project_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
 
+# Falls project_root noch nicht im Suchpfad ist, fügen wir es ganz vorne hinzu
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+
+# 2. ENVIRONMENT & STREAMLIT EMULATION
 # -------------------------------------------------------------------------
-# ENVIRONMENT & STREAMLIT EMULATION
-# -------------------------------------------------------------------------
-import os
 import streamlit as st
 
-# 1. Versuche, die Secrets aus den GitHub Umgebungsvariablen zu laden
 supabase_url = os.environ.get("SUPABASE_URL")
 supabase_key = os.environ.get("SUPABASE_SERVICE_KEY")
 
-# 2. Wenn wir bei GitHub Actions sind, füttern wir Streamlits internes Dictionary
 if supabase_url and supabase_key:
-    # Wir umgehen den Schreibschutz, indem wir direkt das interne _secrets-Dict befüllen
     if st.secrets._secrets is None:
         st.secrets._secrets = {}
     st.secrets._secrets["SUPABASE_URL"] = supabase_url
     st.secrets._secrets["SUPABASE_SERVICE_KEY"] = supabase_key
 else:
-    # 3. Wenn wir lokal im Codespace sind, prüfen wir ganz normal st.secrets
     if "SUPABASE_URL" not in st.secrets or "SUPABASE_SERVICE_KEY" not in st.secrets:
         raise ValueError("Weder GitHub-Umgebungsvariablen noch st.secrets (.toml) gefunden!")
 
+
+# 3. INTERNE MODULE IMPORTIEREN (Jetzt weiß Python, wo 'src' liegt)
+# -------------------------------------------------------------------------
 
 
 
