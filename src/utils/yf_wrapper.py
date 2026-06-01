@@ -120,16 +120,18 @@ class MyYFinanceProxy:
                 combined_df = combined_df.swaplevel(0, 1, axis=1).sort_index(axis=1)
             
             # 4. yfinance-Spezialverhalten für einzelne Ticker simulieren:
-            # Wenn nur ein Ticker angefragt wurde UND keep_multiindex NICHT True ist,
-            # bricht yfinance den MultiIndex auf ein normales DataFrame herunter.
             if len(ticker_list) == 1 and not kwargs.get("keep_multiindex", False):
-                if group_by == "ticker":
-                    # Droppt das Attribut-Level, behält Ticker als Spalten? Nein, umgekehrt:
-                    return combined_df.xs(ticker_list[0], axis=1, level=0)
-                else:
-                    return combined_df.xs(ticker_list[0], axis=1, level=1)
+                # Das echte yfinance ignoriert group_by bei einem einzelnen Ticker komplett
+                # und gibt IMMER ein flaches DataFrame zurück:
+                flat_df = all_dfs[ticker_list[0]]
+                return flat_df
                     
             return combined_df
+
+
+
+
+
         
         # Live Call
         return yf.download(tickers, **kwargs)

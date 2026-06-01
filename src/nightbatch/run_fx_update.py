@@ -185,7 +185,20 @@ def headless_load_missing_fx_rates():
                     if bounds['max'] < limit_date:
                         fetch_ranges.append((bounds['max'] + datetime.timedelta(days=1), limit_date))
 
-                history = hist_df.dropna(subset=["Close"])
+                # Robuste Prüfung: Handelt es sich um ein MultiIndex-Spalten-Layout?
+                if isinstance(hist_df.columns, pd.MultiIndex):
+                    if symbol in hist_df.columns.levels[0]:
+                        history = hist_df[symbol].dropna(subset=["Close"])
+                    else:
+                        history = pd.DataFrame()
+                else:
+                    # Normales, flaches DataFrame-Layout
+                    if "Close" in hist_df.columns:
+                        history = hist_df.dropna(subset=["Close"])
+                    else:
+                        history = pd.DataFrame()
+
+                
                 for start, end in fetch_ranges:
                     gap_data = fetch_and_fill_price_gaps(symbol, start, end, history)
                     for entry in gap_data:

@@ -296,7 +296,8 @@ DECLARE
         'eodhd_OL.json', 
         'eodhd_MC.json', 
         'eodhd_TA.json', 
-        'eodhd_WAR.json'
+        'eodhd_WAR.json', 
+        'eodhd_AU.json'
         -- hier bei Bedarf weitere Dateien anhängen
     ];
     current_file TEXT;
