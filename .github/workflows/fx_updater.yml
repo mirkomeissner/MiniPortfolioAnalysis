@@ -3,7 +3,7 @@ name: Scheduled FX Rates Updater
 
 on:
   schedule:
-    - cron: '58 7 * * *'
+    - cron: '47 4 * * *'
   workflow_dispatch:
 
 jobs:
