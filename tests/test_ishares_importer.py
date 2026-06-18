@@ -1,0 +1,51 @@
+import io
+import os
+import sys
+import pandas as pd
+
+# Ensure project root is on sys.path so 'src' package can be imported
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+from src.nightbatch import ishares_importer
+
+
+def make_sample_excel_bytes():
+    # We will not create a real Excel file (openpyxl may be missing).
+    # Instead return DataFrames and let the test monkeypatch pd.read_excel.
+    hist = pd.DataFrame({
+        'per': ['2023-06-16', '2023-06-17', '2023-06-18'],
+        'Währung': ['USD', 'USD', 'USD'],
+        'NAV': [100.0, 101.0, 102.0]
+    })
+
+    aussch = pd.DataFrame({
+        'Fälligkeitsdatum': ['2023-06-17'],
+        'Gesamtausschüttung': [0.5]
+    })
+
+    return {"Historisch": hist, "Ausschüttungen": aussch}
+
+
+def test_import_ishares_parsing_dry_run():
+    sheets = make_sample_excel_bytes()
+
+    # Monkeypatch pandas.read_excel used inside the importer to return our sheets
+    original_read_excel = pd.read_excel
+    pd.read_excel = lambda *args, **kwargs: sheets
+    try:
+        res = ishares_importer.import_ishares_history_for_ticker(
+            isin='IE000OHHIBC6',
+            ticker='332655',
+            price_currency='USD',
+            price_start_date='2023-06-01',
+            dry_run=True,
+            excel_bytes=b"FAKE-BYTES-WHICH-IS-IGNORED"
+        )
+    finally:
+        pd.read_excel = original_read_excel
+
+    assert isinstance(res, dict)
+    assert res.get('parsed') == 3
+    assert res.get('to_upsert') == 3

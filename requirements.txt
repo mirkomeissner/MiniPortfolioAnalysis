@@ -5,3 +5,6 @@ pandas
 resend
 requests
 
+openpyxl
+xlrd
+

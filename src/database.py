@@ -261,6 +261,48 @@ def get_asset_price_start_dates(isins):
         st.error(f"Error loading asset start dates: {e}")
         return {}
 
+
+def get_assets_by_price_source(price_source_code: str, use_admin: bool = False):
+    """Return list of assets (isin, ticker, price_currency, price_start_date) for a given price_source_code."""
+    supabase = get_admin_client() if use_admin else _get_client()
+    try:
+        res = supabase.schema("shared").table("asset_static_data") \
+            .select("isin, ticker, price_currency, price_start_date") \
+            .eq("price_source_code", price_source_code).execute()
+        return res.data if res.data else []
+    except Exception as e:
+        st.error(f"Error loading assets by price source: {e}")
+        return []
+
+
+def get_asset_prices_for_isin(isin: str, start_date: str = None, end_date: str = None, use_admin: bool = False):
+    """Return existing price rows for an ISIN within an optional date range."""
+    supabase = get_admin_client() if use_admin else _get_client()
+    try:
+        q = supabase.schema("shared").table("asset_prices").select("isin, price_date, price_close, dividend_cash, split_factor, price_date_original")
+        q = q.eq("isin", isin)
+        if start_date:
+            q = q.gte("price_date", start_date)
+        if end_date:
+            q = q.lte("price_date", end_date)
+        res = q.execute()
+        return res.data if res.data else []
+    except Exception as e:
+        st.error(f"Error loading asset prices for {isin}: {e}")
+        return []
+
+
+def save_asset_prices_bulk(payload_list):
+    """Bulk upsert asset_prices rows using admin client."""
+    if not payload_list:
+        return None
+    supabase = get_admin_client()
+    try:
+        return supabase.schema("shared").table("asset_prices").upsert(payload_list, on_conflict="isin, price_date").execute()
+    except Exception as e:
+        st.error(f"Error saving asset prices: {e}")
+        raise e
+
 def update_asset_start_date(isin, start_date):
     return update_asset_static_data(isin, {"price_start_date": start_date})
 

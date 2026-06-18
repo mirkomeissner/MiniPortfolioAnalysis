@@ -224,6 +224,17 @@ def headless_load_missing_fx_rates():
     else:
         print("Everything is up to date. No new records to insert.")
 
+    if all_records:
+        try:
+            # Uses the admin service-role client internally to bypass RLS
+            database.save_fx_rates_bulk(all_records)
+            print(f"Successfully upserted {len(all_records)} FX records into Supabase.")
+        except Exception as e:
+            print(f"Database Error while saving records: {e}")
+            sys.exit(1)
+    else:
+        print("Everything is up to date. No new records to insert.")
+
 
 if __name__ == "__main__":
     headless_load_missing_fx_rates()
