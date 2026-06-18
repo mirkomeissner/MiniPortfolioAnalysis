@@ -61,9 +61,24 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
         if raw.lstrip().startswith(b'<?xml'):
             # Parse XML Spreadsheet (SpreadsheetML)
             import xml.etree.ElementTree as ET
+           
             text = raw.decode('utf-8', errors='ignore')
-            # Parse and extract worksheets
-            tree = ET.fromstring(text)
+            
+            # --- REPARATUR VON UNMASKIERTEN UND-ZEICHEN (&) ---
+            import re
+            # Ersetzt ein '&', dem KEIN gültiges XML-Entity (wie &amp;, &lt;, &gt;) folgt, durch &amp;
+            text = re.sub(r'&(?!(amp|lt|gt|quot|apos);)', '&amp;', text)
+            
+            # Parse XML Spreadsheet (SpreadsheetML)
+            import xml.etree.ElementTree as ET
+            try:
+                tree = ET.fromstring(text)
+            except ET.ParseError as xml_err:
+                print(f"XML-Parsing-Fehler trotz Bereinigung bei {ticker}: {xml_err}")
+                # Optionaler zweiter Rettungsversuch: Komplett nacktes XML erzwingen
+                raise xml_err
+
+            
             # remove namespace helper
             def _strip_ns(tag):
                 return tag[tag.find('}')+1:] if '}' in tag else tag
