@@ -36,8 +36,7 @@ ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 INSERT INTO shared.ref_price_source (code, label)
 VALUES 
   ('YFN', 'YFINANCE'),
-  ('GFN', 'GOOGLEFINANCE'),
-  ('ARV', 'ARIVA'),
+  ('ISH', 'iShares'),
   ('TGO', 'TIINGO'),
   ('MKS', 'MARKETSTACK'),
   ('EODHD', 'EOD HISTORICAL DATA')
