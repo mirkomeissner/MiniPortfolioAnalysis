@@ -124,7 +124,11 @@ def headless_load_missing_fx_rates():
             continue
 
         if isinstance(hist_df.columns, pd.MultiIndex):
-            if symbol in hist_df.columns.levels[0]:
+            level0 = hist_df.columns.get_level_values(0)
+            level1 = hist_df.columns.get_level_values(1)
+            if symbol in level1:
+                history = hist_df.xs(symbol, axis=1, level=1).dropna(subset=["Close"])
+            elif symbol in level0:
                 history = hist_df[symbol].dropna(subset=["Close"])
             else:
                 history = pd.DataFrame()

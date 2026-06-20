@@ -269,7 +269,21 @@ class TestNightbatchFXUpdate:
 
             with patch('src.nightbatch.run_fx_update.my_yf') as mock_yf, \
                  patch('src.nightbatch.run_fx_update.fetch_and_fill_price_gaps') as mock_fill:
-                mock_yf.download.return_value = pd.DataFrame({"Close": [0.9450]})
+                mock_columns = pd.MultiIndex.from_tuples(
+                    [
+                        ("Open", "EURCHF=X"),
+                        ("High", "EURCHF=X"),
+                        ("Low", "EURCHF=X"),
+                        ("Close", "EURCHF=X"),
+                        ("Volume", "EURCHF=X")
+                    ],
+                    names=["Price", "Ticker"]
+                )
+                mock_yf.download.return_value = pd.DataFrame(
+                    [[0.9449, 0.9460, 0.9440, 0.9450, 0]],
+                    index=[pd.Timestamp("2025-06-10")],
+                    columns=mock_columns
+                )
                 mock_fill.return_value = [
                     {
                         "date": datetime.date(2025, 6, 10),
@@ -346,7 +360,9 @@ class TestNightbatchFXUpdate:
         )
         
         assert not df.empty, "Should have mock FX data"
-        assert "Close" in df.columns, "DataFrame should have Close column"
+        assert isinstance(df.columns, pd.MultiIndex), "Mock FX download should use a MultiIndex like live yfinance"
+        assert "Close" in df.columns.get_level_values(0), "DataFrame should have Close in the first level of columns"
+        assert "EURUSD=X" in df.columns.get_level_values(1), "DataFrame should have EURUSD=X in the second level of columns"
         
         # Test gap filling
         start_date = datetime.date(2025, 6, 10)
