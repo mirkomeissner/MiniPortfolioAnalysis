@@ -50,6 +50,7 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
             print(f"Failed to download Excel for {ticker}: {e}")
             return {"error": str(e)}
 
+    print(f"[ISIN {isin}] Using ticker '{ticker}' for downloading Excel.")
     # 2) read required sheets
     try:
         # First, handle Microsoft SpreadsheetML XML format (some iShares downloads use it)
@@ -149,6 +150,12 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
                     df = _pd.DataFrame()
                 sheets[name or 'Sheet'] = df
             xls = sheets
+            # Report sheet line counts for diagnostics
+            for name, df_sheet in xls.items():
+                try:
+                    print(f"[ISIN {isin}] Detected sheet '{name}' with {len(df_sheet.index)} lines")
+                except Exception:
+                    print(f"[ISIN {isin}] Detected sheet '{name}' (unable to determine line count)")
         else:
             # Detect file header to pick an engine: ZIP (xlsx) vs OLE (xls)
             header = excel_bytes[:4]
@@ -160,6 +167,12 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
 
             if engine:
                 xls = pd.read_excel(io.BytesIO(excel_bytes), sheet_name=["Historisch", "Ausschüttungen"], engine=engine)
+                # Report sheet line counts for diagnostics
+                for name, df_sheet in xls.items():
+                    try:
+                        print(f"[ISIN {isin}] Detected sheet '{name}' with {len(df_sheet.index)} lines")
+                    except Exception:
+                        print(f"[ISIN {isin}] Detected sheet '{name}' (unable to determine line count)")
             else:
                 # Fallback: try xlrd then openpyxl
                 try:
@@ -188,6 +201,7 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
 
     hist_df = hist[[per_col, nav_col, curr_col]].rename(columns={per_col: "per", nav_col: "NAV", curr_col: "Währung"})
     hist_df = hist_df.dropna(subset=["per"]).copy()
+    print(f"[ISIN {isin}] NAV sheet initial lines: {len(hist_df.index)}")
 
     # Robust date parsing for German/English month names like '17.Juni2026' or '17.Apr.2026'
     import re
@@ -294,6 +308,7 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
     tmp_df = pd.DataFrame({"Close": prices.set_index("price_date")["price_close"]})
 
     gap_data = fetch_and_fill_price_gaps(ticker, min_date, max_date, tmp_df)
+    print(f"[ISIN {isin}] NAV lines after gap-filling: {len(gap_data)}")
 
     # build full history DataFrame from gap_data
     records = []
@@ -319,6 +334,7 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
             pass
 
     parsed = len(records)
+    print(f"[ISIN {isin}] NAV lines after trimming/processing: {parsed}")
 
     if dry_run:
         return {"parsed": parsed, "to_upsert": parsed}

@@ -50,6 +50,20 @@ import src.database as database
 from src.utils import my_yf, fetch_and_fill_price_gaps
 
 
+def _normalize_fx_rate_value(value):
+    try:
+        return round(float(value), 10)
+    except Exception:
+        return None
+
+
+def _normalize_fx_rate_date(value):
+    try:
+        return pd.to_datetime(value).date().isoformat()
+    except Exception:
+        return None
+
+
 def headless_load_missing_fx_rates():
     """
     Orchestrates an API-efficient FX update process.
@@ -92,7 +106,10 @@ def headless_load_missing_fx_rates():
     for currency, fx_start, request_start in request_plan:
         base_currency = fx_mapping.get(currency, currency)
         symbol = f"EUR{base_currency}=X"
-        print(f"[{currency}] request_start={request_start.isoformat()} fx_start={fx_start.isoformat()} symbol={symbol}")
+        bounds = current_bounds.get(currency) or {}
+        bound_min = bounds.get("min") if bounds else None
+        bound_max = bounds.get("max") if bounds else None
+        print(f"[{currency}] symbol={symbol} fx_start={fx_start.isoformat()} bounds[min]={bound_min} bounds[max]={bound_max} request_start={request_start.isoformat()} limit_date={limit_date.isoformat()}")
 
         hist_df = my_yf.download(
             symbol,
@@ -113,22 +130,34 @@ def headless_load_missing_fx_rates():
         else:
             history = hist_df.dropna(subset=["Close"]) if "Close" in hist_df.columns else pd.DataFrame()
 
+        downloaded_count = len(history.index) if not history.empty else 0
+        print(f"[{currency}] Number of fx rates downloaded (rows with Close): {downloaded_count}")
+
         if history.empty:
             print(f"[{currency}] No Close prices available for {symbol}.")
             continue
 
         gap_data = fetch_and_fill_price_gaps(symbol, request_start, limit_date, history)
+        after_gap_fill_total = len(gap_data)
+        print(f"[{currency}] Number of fx rates after gap-filling (all calendar days): {after_gap_fill_total}")
+
+        # filter out rows before fx_start and collect per-currency
+        added_for_currency = 0
         for entry in gap_data:
             if entry["date"] < fx_start:
                 continue
 
             rate_value = entry["value"] * 100 if currency == "GBX" else entry["value"]
+            exchange_rate = _normalize_fx_rate_value(rate_value)
             all_records.append({
                 "currency": currency,
                 "rate_date": entry["date"].isoformat(),
-                "exchange_rate": float(rate_value),
+                "exchange_rate": exchange_rate,
                 "rate_date_original": entry["origin"].isoformat()
             })
+            added_for_currency += 1
+
+        print(f"[{currency}] Number of fx rates after removing rows before fx_start (to consider for DB): {added_for_currency}")
 
     if not all_records:
         print("No FX records to process after filling gaps.")
@@ -137,10 +166,17 @@ def headless_load_missing_fx_rates():
     min_date = min(pd.to_datetime(rec["rate_date"]).date() for rec in all_records)
     currencies = sorted({rec["currency"] for rec in all_records})
     existing_rows = database.get_fx_rates_for_currency_dates(currencies, min_date, limit_date, use_admin=True)
-    existing_map = {
-        (row["currency"], row["rate_date"]): (row["exchange_rate"], row["rate_date_original"])
-        for row in existing_rows
-    }
+    existing_map = {}
+    for row in existing_rows:
+        normalized_rate_date = _normalize_fx_rate_date(row.get("rate_date"))
+        normalized_rate_date_original = _normalize_fx_rate_date(row.get("rate_date_original"))
+        normalized_exchange_rate = _normalize_fx_rate_value(row.get("exchange_rate"))
+
+        if row.get("currency") and normalized_rate_date is not None:
+            existing_map[(row["currency"], normalized_rate_date)] = (
+                normalized_exchange_rate,
+                normalized_rate_date_original
+            )
 
     upsert_records = []
     for record in all_records:
@@ -154,6 +190,12 @@ def headless_load_missing_fx_rates():
     if not upsert_records:
         print("Everything is up to date. No changed or new FX rows to insert.")
         return
+
+    # Print per-currency upsert counts for visibility
+    from collections import Counter
+    upsert_counter = Counter([r["currency"] for r in upsert_records])
+    for cur, cnt in upsert_counter.items():
+        print(f"[{cur}] Number of fx rates to upsert after deduplication: {cnt}")
 
     try:
         database.save_fx_rates_bulk(upsert_records)

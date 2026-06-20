@@ -12,7 +12,8 @@ from src.nightbatch.ishares_importer import process_all_ishares_assets
 
 
 def run_full_nightbatch():
-    print("Starting full nightbatch run...")
+    env = os.environ.get("APP_ENV", "main")
+    print(f"Starting full nightbatch run on environment {env}...")
 
     print("Step 1: FX rates update")
     fx_updater.headless_load_missing_fx_rates()
