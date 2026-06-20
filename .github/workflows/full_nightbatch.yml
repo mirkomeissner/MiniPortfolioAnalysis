@@ -8,7 +8,9 @@ on:
 jobs:
   run-full-nightbatch:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'main' && 'production' || 'test' }}
+    environment: ${{ github.ref_name == 'dev' && 'test' || 'production' }}
+    env:
+      APP_ENV: ${{ github.ref_name == 'dev' && 'dev' || 'main' }}
 
     steps:
       - name: Checkout Repository
