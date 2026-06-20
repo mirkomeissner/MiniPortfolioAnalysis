@@ -83,7 +83,6 @@ def price_management_view():
         price_table_view()
 
     with fx_tab:
-        st.info("FX rates are updated nightly via batch processing.")
         fx_table_view()
 
 
