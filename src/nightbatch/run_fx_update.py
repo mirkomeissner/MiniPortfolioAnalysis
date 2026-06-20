@@ -118,10 +118,6 @@ def headless_load_missing_fx_rates():
             threads=False
         )
 
-        print(hist_df.shape, hist_df.columns)
-        print(hist_df.head())
-
-
         
         if hist_df is None or hist_df.empty:
             print(f"[{currency}] No data returned for {symbol}.")
