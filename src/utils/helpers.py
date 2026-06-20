@@ -103,7 +103,16 @@ def fetch_and_fill_price_gaps(symbol, start_date, end_date, source_df):
         return []
 
     df = source_df.copy()
-    df.columns = [c.capitalize() for c in df.columns]
+    if isinstance(df.columns, pd.MultiIndex):
+        normalized_columns = []
+        for c in df.columns:
+            if isinstance(c, tuple) and c:
+                normalized_columns.append(str(c[0]).capitalize())
+            else:
+                normalized_columns.append(str(c).capitalize())
+        df.columns = normalized_columns
+    else:
+        df.columns = [str(c).capitalize() for c in df.columns]
     df.index = pd.to_datetime(df.index).date
 
     results = []

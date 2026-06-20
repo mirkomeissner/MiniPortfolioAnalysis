@@ -185,13 +185,9 @@ class MyYFinanceProxy:
             if group_by != "ticker":
                 combined_df = combined_df.swaplevel(0, 1, axis=1).sort_index(axis=1)
             
-            # 4. yfinance-Spezialverhalten für einzelne Ticker simulieren:
-            if len(ticker_list) == 1 and not kwargs.get("keep_multiindex", False):
-                # Das echte yfinance ignoriert group_by bei einem einzelnen Ticker komplett
-                # und gibt IMMER ein flaches DataFrame zurück:
-                flat_df = all_dfs[ticker_list[0]]
-                return flat_df
-                    
+            # 4. Simulate live yfinance behavior for FX downloads.
+            # Live yfinance returns a MultiIndex DataFrame for single FX symbols like 'EURUSD=X'
+            # with price fields on level 0 and the ticker on level 1.
             return combined_df
 
 
