@@ -47,8 +47,7 @@ else:
 
 # Now it's safe to import internal modules
 import src.database as database
-from src.utils import my_yf
-from src.components import fetch_and_fill_price_gaps
+from src.utils import my_yf, fetch_and_fill_price_gaps
 
 
 def headless_load_missing_fx_rates():
@@ -68,173 +67,100 @@ def headless_load_missing_fx_rates():
         print("No non-EUR asset currencies found in the database.")
         return
 
-    # Calculate date thresholds
     today = datetime.date.today()
-    limit_date = today - datetime.timedelta(days=1) # Yesterday (EOD)
-    currencies = [c.upper() for c in target_starts_raw.keys()]
-    
-    # Mapping for special currencies that don't have a direct Yahoo FX pair
+    limit_date = today - datetime.timedelta(days=1)
     fx_mapping = {"GBX": "GBP"}
 
-    # Define lists for the two different data fetching strategies
-    incremental_symbols = []
-    historical_requests = [] # List of tuples: (symbol, fetch_start_date)
-
-    # -------------------------------------------------------------------------
-    # STRATEGY ROUTING WEICHE
-    # -------------------------------------------------------------------------
-    for currency in currencies:
-        base_curr = fx_mapping.get(currency, currency)
-        symbol = f"EUR{base_curr}=X"
-        target_start = pd.to_datetime(target_starts_raw[currency]).date()
+    request_plan = []
+    for currency, start_date in target_starts_raw.items():
+        currency = currency.upper()
+        fx_start = pd.to_datetime(start_date).date()
         bounds = current_bounds.get(currency)
 
-        if not bounds:
-            # Case 1: Brand new currency, no records in DB -> Fetch full history
-            print(f"[{currency}] Routed to HISTORY: Brand new currency.")
-            historical_requests.append((symbol, target_start - datetime.timedelta(days=7)))
-            
-        elif target_start < bounds['min']:
-            # Case 2: Historical hole at the beginning -> Fetch full history
-            print(f"[{currency}] Routed to HISTORY: Target start date is older than DB min date.")
-            historical_requests.append((symbol, target_start - datetime.timedelta(days=7)))
-            
-        elif bounds['max'] < limit_date and (limit_date - bounds['max']).days > 7:
-            # Case 3: Large data gap found (> 7 days). Cannot use incremental mode
-            # because the 7-day payload won't cover the entire missing period.
-            print(f"[{currency}] Routed to HISTORY: Large gap detected ({ (limit_date - bounds['max']).days } days).")
-            historical_requests.append((symbol, bounds['max'] - datetime.timedelta(days=7)))
-            
+        if not bounds or fx_start < bounds["min"]:
+            request_start = fx_start - datetime.timedelta(days=7)
         else:
-            # Case 4: Normal daily operations (Gap <= 7 days) -> Use efficient incremental mode
-            if symbol not in incremental_symbols:
-                incremental_symbols.append(symbol)
+            request_start = bounds["max"] - datetime.timedelta(days=35)
+
+        request_plan.append((currency, fx_start, request_start))
 
     all_records = []
 
     # -------------------------------------------------------------------------
-    # STRATEGY 1: INCREMENTAL MODE (API-Efficient Normal Operation)
+    # NIGHTBATCH FX LOAD
     # -------------------------------------------------------------------------
-    if incremental_symbols:
-        short_fetch_start = today - datetime.timedelta(days=7)
-        print(f"[API INCREMENTAL] Fetching last 7 days only for: {incremental_symbols}")
-        
-        bundle_df = my_yf.download(
-            incremental_symbols,
-            start=short_fetch_start.isoformat(),
+    for currency, fx_start, request_start in request_plan:
+        base_currency = fx_mapping.get(currency, currency)
+        symbol = f"EUR{base_currency}=X"
+        print(f"[{currency}] request_start={request_start.isoformat()} fx_start={fx_start.isoformat()} symbol={symbol}")
+
+        hist_df = my_yf.download(
+            symbol,
+            start=request_start.isoformat(),
             end=(limit_date + datetime.timedelta(days=1)).isoformat(),
-            group_by='ticker',
-            threads=True
+            threads=False
         )
-        
-        for currency in currencies:
-            base_curr = fx_mapping.get(currency, currency)
-            symbol = f"EUR{base_curr}=X"
-            if symbol not in incremental_symbols:
+
+        if hist_df is None or hist_df.empty:
+            print(f"[{currency}] No data returned for {symbol}.")
+            continue
+
+        if isinstance(hist_df.columns, pd.MultiIndex):
+            if symbol in hist_df.columns.levels[0]:
+                history = hist_df[symbol].dropna(subset=["Close"])
+            else:
+                history = pd.DataFrame()
+        else:
+            history = hist_df.dropna(subset=["Close"]) if "Close" in hist_df.columns else pd.DataFrame()
+
+        if history.empty:
+            print(f"[{currency}] No Close prices available for {symbol}.")
+            continue
+
+        gap_data = fetch_and_fill_price_gaps(symbol, request_start, limit_date, history)
+        for entry in gap_data:
+            if entry["date"] < fx_start:
                 continue
-                
-            bounds = current_bounds.get(currency)
-            if bounds and bounds['max'] < limit_date:
-                start_gap = bounds['max'] + datetime.timedelta(days=1)
-                
-                # Handle multi-ticker vs single-ticker DataFrame structures from yfinance
-                if len(incremental_symbols) > 1:
-                    history = bundle_df[symbol].dropna(subset=["Close"]) if symbol in bundle_df else pd.DataFrame()
-                else:
-                    history = bundle_df.dropna(subset=["Close"])
 
-                # Calculate gaps and extract only the single missing day(s) from the 7-day pool
-                gap_data = fetch_and_fill_price_gaps(symbol, start_gap, limit_date, history)
-                for entry in gap_data:
-                    final_rate = entry["value"] * 100 if currency == "GBX" else entry["value"]
-                    all_records.append({
-                        "currency": currency,
-                        "rate_date": entry["date"].isoformat(),
-                        "exchange_rate": final_rate,
-                        "rate_date_original": entry["origin"].isoformat()
-                    })
+            rate_value = entry["value"] * 100 if currency == "GBX" else entry["value"]
+            all_records.append({
+                "currency": currency,
+                "rate_date": entry["date"].isoformat(),
+                "exchange_rate": float(rate_value),
+                "rate_date_original": entry["origin"].isoformat()
+            })
 
-    # -------------------------------------------------------------------------
-    # STRATEGY 2: HISTORICAL MODE (Fallback Sonderfall)
-    # -------------------------------------------------------------------------
-    if historical_requests:
-        print(f"[API HISTORICAL] Executing full history downloads for: {historical_requests}")
-        for symbol, f_start in historical_requests:
-            # Dedicated API call for the specific historical request
-            hist_df = my_yf.download(
-                symbol,
-                start=f_start.isoformat(),
-                end=(limit_date + datetime.timedelta(days=1)).isoformat(),
-                threads=False
-            )
-            
-            # Match downloaded data back to corresponding database currency rows
-            for currency in currencies:
-                if f"EUR{fx_mapping.get(currency, currency)}=X" != symbol:
-                    continue
-                
-                target_start = pd.to_datetime(target_starts_raw[currency]).date()
-                bounds = current_bounds.get(currency)
-                fetch_ranges = []
+    if not all_records:
+        print("No FX records to process after filling gaps.")
+        return
 
-                if not bounds:
-                    fetch_ranges.append((target_start, limit_date))
-                else:
-                    if target_start < bounds['min']:
-                        fetch_ranges.append((target_start, bounds['min'] - datetime.timedelta(days=1)))
-                    if bounds['max'] < limit_date:
-                        fetch_ranges.append((bounds['max'] + datetime.timedelta(days=1), limit_date))
+    min_date = min(pd.to_datetime(rec["rate_date"]).date() for rec in all_records)
+    currencies = sorted({rec["currency"] for rec in all_records})
+    existing_rows = database.get_fx_rates_for_currency_dates(currencies, min_date, limit_date, use_admin=True)
+    existing_map = {
+        (row["currency"], row["rate_date"]): (row["exchange_rate"], row["rate_date_original"])
+        for row in existing_rows
+    }
 
-                # Robuste Prüfung: Handelt es sich um ein MultiIndex-Spalten-Layout?
-                if isinstance(hist_df.columns, pd.MultiIndex):
-                    if symbol in hist_df.columns.levels[0]:
-                        history = hist_df[symbol].dropna(subset=["Close"])
-                    else:
-                        history = pd.DataFrame()
-                else:
-                    # Normales, flaches DataFrame-Layout
-                    if "Close" in hist_df.columns:
-                        history = hist_df.dropna(subset=["Close"])
-                    else:
-                        history = pd.DataFrame()
+    upsert_records = []
+    for record in all_records:
+        key = (record["currency"], record["rate_date"])
+        existing = existing_map.get(key)
+        if existing and existing[0] == record["exchange_rate"] and existing[1] == record["rate_date_original"]:
+            continue
+        record["updated_at"] = datetime.datetime.utcnow().isoformat()
+        upsert_records.append(record)
 
-                
-                for start, end in fetch_ranges:
-                    gap_data = fetch_and_fill_price_gaps(symbol, start, end, history)
-                    for entry in gap_data:
-                        final_rate = entry["value"] * 100 if currency == "GBX" else entry["value"]
-                        all_records.append({
-                            "currency": currency,
-                            "rate_date": entry["date"].isoformat(),
-                            "exchange_rate": final_rate,
-                            "rate_date_original": entry["origin"].isoformat()
-                        })
+    if not upsert_records:
+        print("Everything is up to date. No changed or new FX rows to insert.")
+        return
 
-    # -------------------------------------------------------------------------
-    # DATABASE PERSISTENCE
-    # -------------------------------------------------------------------------
-    if all_records:
-        try:
-            # Uses the admin service-role client internally to bypass RLS
-            database.save_fx_rates_bulk(all_records)
-            print(f"Successfully upserted {len(all_records)} FX records into Supabase.")
-        except Exception as e:
-            print(f"Database Error while saving records: {e}")
-            sys.exit(1)
-    else:
-        print("Everything is up to date. No new records to insert.")
-
-    if all_records:
-        try:
-            # Uses the admin service-role client internally to bypass RLS
-            database.save_fx_rates_bulk(all_records)
-            print(f"Successfully upserted {len(all_records)} FX records into Supabase.")
-        except Exception as e:
-            print(f"Database Error while saving records: {e}")
-            sys.exit(1)
-    else:
-        print("Everything is up to date. No new records to insert.")
-
+    try:
+        database.save_fx_rates_bulk(upsert_records)
+        print(f"Successfully upserted {len(upsert_records)} FX records into Supabase.")
+    except Exception as e:
+        print(f"Database Error while saving records: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     headless_load_missing_fx_rates()

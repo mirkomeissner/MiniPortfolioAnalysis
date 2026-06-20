@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import date, datetime
 
 import src.database as database
-from src.components import fetch_and_fill_price_gaps
+from src.utils import fetch_and_fill_price_gaps
 
 
 ISHARE_URL_TEMPLATE = (
