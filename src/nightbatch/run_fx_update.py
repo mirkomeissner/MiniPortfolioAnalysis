@@ -52,7 +52,7 @@ from src.utils import my_yf, fetch_and_fill_price_gaps
 
 def _normalize_fx_rate_value(value):
     try:
-        return float(value)
+        return round(float(value), 10)
     except Exception:
         return None
 
@@ -148,10 +148,11 @@ def headless_load_missing_fx_rates():
                 continue
 
             rate_value = entry["value"] * 100 if currency == "GBX" else entry["value"]
+            exchange_rate = _normalize_fx_rate_value(rate_value)
             all_records.append({
                 "currency": currency,
                 "rate_date": entry["date"].isoformat(),
-                "exchange_rate": float(rate_value),
+                "exchange_rate": exchange_rate,
                 "rate_date_original": entry["origin"].isoformat()
             })
             added_for_currency += 1
