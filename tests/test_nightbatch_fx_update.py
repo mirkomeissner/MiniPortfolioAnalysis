@@ -242,6 +242,51 @@ class TestNightbatchFXUpdate:
                 call_args = mock_db.save_fx_rates_bulk.call_args[0][0]
                 assert isinstance(call_args, list), "Should call save with list of records"
 
+    def test_case_5_existing_currency_dedupes_mixed_type_db_rows(self):
+        """
+        Test Case 5: Existing currency rows have mixed types from Supabase.
+        Should skip unchanged rows when DB values normalize to identical payload values.
+        """
+        with patch('src.nightbatch.run_fx_update.database') as mock_db:
+            mock_db.get_non_eur_asset_currency_start_dates.return_value = {
+                "CHF": "2025-06-10"
+            }
+            mock_db.get_fx_rate_bounds.return_value = {
+                "CHF": {
+                    "min": datetime.date(2025, 6, 10),
+                    "max": datetime.date(2025, 6, 19)
+                }
+            }
+            mock_db.get_fx_rates_for_currency_dates.return_value = [
+                {
+                    "currency": "CHF",
+                    "rate_date": datetime.date(2025, 6, 10),
+                    "exchange_rate": "0.9450",
+                    "rate_date_original": pd.Timestamp("2025-06-10")
+                }
+            ]
+            mock_db.save_fx_rates_bulk = Mock()
+
+            with patch('src.nightbatch.run_fx_update.my_yf') as mock_yf, \
+                 patch('src.nightbatch.run_fx_update.fetch_and_fill_price_gaps') as mock_fill:
+                mock_yf.download.return_value = pd.DataFrame({"Close": [0.9450]})
+                mock_fill.return_value = [
+                    {
+                        "date": datetime.date(2025, 6, 10),
+                        "value": 0.9450,
+                        "origin": datetime.date(2025, 6, 10)
+                    }
+                ]
+
+                with patch('src.nightbatch.run_fx_update.datetime') as mock_datetime:
+                    mock_datetime.date.today.return_value = self.today
+                    mock_datetime.timedelta = datetime.timedelta
+                    mock_datetime.datetime.utcnow.return_value = datetime.datetime(2025, 6, 20, 12, 0, 0)
+
+                    run_fx_update.headless_load_missing_fx_rates()
+
+            assert not mock_db.save_fx_rates_bulk.called, "Unchanged normalized FX rows should not be upserted"
+
     def test_gbx_special_handling(self):
         """
         Test Case 5: Special GBX currency handling.

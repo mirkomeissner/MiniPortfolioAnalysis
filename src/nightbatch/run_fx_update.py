@@ -50,6 +50,20 @@ import src.database as database
 from src.utils import my_yf, fetch_and_fill_price_gaps
 
 
+def _normalize_fx_rate_value(value):
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _normalize_fx_rate_date(value):
+    try:
+        return pd.to_datetime(value).date().isoformat()
+    except Exception:
+        return None
+
+
 def headless_load_missing_fx_rates():
     """
     Orchestrates an API-efficient FX update process.
@@ -151,10 +165,17 @@ def headless_load_missing_fx_rates():
     min_date = min(pd.to_datetime(rec["rate_date"]).date() for rec in all_records)
     currencies = sorted({rec["currency"] for rec in all_records})
     existing_rows = database.get_fx_rates_for_currency_dates(currencies, min_date, limit_date, use_admin=True)
-    existing_map = {
-        (row["currency"], row["rate_date"]): (row["exchange_rate"], row["rate_date_original"])
-        for row in existing_rows
-    }
+    existing_map = {}
+    for row in existing_rows:
+        normalized_rate_date = _normalize_fx_rate_date(row.get("rate_date"))
+        normalized_rate_date_original = _normalize_fx_rate_date(row.get("rate_date_original"))
+        normalized_exchange_rate = _normalize_fx_rate_value(row.get("exchange_rate"))
+
+        if row.get("currency") and normalized_rate_date is not None:
+            existing_map[(row["currency"], normalized_rate_date)] = (
+                normalized_exchange_rate,
+                normalized_rate_date_original
+            )
 
     upsert_records = []
     for record in all_records:
