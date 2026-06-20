@@ -8,7 +8,9 @@ on:
 jobs:
   run-full-nightbatch:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'main' && 'production' || 'test' }}
+    environment: ${{ github.ref_name == 'dev' && 'test' || 'production' }}
+    env:
+      APP_ENV: ${{ github.ref_name == 'dev' && 'dev' || 'main' }}
 
     steps:
       - name: Checkout Repository
@@ -30,5 +32,4 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          APP_ENV: ${{ vars.APP_ENV }}
         run: python src/nightbatch/run_full_nightbatch.py
