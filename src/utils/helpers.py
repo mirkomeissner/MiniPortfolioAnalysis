@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 from src.database import (
     get_account_ref_options, 
     get_asset_ref_options, 
@@ -94,4 +95,37 @@ def reset_reference_data():
     """Hilfsfunktion, um den Cache zu leeren (z.B. nach Account-Erstellung)"""
     if 'ref_data_loaded' in st.session_state:
         del st.session_state['ref_data_loaded']
+
+
+def fetch_and_fill_price_gaps(symbol, start_date, end_date, source_df):
+    """Fill calendar gaps from a pre-fetched DataFrame containing Close prices."""
+    if source_df is None or source_df.empty:
+        return []
+
+    df = source_df.copy()
+    df.columns = [c.capitalize() for c in df.columns]
+    df.index = pd.to_datetime(df.index).date
+
+    results = []
+    last_valid_rate = None
+    last_valid_origin = None
+
+    hist_before = df[df.index <= start_date]
+    if not hist_before.empty:
+        last_valid_rate = float(hist_before.iloc[-1]["Close"])
+        last_valid_origin = hist_before.index[-1]
+
+    for current_day in pd.date_range(start=start_date, end=end_date, freq='D').date:
+        if current_day in df.index:
+            last_valid_rate = float(df.loc[current_day, "Close"])
+            last_valid_origin = current_day
+
+        if last_valid_rate is not None:
+            results.append({
+                "date": current_day,
+                "value": last_valid_rate,
+                "origin": last_valid_origin
+            })
+
+    return results
 

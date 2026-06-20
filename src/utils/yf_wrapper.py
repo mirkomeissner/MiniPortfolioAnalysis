@@ -3,7 +3,68 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 
-# --- MOCK DATA GENERATOR ---
+# --- FIXED MOCK FX DATA (NO WEEKENDS, DETERMINISTIC) ---
+
+def _get_mock_fx_data(symbol, start, end):
+    """
+    Returns fixed mock FX data for testing.
+    5 common currency pairs with realistic rates since 2025-01-01.
+    Only weekdays (Mon-Fri), no random drops.
+    """
+    fx_rates = {
+        "EURUSD=X": {
+            "base_rate": 1.0850,
+            "volatility": 0.0002  # Small daily changes
+        },
+        "EURGBP=X": {
+            "base_rate": 0.8650,
+            "volatility": 0.0001
+        },
+        "EURJPY=X": {
+            "base_rate": 155.5,
+            "volatility": 0.3
+        },
+        "EURCHF=X": {
+            "base_rate": 0.9450,
+            "volatility": 0.00015
+        },
+        "EURSEK=X": {
+            "base_rate": 11.50,
+            "volatility": 0.02
+        }
+    }
+    
+    if symbol not in fx_rates:
+        return pd.DataFrame()
+    
+    s_date = pd.to_datetime(start if start else "2025-01-01")
+    e_date = pd.to_datetime(end if end else pd.Timestamp.now())
+    
+    if s_date > e_date:
+        s_date, e_date = e_date, s_date
+    
+    # Generate only weekdays (Mon-Fri)
+    full_range = pd.date_range(start=s_date, end=e_date, freq="D")
+    weekdays = full_range[full_range.dayofweek < 5]
+    
+    # Generate deterministic rates based on date offset
+    base_rate = fx_rates[symbol]["base_rate"]
+    volatility = fx_rates[symbol]["volatility"]
+    
+    # Use date ordinal to create deterministic but varied rates
+    np.random.seed(42)  # Fixed seed for reproducibility
+    rate_adjustments = np.sin(np.arange(len(weekdays)) * 0.1) * volatility
+    close_prices = base_rate + rate_adjustments
+    
+    df = pd.DataFrame({
+        "Open": close_prices * 0.9998,
+        "High": close_prices * 1.0001,
+        "Low": close_prices * 0.9999,
+        "Close": close_prices,
+        "Volume": 1000000
+    }, index=weekdays)
+    
+    return df
 
 def _generate_mock_data(start, end):
     """
@@ -96,6 +157,7 @@ class MyYFinanceProxy:
         """
         Proxy for yf.download. 
         Supports both single ticker strings and lists of tickers.
+        For FX symbols (=X), uses deterministic mock data.
         """
         if self.is_dev:
             start = kwargs.get("start")
@@ -108,7 +170,11 @@ class MyYFinanceProxy:
             # 2. Generiere die einzelnen Mock-DataFrames
             all_dfs = {}
             for t in ticker_list:
-                all_dfs[t] = _generate_mock_data(start, end)
+                # Use FX mock data for symbols ending with =X
+                if "=X" in t:
+                    all_dfs[t] = _get_mock_fx_data(t, start, end)
+                else:
+                    all_dfs[t] = _generate_mock_data(start, end)
             
             # 3. Erzeuge das MultiIndex-DataFrame (Standard: Ticker auf Level 0)
             # Struktur hier: [Ticker, Attribute] (das entspricht group_by='ticker')

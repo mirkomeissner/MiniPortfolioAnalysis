@@ -223,6 +223,25 @@ def get_fx_rate_bounds(use_admin: bool = False):
         return {}
 
 
+def get_fx_rates_for_currency_dates(currencies, min_date=None, max_date=None, use_admin: bool = False):
+    supabase = get_admin_client() if use_admin else _get_client()
+    try:
+        query = supabase.schema("shared").table("exchange_rates").select(
+            "currency, rate_date, exchange_rate, rate_date_original"
+        )
+        if currencies:
+            query = query.in_("currency", currencies)
+        if min_date:
+            query = query.gte("rate_date", min_date.isoformat())
+        if max_date:
+            query = query.lte("rate_date", max_date.isoformat())
+        res = query.execute()
+        return res.data if res.data else []
+    except Exception as e:
+        print(f"Error loading FX rate records: {e}")
+        return []
+
+
 def save_fx_rates_bulk(payload_list):
     """Upserts FX rate records into the exchange_rates table."""
     if not payload_list:
