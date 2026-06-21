@@ -158,12 +158,12 @@ def get_fx_rates():
         st.error(f"Error loading FX rates: {e}")
         return []
 
-def get_non_eur_asset_currency_start_dates(use_admin: bool = False):
+def get_non_eur_asset_currency_start_dates():
     """
     Returns the earliest price_start_date for every non-EUR asset currency,
     considering BOTH risk_currency and price_currency.
     """    
-    supabase = get_admin_client() if use_admin else _get_client()
+    supabase = _get_client()
     try:
         # 1. Fetch both currency columns and the start date
         res = (supabase.schema("shared").table("asset_static_data")
@@ -200,8 +200,8 @@ def get_non_eur_asset_currency_start_dates(use_admin: bool = False):
         return {}
 
 
-def get_fx_rate_bounds(use_admin: bool = False):
-    supabase = get_admin_client() if use_admin else _get_client()
+def get_fx_rate_bounds():
+    supabase = _get_client()
     try:
         # Wir lesen die View aus
         response = supabase.schema("shared").table("v_exchange_rate_bounds").select("*").execute()
@@ -223,8 +223,8 @@ def get_fx_rate_bounds(use_admin: bool = False):
         return {}
 
 
-def get_asset_price_bounds(use_admin: bool = False):
-    supabase = get_admin_client() if use_admin else _get_client()
+def get_asset_price_bounds():
+    supabase = _get_client()
     try:
         response = supabase.schema("shared").table("v_asset_price_bounds").select("*").execute()
 
@@ -244,8 +244,8 @@ def get_asset_price_bounds(use_admin: bool = False):
         return {}
 
 
-def get_fx_rates_for_currency_dates(currencies, min_date=None, max_date=None, use_admin: bool = False):
-    supabase = get_admin_client() if use_admin else _get_client()
+def get_fx_rates_for_currency_dates(currencies, min_date=None, max_date=None):
+    supabase = _get_client()
     try:
         query = supabase.schema("shared").table("exchange_rates").select(
             "currency, rate_date, exchange_rate, rate_date_original"
@@ -302,9 +302,9 @@ def get_asset_price_start_dates(isins):
         return {}
 
 
-def get_assets_by_price_source(price_source_code: str, use_admin: bool = False):
+def get_assets_by_price_source(price_source_code: str):
     """Return list of assets (isin, ticker, price_currency, price_start_date) for a given price_source_code."""
-    supabase = get_admin_client() if use_admin else _get_client()
+    supabase = _get_client()
     try:
         res = supabase.schema("shared").table("asset_static_data") \
             .select("isin, ticker, price_currency, price_start_date") \
@@ -315,9 +315,9 @@ def get_assets_by_price_source(price_source_code: str, use_admin: bool = False):
         return []
 
 
-def get_asset_prices_for_isin(isin: str, start_date: str = None, end_date: str = None, use_admin: bool = False):
+def get_asset_prices_for_isin(isin: str, start_date: str = None, end_date: str = None):
     """Return existing price rows for an ISIN within an optional date range."""
-    supabase = get_admin_client() if use_admin else _get_client()
+    supabase = _get_client()
     try:
         q = supabase.schema("shared").table("asset_prices").select("isin, price_date, price_close, dividend_cash, split_factor, price_date_original")
         q = q.eq("isin", isin)

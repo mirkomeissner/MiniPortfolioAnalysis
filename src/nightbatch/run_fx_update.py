@@ -68,8 +68,8 @@ def headless_load_missing_fx_rates(dry_run: bool = False):
     print(f"Starting API-optimized automated FX rates update (dry_run={dry_run})...")
 
     # Fetch required start dates from assets and existing bounds from DB
-    target_starts_raw = database.get_non_eur_asset_currency_start_dates(use_admin=True)
-    current_bounds = database.get_fx_rate_bounds(use_admin=True)
+    target_starts_raw = database.get_non_eur_asset_currency_start_dates()
+    current_bounds = database.get_fx_rate_bounds()
 
     if not target_starts_raw:
         print("No non-EUR asset currencies found in the database.")
@@ -173,7 +173,7 @@ def headless_load_missing_fx_rates(dry_run: bool = False):
     min_date = min(pd.to_datetime(rec["rate_date"]).date() for rec in all_records)
     max_date = max(pd.to_datetime(rec["rate_date"]).date() for rec in all_records)
     currencies = sorted({rec["currency"] for rec in all_records})
-    existing_rows = database.get_fx_rates_for_currency_dates(currencies, min_date, max_date, use_admin=True)
+    existing_rows = database.get_fx_rates_for_currency_dates(currencies, min_date, max_date)
     upsert_records, compare_summary = compare_and_deduplicate(
         loaded_records=all_records,
         existing_records=existing_rows,
