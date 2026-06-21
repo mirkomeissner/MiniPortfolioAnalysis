@@ -1,0 +1,28 @@
+name: Scheduled Full Nightbatch
+
+on:
+  schedule:
+    - cron: '47 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  job-fx-update:
+    uses: ./.github/workflows/run_fx_update.yml
+    with:
+      environment: ${{ github.ref_name == 'dev' && 'test' || 'production' }}
+      app_env: ${{ github.ref_name == 'dev' && 'dev' || 'main' }}
+    secrets:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+
+  job-ishares-import:
+    needs: job-fx-update
+    uses: ./.github/workflows/run_ishares_importer.yml
+    with:
+      environment: ${{ github.ref_name == 'dev' && 'test' || 'production' }}
+      app_env: ${{ github.ref_name == 'dev' && 'dev' || 'main' }}
+    secrets:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}

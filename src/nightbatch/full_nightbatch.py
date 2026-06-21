@@ -7,7 +7,7 @@ project_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-import src.nightbatch.run_fx_update as fx_updater
+import src.nightbatch.fx_update as fx_updater
 from src.nightbatch.ishares_importer import process_all_ishares_assets
 
 

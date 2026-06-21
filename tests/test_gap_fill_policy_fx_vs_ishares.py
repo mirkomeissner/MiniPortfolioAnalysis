@@ -10,16 +10,16 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src.nightbatch import run_fx_update, ishares_importer
+from src.nightbatch import fx_update as run_fx_update, ishares_importer
 
 
 def test_fx_gap_fill_uses_yesterday_as_end_boundary():
     """
     This should pass in current behavior: FX explicitly gap-fills to yesterday.
     """
-    with patch("src.nightbatch.run_fx_update.database") as mock_db, \
-         patch("src.nightbatch.run_fx_update.my_yf") as mock_yf, \
-         patch("src.nightbatch.run_fx_update.fetch_and_fill_price_gaps") as mock_fill:
+    with patch("src.nightbatch.fx_update.database") as mock_db, \
+         patch("src.nightbatch.fx_update.my_yf") as mock_yf, \
+         patch("src.nightbatch.fx_update.fetch_and_fill_price_gaps") as mock_fill:
         mock_db.get_non_eur_asset_currency_start_dates.return_value = {"USD": "2026-06-01"}
         mock_db.get_fx_rate_bounds.return_value = {}
         mock_db.get_fx_rates_for_currency_dates.return_value = []
@@ -44,7 +44,7 @@ def test_fx_gap_fill_uses_yesterday_as_end_boundary():
             {"date": datetime.date(2026, 6, 20), "value": 1.125, "origin": datetime.date(2026, 6, 19)}
         ]
 
-        with patch("src.nightbatch.run_fx_update.datetime") as mock_datetime:
+        with patch("src.nightbatch.fx_update.datetime") as mock_datetime:
             mock_datetime.date.today.return_value = datetime.date(2026, 6, 21)
             mock_datetime.timedelta = datetime.timedelta
             mock_datetime.datetime.utcnow.return_value = datetime.datetime(2026, 6, 21, 10, 0, 0)

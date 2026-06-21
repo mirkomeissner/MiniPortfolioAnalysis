@@ -217,5 +217,5 @@ def headless_load_missing_fx_rates(dry_run: bool = False):
         sys.exit(1)
 
 if __name__ == "__main__":
-    headless_load_missing_fx_rates()
+    headless_load_missing_fx_rates(dry_run=False)
 
