@@ -114,6 +114,7 @@ def headless_load_missing_fx_rates(dry_run: bool = False):
             threads=False
         )
 
+        
         if hist_df is None or hist_df.empty:
             print(f"[{currency}] No data returned for {symbol}.")
             continue
