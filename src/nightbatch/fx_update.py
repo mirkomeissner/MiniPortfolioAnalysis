@@ -15,38 +15,14 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 
-# 2. ENVIRONMENT & STREAMLIT EMULATION
-# -------------------------------------------------------------------------
-import os
-import streamlit as st
-
-# Wir laden alle drei Variablen sauber und getrennt aus der GitHub-Umgebung
-supabase_url = os.environ.get("SUPABASE_URL")
-supabase_service_key = os.environ.get("SUPABASE_SERVICE_KEY")
-supabase_key = os.environ.get("SUPABASE_KEY")
-
-if supabase_url and supabase_service_key and supabase_key:
-    if st.secrets._secrets is None:
-        st.secrets._secrets = {}
-        
-    # Jeder Key landet genau da, wo er hingehört. Keine Kopien, keine Täuschung.
-    st.secrets._secrets["SUPABASE_URL"] = supabase_url
-    st.secrets._secrets["SUPABASE_SERVICE_KEY"] = supabase_service_key
-    st.secrets._secrets["SUPABASE_KEY"] = supabase_key
-else:
-    if "SUPABASE_URL" not in st.secrets or "SUPABASE_SERVICE_KEY" not in st.secrets or "SUPABASE_KEY" not in st.secrets:
-        raise ValueError("Es fehlen benötigte Keys in den Umgebungsvariablen oder der secrets.toml!")
-
-
-
-
-# 3. INTERNE MODULE IMPORTIEREN (Jetzt weiß Python, wo 'src' liegt)
+# 2. INTERNE MODULE IMPORTIEREN (Jetzt weiß Python, wo 'src' liegt)
 # -------------------------------------------------------------------------
 
 
 
 # Now it's safe to import internal modules
 import src.database as database
+database.initialize_runtime_from_env(strict=False)
 from src.utils import (
     my_yf,
     fetch_and_fill_price_gaps,

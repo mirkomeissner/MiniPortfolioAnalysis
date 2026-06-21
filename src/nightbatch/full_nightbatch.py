@@ -9,9 +9,11 @@ if project_root not in sys.path:
 
 import src.nightbatch.fx_update as fx_updater
 from src.nightbatch.ishares_importer import process_all_ishares_assets
+import src.database as database
 
 
 def run_full_nightbatch(dry_run: bool = False):
+    database.initialize_runtime_from_env(strict=False)
     env = os.environ.get("APP_ENV", "main")
     print(f"Starting full nightbatch run on environment {env} (dry_run={dry_run})...")
 
