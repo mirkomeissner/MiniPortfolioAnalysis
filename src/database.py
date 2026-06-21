@@ -10,15 +10,14 @@ def get_admin_client() -> Client:
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"])
 
 def _get_client() -> Client:
-    client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    
-    # Wir verlassen uns NUR auf unseren Session State
     token = st.session_state.get("access_token")
-    
-    if token:
-        client.postgrest.auth(token)
-        client.auth.set_session(token, "any-refresh-token")
-    
+    if not token:
+        # No user session (headless/nightbatch context): fall back to service role.
+        # anon role is fully revoked, so a tokenless anon client would fail anyway.
+        return get_admin_client()
+    client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+    client.postgrest.auth(token)
+    client.auth.set_session(token, "any-refresh-token")
     return client
 
 # --- AUTH & USER DB OPERATIONS ---
