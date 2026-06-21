@@ -6,22 +6,8 @@ import requests
 import pandas as pd
 from datetime import date, datetime
 
-# Bootstrap Streamlit secrets from environment variables for headless execution.
-# Must run before any src.database import so get_admin_client() has the keys it needs.
-_supabase_url = os.environ.get("SUPABASE_URL")
-_supabase_service_key = os.environ.get("SUPABASE_SERVICE_KEY")
-_supabase_key = os.environ.get("SUPABASE_KEY")
-
-if _supabase_url and _supabase_service_key:
-    import streamlit as _st
-    if _st.secrets._secrets is None:
-        _st.secrets._secrets = {}
-    _st.secrets._secrets["SUPABASE_URL"] = _supabase_url
-    _st.secrets._secrets["SUPABASE_SERVICE_KEY"] = _supabase_service_key
-    if _supabase_key:
-        _st.secrets._secrets["SUPABASE_KEY"] = _supabase_key
-
 import src.database as database
+database.initialize_runtime_from_env(strict=False)
 from src.utils import (
     fetch_and_fill_price_gaps,
     normalize_float,

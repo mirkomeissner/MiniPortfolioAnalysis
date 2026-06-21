@@ -1,7 +1,9 @@
 import streamlit as st  
 from src.authentication import check_password, logout, user_settings_ui  
+from src.database import initialize_runtime_from_streamlit
 
 st.set_page_config(page_title="Asset Manager", layout="wide")  
+initialize_runtime_from_streamlit(st)
 
 if check_password():  
     # ERST HIER: Komponenten importieren, nachdem der Login erfolgreich war

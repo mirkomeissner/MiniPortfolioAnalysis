@@ -1,21 +1,52 @@
-import streamlit as st
+import logging
 from supabase import create_client, Client
 import datetime
-from datetime import datetime as dt_class 
+from datetime import datetime as dt_class
+
+from src.runtime_context import (
+    configure_from_env,
+    configure_streamlit_context,
+    get_current_access_token,
+    get_current_user_id,
+    get_supabase_config,
+    set_context,
+    ttl_cache_data,
+)
+
+
+logger = logging.getLogger(__name__)
+
+
+def initialize_runtime_from_streamlit(st_module) -> None:
+    configure_streamlit_context(st_module)
+
+
+def initialize_runtime_from_env(strict: bool = True) -> bool:
+    return configure_from_env(strict=strict)
+
+
+def set_request_context(access_token=None, user_id=None) -> None:
+    set_context(access_token=access_token, user_id=user_id)
+
+
+def _report_error(message: str, error: Exception) -> None:
+    logger.error("%s: %s", message, error)
 
 # --- CLIENT INITIALIZATION ---
 
 def get_admin_client() -> Client:
     """Admin client for bypass RLS (Service Role) - Zentral für interne Zwecke."""
-    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"])
+    cfg = get_supabase_config()
+    return create_client(cfg.url, cfg.service_key)
 
 def _get_client() -> Client:
-    token = st.session_state.get("access_token")
+    token = get_current_access_token()
     if not token:
         # No user session (headless/nightbatch context): fall back to service role.
         # anon role is fully revoked, so a tokenless anon client would fail anyway.
         return get_admin_client()
-    client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+    cfg = get_supabase_config()
+    client = create_client(cfg.url, cfg.anon_key)
     client.postgrest.auth(token)
     client.auth.set_session(token, "any-refresh-token")
     return client
@@ -98,7 +129,7 @@ def db_get_all_users():
             .order("created_at", desc=True).execute()
         return response.data
     except Exception as e:
-        st.error(f"Fehler beim Laden der User: {e}")
+        _report_error("Fehler beim Laden der User", e)
         return []
 
 def db_update_user_approval(user_id, status: bool):
@@ -115,17 +146,17 @@ def db_update_user_approval(user_id, status: bool):
 
 # --- DATABASE FUNCTIONS (Assets, Transactions, etc.) ---
 
-@st.cache_data(ttl=600)
+@ttl_cache_data(ttl=600)
 def get_ref_options(table_name):
     supabase = _get_client()
     try:
         res = supabase.schema("shared").table(table_name).select("code, label").execute()
         return [f"{item['code']} ({item['label']})" for item in res.data] if res.data else []
     except Exception as e:
-        st.error(f"Error loading reference data {table_name}: {e}")
+        _report_error(f"Error loading reference data {table_name}", e)
         return []
 
-@st.cache_data(ttl=3600)
+@ttl_cache_data(ttl=3600)
 def get_country_region_map():
     supabase = _get_client()
     res = supabase.schema("shared").table("country_region_mapping").select("country, region_code").execute()
@@ -141,7 +172,7 @@ def get_asset_prices():
                .execute())
         return res.data if res.data else []
     except Exception as e:
-        st.error(f"Error loading asset prices: {e}")
+        _report_error("Error loading asset prices", e)
         return []
 
 def get_fx_rates():
@@ -154,7 +185,7 @@ def get_fx_rates():
                .execute())
         return res.data if res.data else []
     except Exception as e:
-        st.error(f"Error loading FX rates: {e}")
+        _report_error("Error loading FX rates", e)
         return []
 
 def get_non_eur_asset_currency_start_dates():
@@ -195,7 +226,7 @@ def get_non_eur_asset_currency_start_dates():
         return currency_dates
         
     except Exception as e:
-        st.error(f"Error loading asset currency start dates: {e}")
+        _report_error("Error loading asset currency start dates", e)
         return {}
 
 
@@ -276,7 +307,7 @@ def save_fx_rates_bulk(payload_list):
             on_conflict="currency, rate_date"
         ).execute()
     except Exception as e:
-        st.error(f"Error saving FX rates: {e}")
+        _report_error("Error saving FX rates", e)
         raise e
 
 
@@ -286,7 +317,7 @@ def get_asset_price_start_date(isin):
         res = supabase.schema("shared").table("asset_static_data").select("price_start_date").eq("isin", isin).single().execute()
         return res.data.get("price_start_date") if res.data else None
     except Exception as e:
-        st.error(f"Error loading asset start date: {e}")
+        _report_error("Error loading asset start date", e)
         return None
 
 def get_asset_price_start_dates(isins):
@@ -297,7 +328,7 @@ def get_asset_price_start_dates(isins):
         res = supabase.schema("shared").table("asset_static_data").select("isin, price_start_date").in_("isin", isins).execute()
         return {item["isin"]: item.get("price_start_date") for item in res.data} if res.data else {}
     except Exception as e:
-        st.error(f"Error loading asset start dates: {e}")
+        _report_error("Error loading asset start dates", e)
         return {}
 
 
@@ -310,7 +341,7 @@ def get_assets_by_price_source(price_source_code: str):
             .eq("price_source_code", price_source_code).execute()
         return res.data if res.data else []
     except Exception as e:
-        st.error(f"Error loading assets by price source: {e}")
+        _report_error("Error loading assets by price source", e)
         return []
 
 
@@ -327,7 +358,7 @@ def get_asset_prices_for_isin(isin: str, start_date: str = None, end_date: str =
         res = q.execute()
         return res.data if res.data else []
     except Exception as e:
-        st.error(f"Error loading asset prices for {isin}: {e}")
+        _report_error(f"Error loading asset prices for {isin}", e)
         return []
 
 
@@ -339,7 +370,7 @@ def save_asset_prices_bulk(payload_list):
     try:
         return supabase.schema("shared").table("asset_prices").upsert(payload_list, on_conflict="isin, price_date").execute()
     except Exception as e:
-        st.error(f"Error saving asset prices: {e}")
+        _report_error("Error saving asset prices", e)
         raise e
 
 def update_asset_start_date(isin, start_date):
@@ -357,7 +388,7 @@ def update_asset_start_dates_bulk(payload_list):
     
     supabase = get_admin_client()
     now = dt_class.now().isoformat()
-    user_id = st.session_state.get("user_id")
+    user_id = get_current_user_id()
     
     results = []
     for item in payload_list:
@@ -372,7 +403,7 @@ def update_asset_start_dates_bulk(payload_list):
             result = supabase.schema("shared").table("asset_static_data").update(update_data).eq("isin", item["isin"]).execute()
             results.append(result)
         except Exception as e:
-            st.error(f"Error updating {item['isin']}: {e}")
+            _report_error(f"Error updating {item['isin']}", e)
             raise e
     
     return results
@@ -386,13 +417,13 @@ def update_asset_static_data(isin, updated_data):
     if "updated_at" not in updated_data:
         updated_data["updated_at"] = dt_class.now().isoformat()
     if "updated_by" not in updated_data:
-        user_id = st.session_state.get("user_id")
+        user_id = get_current_user_id()
         if user_id:
             updated_data["updated_by"] = user_id
     try:
         return supabase.schema("shared").table("asset_static_data").update(updated_data).eq("isin", isin).execute()
     except Exception as e:
-        st.error(f"Datenbank-Details: {e}")
+        _report_error("Datenbank-Details", e)
         raise e
 
 def get_missing_isins(isins: list) -> list:
@@ -429,11 +460,12 @@ def get_all_assets_with_labels():
                     "Created By": (row.get("created_by") or {}).get("username"),
                     "Updated At": row.get("updated_at"), "Updated By": (row.get("updated_by") or {}).get("username")
                 })
-    except Exception as e: st.error(f"Error: {e}")
+    except Exception as e:
+        _report_error("Error", e)
     return flattened_data
 
 def get_all_transactions():
-    user_id = st.session_state.get('user_id')
+    user_id = get_current_user_id()
     if not user_id: return []
     supabase = _get_client()
     columns = ("user_id, id, account_code, isin, date, transaction_type_code, quantity, settle_amount, "
@@ -442,7 +474,9 @@ def get_all_transactions():
     try:
         response = supabase.schema("public").table("transactions").select(columns).eq("user_id", user_id).execute()
         return response.data
-    except Exception as e: st.error(f"Error: {e}"); return []
+    except Exception as e:
+        _report_error("Error", e)
+        return []
 
 def get_asset_ref_options():
     supabase = _get_client()
@@ -479,7 +513,7 @@ def search_exchange_tickers(isin: str = None, name: str = None, active_only: boo
         response = query.limit(200).order("name", desc=False).execute()
         return response.data if response.data else []
     except Exception as e:
-        st.error(f"Error searching exchange tickers: {e}")
+        _report_error("Error searching exchange tickers", e)
         return []
 
 def get_account_ref_options(user_id):
@@ -517,7 +551,7 @@ def get_import_settings(user_id, account_code):
     response = supabase.schema("public").table("user_import_settings").select("mapping_config").eq("user_id", user_id).eq("account_code", account_code).execute()
     return response.data[0]["mapping_config"] if response.data else None
 
-@st.cache_data(ttl=600)
+@ttl_cache_data(ttl=600)
 def get_transaction_type_logic():
     supabase = _get_client()
     try:
@@ -538,7 +572,7 @@ def get_all_accounts(user_id):
         res = supabase.schema("public").table("accounts").select("account_code, description").eq("user_id", user_id).execute()
         return res.data
     except Exception as e:
-        st.error(f"Error loading accounts: {e}")
+        _report_error("Error loading accounts", e)
         return []
 
 def save_account(user_id, account_code, description):
