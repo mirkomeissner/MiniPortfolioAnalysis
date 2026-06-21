@@ -12,7 +12,7 @@ if ROOT not in sys.path:
 # Set APP_ENV to dev to enable mock data
 os.environ["APP_ENV"] = "dev"
 
-from src.nightbatch import run_fx_update
+from src.nightbatch import fx_update as run_fx_update
 from src.utils.helpers import fetch_and_fill_price_gaps
 
 
@@ -30,7 +30,7 @@ class TestNightbatchFXUpdate:
         Should insert all FX rates from fx_start to yesterday.
         """
         # Mock database functions
-        with patch('src.nightbatch.run_fx_update.database') as mock_db:
+        with patch('src.nightbatch.fx_update.database') as mock_db:
             # Asset requires USD starting 2025-01-01
             mock_db.get_non_eur_asset_currency_start_dates.return_value = {
                 "USD": "2025-01-01"
@@ -51,7 +51,7 @@ class TestNightbatchFXUpdate:
             mock_db.save_fx_rates_bulk.side_effect = capture_upsert
             
             # Patch datetime.date.today() to return fixed date
-            with patch('src.nightbatch.run_fx_update.datetime') as mock_datetime:
+            with patch('src.nightbatch.fx_update.datetime') as mock_datetime:
                 mock_datetime.date.today.return_value = self.today
                 mock_datetime.timedelta = datetime.timedelta
                 mock_datetime.datetime.utcnow.return_value = datetime.datetime(2025, 6, 20, 12, 0, 0)
@@ -76,7 +76,7 @@ class TestNightbatchFXUpdate:
         Test Case 2: Existing currency (GBP) with earlier fx_start than min_date.
         Should fill historical gap and update records.
         """
-        with patch('src.nightbatch.run_fx_update.database') as mock_db:
+        with patch('src.nightbatch.fx_update.database') as mock_db:
             # Asset requires GBP starting 2024-12-01 (earlier than min_date in DB)
             mock_db.get_non_eur_asset_currency_start_dates.return_value = {
                 "GBP": "2024-12-01"
@@ -114,7 +114,7 @@ class TestNightbatchFXUpdate:
             mock_db.save_fx_rates_bulk.side_effect = capture_upsert
             
             # Patch datetime
-            with patch('src.nightbatch.run_fx_update.datetime') as mock_datetime:
+            with patch('src.nightbatch.fx_update.datetime') as mock_datetime:
                 mock_datetime.date.today.return_value = self.today
                 mock_datetime.timedelta = datetime.timedelta
                 mock_datetime.datetime.utcnow.return_value = datetime.datetime(2025, 6, 20, 12, 0, 0)
@@ -136,7 +136,7 @@ class TestNightbatchFXUpdate:
         Last 10 days ago has an updated rate (different from before).
         Should update the 10-day-old record and insert the missing last day.
         """
-        with patch('src.nightbatch.run_fx_update.database') as mock_db:
+        with patch('src.nightbatch.fx_update.database') as mock_db:
             # Asset requires JPY starting 2025-01-01
             mock_db.get_non_eur_asset_currency_start_dates.return_value = {
                 "JPY": "2025-01-01"
@@ -171,7 +171,7 @@ class TestNightbatchFXUpdate:
             mock_db.save_fx_rates_bulk.side_effect = capture_upsert
             
             # Patch datetime
-            with patch('src.nightbatch.run_fx_update.datetime') as mock_datetime:
+            with patch('src.nightbatch.fx_update.datetime') as mock_datetime:
                 mock_datetime.date.today.return_value = self.today
                 mock_datetime.timedelta = datetime.timedelta
                 mock_datetime.datetime.utcnow.return_value = datetime.datetime(2025, 6, 20, 12, 0, 0)
@@ -192,7 +192,7 @@ class TestNightbatchFXUpdate:
         Test Case 4: Existing currency (CHF) with unchanged rates.
         Should NOT update records that are identical to existing DB records.
         """
-        with patch('src.nightbatch.run_fx_update.database') as mock_db:
+        with patch('src.nightbatch.fx_update.database') as mock_db:
             # Asset requires CHF starting 2025-01-01
             mock_db.get_non_eur_asset_currency_start_dates.return_value = {
                 "CHF": "2025-01-01"
@@ -226,7 +226,7 @@ class TestNightbatchFXUpdate:
             mock_db.save_fx_rates_bulk = Mock()
             
             # Patch datetime
-            with patch('src.nightbatch.run_fx_update.datetime') as mock_datetime:
+            with patch('src.nightbatch.fx_update.datetime') as mock_datetime:
                 mock_datetime.date.today.return_value = self.today
                 mock_datetime.timedelta = datetime.timedelta
                 mock_datetime.datetime.utcnow.return_value = datetime.datetime(2025, 6, 20, 12, 0, 0)
@@ -247,7 +247,7 @@ class TestNightbatchFXUpdate:
         Test Case 5: Existing currency rows have mixed types from Supabase.
         Should skip unchanged rows when DB values normalize to identical payload values.
         """
-        with patch('src.nightbatch.run_fx_update.database') as mock_db:
+        with patch('src.nightbatch.fx_update.database') as mock_db:
             mock_db.get_non_eur_asset_currency_start_dates.return_value = {
                 "CHF": "2025-06-10"
             }
@@ -267,8 +267,8 @@ class TestNightbatchFXUpdate:
             ]
             mock_db.save_fx_rates_bulk = Mock()
 
-            with patch('src.nightbatch.run_fx_update.my_yf') as mock_yf, \
-                 patch('src.nightbatch.run_fx_update.fetch_and_fill_price_gaps') as mock_fill:
+            with patch('src.nightbatch.fx_update.my_yf') as mock_yf, \
+                 patch('src.nightbatch.fx_update.fetch_and_fill_price_gaps') as mock_fill:
                 mock_columns = pd.MultiIndex.from_tuples(
                     [
                         ("Open", "EURCHF=X"),
@@ -292,7 +292,7 @@ class TestNightbatchFXUpdate:
                     }
                 ]
 
-                with patch('src.nightbatch.run_fx_update.datetime') as mock_datetime:
+                with patch('src.nightbatch.fx_update.datetime') as mock_datetime:
                     mock_datetime.date.today.return_value = self.today
                     mock_datetime.timedelta = datetime.timedelta
                     mock_datetime.datetime.utcnow.return_value = datetime.datetime(2025, 6, 20, 12, 0, 0)
@@ -306,7 +306,7 @@ class TestNightbatchFXUpdate:
         Test Case 5: Special GBX currency handling.
         GBX uses GBP data multiplied by 100.
         """
-        with patch('src.nightbatch.run_fx_update.database') as mock_db:
+        with patch('src.nightbatch.fx_update.database') as mock_db:
             # Asset requires GBX starting 2025-01-01
             mock_db.get_non_eur_asset_currency_start_dates.return_value = {
                 "GBX": "2025-01-01"
@@ -327,7 +327,7 @@ class TestNightbatchFXUpdate:
             mock_db.save_fx_rates_bulk.side_effect = capture_upsert
             
             # Patch datetime
-            with patch('src.nightbatch.run_fx_update.datetime') as mock_datetime:
+            with patch('src.nightbatch.fx_update.datetime') as mock_datetime:
                 mock_datetime.date.today.return_value = self.today
                 mock_datetime.timedelta = datetime.timedelta
                 mock_datetime.datetime.utcnow.return_value = datetime.datetime(2025, 6, 20, 12, 0, 0)

@@ -381,7 +381,6 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
         isin,
         start_date=min_loaded,
         end_date=max_loaded,
-        use_admin=True,
     )
 
     upsert_records, compare_summary = compare_and_deduplicate(
@@ -434,8 +433,8 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
 
 
 def process_all_ishares_assets(dry_run: bool = False):
-    assets = database.get_assets_by_price_source("ISH", use_admin=True)
-    bounds_map = database.get_asset_price_bounds(use_admin=True)
+    assets = database.get_assets_by_price_source("ISH")
+    bounds_map = database.get_asset_price_bounds()
 
     # Step 1+2: distinct ISIN with smallest asset_start
     grouped = {}

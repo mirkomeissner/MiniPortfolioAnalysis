@@ -4,23 +4,23 @@
 
 The central nightbatch orchestrator is now:
 
-- `src/nightbatch/run_full_nightbatch.py`
+- `src/nightbatch/full_nightbatch.py`
 
 This script runs:
 
-1. FX update (`src/nightbatch/run_fx_update.py`)
+1. FX update (`src/nightbatch/fx_update.py`)
 2. iShares price update (`src/nightbatch/ishares_importer.py`)
 
 ## GitHub Actions
 
 The scheduled workflow is configured in:
 
-- `.github/workflows/full_nightbatch.yml`
+- `.github/workflows/run_full_nightbatch.yml`
 
 It executes:
 
 ```bash
-python src/nightbatch/run_full_nightbatch.py
+python src/nightbatch/full_nightbatch.py
 ```
 
 ## Local test
@@ -28,5 +28,5 @@ python src/nightbatch/run_full_nightbatch.py
 Run the full nightbatch locally with:
 
 ```bash
-python src/nightbatch/run_full_nightbatch.py
+python src/nightbatch/full_nightbatch.py
 ```
