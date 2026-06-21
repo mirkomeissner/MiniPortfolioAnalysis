@@ -78,6 +78,24 @@ def calculate_request_start_date(
     return max_date - timedelta(days=refresh_days)
 
 
+def calculate_gap_fill_end_date(
+    source_max_date: Optional[date],
+    run_date: Optional[date] = None,
+    lag_days: int = 1,
+) -> Optional[date]:
+    """
+    Generic policy for gap-fill upper boundary used by any data provider.
+    - run boundary: run_date - lag_days (usually yesterday)
+    - final boundary: max(source_max_date, run boundary)
+    """
+    if source_max_date is None:
+        return None
+
+    effective_run_date = run_date or date.today()
+    run_boundary = effective_run_date - timedelta(days=lag_days)
+    return max(source_max_date, run_boundary)
+
+
 def compare_and_deduplicate(
     loaded_records: List[Dict[str, Any]],
     existing_records: Iterable[Dict[str, Any]],

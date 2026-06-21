@@ -10,6 +10,7 @@ from src.utils import (
     normalize_float,
     normalize_date,
     calculate_request_start_date,
+    calculate_gap_fill_end_date,
     compare_and_deduplicate,
 )
 
@@ -337,11 +338,16 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
 
     min_date = min(prices["price_date"])  # date objects
     max_date = max(prices["price_date"])  # date objects
+    fill_end_date = calculate_gap_fill_end_date(
+        source_max_date=max_date,
+        run_date=date.today(),
+        lag_days=1,
+    )
 
     # Prepare DataFrame shaped like yfinance output expected by fetch_and_fill_price_gaps
     tmp_df = pd.DataFrame({"Close": prices.set_index("price_date")["price_close"]})
 
-    gap_data = fetch_and_fill_price_gaps(ticker, min_date, max_date, tmp_df)
+    gap_data = fetch_and_fill_price_gaps(ticker, min_date, fill_end_date, tmp_df)
     print(f"[ISIN {isin}] NAV lines after gap-filling: {len(gap_data)}")
 
     # build full history DataFrame from gap_data

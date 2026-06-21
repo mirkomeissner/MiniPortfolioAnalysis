@@ -33,7 +33,9 @@ def test_import_ishares_dry_run_skips_db_write_and_returns_compare_stats():
     sheets = _sample_sheets_for_dry_run()
 
     with patch("src.nightbatch.ishares_importer.pd.read_excel", return_value=sheets), \
-         patch("src.nightbatch.ishares_importer.database") as mock_db:
+         patch("src.nightbatch.ishares_importer.database") as mock_db, \
+         patch("src.nightbatch.ishares_importer.date") as mock_date:
+        mock_date.today.return_value = pd.to_datetime("2023-06-18").date()
         mock_db.get_asset_prices_for_isin.return_value = [
             {
                 "isin": "IE000OHHIBC6",

@@ -12,6 +12,7 @@ from src.utils.data_import_helpers import (
     normalize_date,
     normalize_value,
     calculate_request_start_date,
+    calculate_gap_fill_end_date,
     compare_and_deduplicate,
 )
 
@@ -106,3 +107,16 @@ def test_compare_and_deduplicate_normalized_mixed_types():
     assert summary["to_upsert"] == 1
     assert len(upsert) == 1
     assert upsert[0]["price_date"] == "2025-06-11"
+
+
+def test_calculate_gap_fill_end_date_uses_max_of_source_and_run_boundary():
+    run_date = date(2026, 6, 21)
+
+    # source older than run boundary -> should extend to yesterday
+    assert calculate_gap_fill_end_date(date(2026, 6, 19), run_date=run_date, lag_days=1) == date(2026, 6, 20)
+
+    # source newer than run boundary -> should keep source max
+    assert calculate_gap_fill_end_date(date(2026, 6, 22), run_date=run_date, lag_days=1) == date(2026, 6, 22)
+
+    # no source -> no fill end
+    assert calculate_gap_fill_end_date(None, run_date=run_date, lag_days=1) is None

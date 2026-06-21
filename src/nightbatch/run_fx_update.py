@@ -53,6 +53,7 @@ from src.utils import (
     normalize_float,
     normalize_date,
     calculate_request_start_date,
+    calculate_gap_fill_end_date,
     compare_and_deduplicate,
 )
 
@@ -136,7 +137,14 @@ def headless_load_missing_fx_rates(dry_run: bool = False):
             print(f"[{currency}] No Close prices available for {symbol}.")
             continue
 
-        gap_data = fetch_and_fill_price_gaps(symbol, request_start, limit_date, history)
+        source_max_date = pd.to_datetime(history.index).max().date()
+        fill_end_date = calculate_gap_fill_end_date(
+            source_max_date=source_max_date,
+            run_date=today,
+            lag_days=1,
+        )
+
+        gap_data = fetch_and_fill_price_gaps(symbol, request_start, fill_end_date, history)
         after_gap_fill_total = len(gap_data)
         print(f"[{currency}] Number of fx rates after gap-filling (all calendar days): {after_gap_fill_total}")
 
@@ -163,8 +171,9 @@ def headless_load_missing_fx_rates(dry_run: bool = False):
         return
 
     min_date = min(pd.to_datetime(rec["rate_date"]).date() for rec in all_records)
+    max_date = max(pd.to_datetime(rec["rate_date"]).date() for rec in all_records)
     currencies = sorted({rec["currency"] for rec in all_records})
-    existing_rows = database.get_fx_rates_for_currency_dates(currencies, min_date, limit_date, use_admin=True)
+    existing_rows = database.get_fx_rates_for_currency_dates(currencies, min_date, max_date, use_admin=True)
     upsert_records, compare_summary = compare_and_deduplicate(
         loaded_records=all_records,
         existing_records=existing_rows,

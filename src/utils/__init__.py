@@ -24,6 +24,7 @@ from .data_import_helpers import (
     normalize_date,
     normalize_value,
     calculate_request_start_date,
+    calculate_gap_fill_end_date,
     compare_and_deduplicate,
 )
 
@@ -48,5 +49,6 @@ __all__ = [
     'normalize_date',
     'normalize_value',
     'calculate_request_start_date',
+    'calculate_gap_fill_end_date',
     'compare_and_deduplicate',
 ]
