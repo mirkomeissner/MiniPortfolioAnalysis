@@ -19,6 +19,14 @@ from .ui_components import (
 from .yf_wrapper import my_yf
 from .tiingo_wrapper import my_tiingo
 from .email_service import send_duplicate_info_mail
+from .data_import_helpers import (
+    normalize_float,
+    normalize_date,
+    normalize_value,
+    calculate_request_start_date,
+    calculate_gap_fill_end_date,
+    compare_and_deduplicate,
+)
 
 __all__ = [
     'extract_code',
@@ -37,4 +45,10 @@ __all__ = [
     'my_yf',
     'my_tiingo',
     'send_duplicate_info_mail',
+    'normalize_float',
+    'normalize_date',
+    'normalize_value',
+    'calculate_request_start_date',
+    'calculate_gap_fill_end_date',
+    'compare_and_deduplicate',
 ]

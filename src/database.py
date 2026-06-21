@@ -223,6 +223,27 @@ def get_fx_rate_bounds(use_admin: bool = False):
         return {}
 
 
+def get_asset_price_bounds(use_admin: bool = False):
+    supabase = get_admin_client() if use_admin else _get_client()
+    try:
+        response = supabase.schema("shared").table("v_asset_price_bounds").select("*").execute()
+
+        if not response.data:
+            return {}
+
+        return {
+            item['isin']: {
+                'min': datetime.date.fromisoformat(item['min_date']) if item.get('min_date') else None,
+                'max': datetime.date.fromisoformat(item['max_date']) if item.get('max_date') else None,
+            }
+            for item in response.data
+            if item.get('isin')
+        }
+    except Exception as e:
+        print(f"Fehler in get_asset_price_bounds: {e}")
+        return {}
+
+
 def get_fx_rates_for_currency_dates(currencies, min_date=None, max_date=None, use_admin: bool = False):
     supabase = get_admin_client() if use_admin else _get_client()
     try:

@@ -2,6 +2,7 @@ import io
 import os
 import sys
 import pandas as pd
+from unittest.mock import patch
 
 # Ensure project root is on sys.path so 'src' package can be imported
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -31,10 +32,12 @@ def make_sample_excel_bytes():
 def test_import_ishares_parsing_dry_run():
     sheets = make_sample_excel_bytes()
 
-    # Monkeypatch pandas.read_excel used inside the importer to return our sheets
-    original_read_excel = pd.read_excel
-    pd.read_excel = lambda *args, **kwargs: sheets
-    try:
+    with patch("src.nightbatch.ishares_importer.pd.read_excel", return_value=sheets), \
+         patch("src.nightbatch.ishares_importer.database") as mock_db, \
+         patch("src.nightbatch.ishares_importer.date") as mock_date:
+        mock_db.get_asset_prices_for_isin.return_value = []
+        mock_date.today.return_value = pd.to_datetime("2023-06-18").date()
+
         res = ishares_importer.import_ishares_history_for_ticker(
             isin='IE000OHHIBC6',
             ticker='332655',
@@ -43,8 +46,6 @@ def test_import_ishares_parsing_dry_run():
             dry_run=True,
             excel_bytes=b"FAKE-BYTES-WHICH-IS-IGNORED"
         )
-    finally:
-        pd.read_excel = original_read_excel
 
     assert isinstance(res, dict)
     assert res.get('parsed') == 3

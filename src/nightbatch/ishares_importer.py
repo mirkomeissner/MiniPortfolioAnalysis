@@ -5,7 +5,14 @@ import pandas as pd
 from datetime import date, datetime
 
 import src.database as database
-from src.utils import fetch_and_fill_price_gaps
+from src.utils import (
+    fetch_and_fill_price_gaps,
+    normalize_float,
+    normalize_date,
+    calculate_request_start_date,
+    calculate_gap_fill_end_date,
+    compare_and_deduplicate,
+)
 
 
 ISHARE_URL_TEMPLATE = (
@@ -28,8 +35,22 @@ def _download_excel(ticker: str, retries: int = 3, timeout: int = 15) -> bytes:
     raise last_exc
 
 
+def _parse_iso_date(value):
+    if value is None:
+        return None
+    try:
+        if isinstance(value, str):
+            raw = value.strip()
+            if len(raw) >= 10 and raw[4] == "-" and raw[7] == "-":
+                return datetime.fromisoformat(raw[:10]).date()
+        return pd.to_datetime(value, dayfirst=True).date()
+    except Exception:
+        return None
+
+
 def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: str, price_start_date: str = None,
-                                     dry_run: bool = False, excel_bytes: bytes = None):
+                                     dry_run: bool = False, excel_bytes: bytes = None,
+                                     request_start_date: str = None, asset_start_date: str = None):
     """
     Downloads and imports ISH price history for a single asset.
 
@@ -42,6 +63,10 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
 
     Returns a dict with summary: {'parsed': n, 'inserted': n, 'updated': n}
     """
+    # Normalize boundaries used by new incremental logic
+    request_start = _parse_iso_date(request_start_date)
+    asset_start = _parse_iso_date(asset_start_date) or _parse_iso_date(price_start_date)
+
     # 1) download or use provided bytes
     if excel_bytes is None:
         try:
@@ -243,6 +268,8 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
                         break
         # fallback to pandas parser
         try:
+            if len(s0) >= 10 and s0[4] == '-' and s0[7] == '-':
+                return datetime.fromisoformat(s0[:10]).date()
             return pd.to_datetime(s0, dayfirst=True).date()
         except Exception:
             # final fallback: compact letters/digits and attempt to extract day, monthtext, year
@@ -261,6 +288,10 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
     hist_df['per'] = hist_df['per'].apply(_parse_date_str)
     hist_df['NAV'] = pd.to_numeric(hist_df['NAV'], errors='coerce')
 
+    # Requirement step 4c: drop rows before request_start_date
+    if request_start is not None:
+        hist_df = hist_df[hist_df['per'] >= request_start].copy()
+
     # 4) extract ausschüttungen
     dis = xls.get("Ausschüttungen")
     if dis is None:
@@ -274,6 +305,10 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
         # parse Fälligkeitsdatum using the same helper
         dis_df["Fälligkeitsdatum"] = dis_df["Fälligkeitsdatum"].apply(_parse_date_str)
         dis_df["Gesamtausschüttung"] = pd.to_numeric(dis_df["Gesamtausschüttung"], errors="coerce")
+
+        # Requirement step 4c: drop rows where Fälligkeitsdatum <= request_start_date
+        if request_start is not None:
+            dis_df = dis_df[dis_df["Fälligkeitsdatum"] > request_start].copy()
     else:
         dis_df = pd.DataFrame(columns=["Fälligkeitsdatum", "Gesamtausschüttung"])
 
@@ -303,11 +338,16 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
 
     min_date = min(prices["price_date"])  # date objects
     max_date = max(prices["price_date"])  # date objects
+    fill_end_date = calculate_gap_fill_end_date(
+        source_max_date=max_date,
+        run_date=date.today(),
+        lag_days=1,
+    )
 
     # Prepare DataFrame shaped like yfinance output expected by fetch_and_fill_price_gaps
     tmp_df = pd.DataFrame({"Close": prices.set_index("price_date")["price_close"]})
 
-    gap_data = fetch_and_fill_price_gaps(ticker, min_date, max_date, tmp_df)
+    gap_data = fetch_and_fill_price_gaps(ticker, min_date, fill_end_date, tmp_df)
     print(f"[ISIN {isin}] NAV lines after gap-filling: {len(gap_data)}")
 
     # build full history DataFrame from gap_data
@@ -319,33 +359,75 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
         records.append({
             "isin": isin,
             "price_date": d.isoformat(),
-            "price_close": float(val) if val is not None else None,
+            "price_close": normalize_float(val, decimals=10),
             "dividend_cash": float(div_map.get(d, 0.0)),
             "price_date_original": entry.get("origin", d).isoformat(),
             "split_factor": 1.0
         })
 
-    # 8) trim to price_start_date
-    if price_start_date:
-        try:
-            start_cut = datetime.fromisoformat(price_start_date).date() if isinstance(price_start_date, str) else price_start_date
-            records = [r for r in records if datetime.fromisoformat(r["price_date"]).date() >= start_cut]
-        except Exception:
-            pass
+    # 8) trim to asset_start_date (preferred) or price_start_date fallback
+    if asset_start is not None:
+        records = [r for r in records if _parse_iso_date(r["price_date"]) and _parse_iso_date(r["price_date"]) >= asset_start]
 
     parsed = len(records)
     print(f"[ISIN {isin}] NAV lines after trimming/processing: {parsed}")
 
+    if parsed == 0:
+        return {"parsed": 0}
+
+    min_loaded = min(r["price_date"] for r in records)
+    max_loaded = max(r["price_date"] for r in records)
+    existing_rows = database.get_asset_prices_for_isin(
+        isin,
+        start_date=min_loaded,
+        end_date=max_loaded,
+        use_admin=True,
+    )
+
+    upsert_records, compare_summary = compare_and_deduplicate(
+        loaded_records=records,
+        existing_records=existing_rows,
+        key_fields=["isin", "price_date"],
+        compare_fields=["price_close", "price_date_original", "dividend_cash"],
+        normalizers={
+            "price_date": normalize_date,
+            "price_date_original": normalize_date,
+            "price_close": lambda v: normalize_float(v, decimals=10),
+            "dividend_cash": lambda v: normalize_float(v, decimals=10),
+        },
+    )
+
+    print(
+        f"[ISIN {isin}] Compare summary: loaded={compare_summary['loaded']} "
+        f"new={compare_summary['new']} changed={compare_summary['changed']} "
+        f"unchanged={compare_summary['unchanged']}"
+    )
+
     if dry_run:
-        return {"parsed": parsed, "to_upsert": parsed}
+        return {
+            "parsed": parsed,
+            "to_upsert": len(upsert_records),
+            "unchanged": compare_summary["unchanged"],
+            "new": compare_summary["new"],
+            "changed": compare_summary["changed"],
+        }
 
     # 9) Persist via database helper (bulk upsert)
     try:
-        if records:
-            database.save_asset_prices_bulk(records)
-            return {"parsed": parsed, "upserted": parsed}
+        if upsert_records:
+            now_iso = datetime.utcnow().isoformat()
+            for r in upsert_records:
+                r["updated_at"] = now_iso
+            database.save_asset_prices_bulk(upsert_records)
+            return {
+                "parsed": parsed,
+                "upserted": len(upsert_records),
+                "unchanged": compare_summary["unchanged"],
+                "new": compare_summary["new"],
+                "changed": compare_summary["changed"],
+            }
         else:
-            return {"parsed": 0}
+            return {"parsed": parsed, "upserted": 0, "unchanged": compare_summary["unchanged"]}
     except Exception as e:
         print(f"DB upsert error for {isin}: {e}")
         return {"error": str(e)}
@@ -353,16 +435,62 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
 
 def process_all_ishares_assets(dry_run: bool = False):
     assets = database.get_assets_by_price_source("ISH", use_admin=True)
-    summary = {"processed": 0, "skipped": 0, "errors": []}
+    bounds_map = database.get_asset_price_bounds(use_admin=True)
+
+    # Step 1+2: distinct ISIN with smallest asset_start
+    grouped = {}
     for a in assets:
         isin = a.get("isin")
         ticker = a.get("ticker")
-        price_currency = a.get("price_currency")
-        price_start_date = a.get("price_start_date")
         if not isin or not ticker:
             continue
-        res = import_ishares_history_for_ticker(isin, ticker, price_currency, price_start_date, dry_run=dry_run)
+        start_raw = a.get("price_start_date")
+        start_dt = _parse_iso_date(start_raw)
+        if isin not in grouped:
+            grouped[isin] = {
+                "isin": isin,
+                "ticker": ticker,
+                "price_currency": a.get("price_currency"),
+                "asset_start": start_dt,
+            }
+        else:
+            current = grouped[isin].get("asset_start")
+            if start_dt is not None and (current is None or start_dt < current):
+                grouped[isin]["asset_start"] = start_dt
+            if not grouped[isin].get("ticker") and ticker:
+                grouped[isin]["ticker"] = ticker
+
+    summary = {"processed": 0, "skipped": 0, "errors": [], "parsed": 0, "to_upsert": 0, "upserted": 0, "unchanged": 0}
+
+    for isin, item in grouped.items():
+        ticker = item.get("ticker")
+        asset_start = item.get("asset_start")
+        price_currency = item.get("price_currency")
+        if not ticker:
+            continue
+
+        bounds = bounds_map.get(isin)
+        request_start = calculate_request_start_date(
+            asset_start=asset_start,
+            bounds=bounds,
+            lookback_days=7,
+            refresh_days=35,
+        )
+
+        res = import_ishares_history_for_ticker(
+            isin,
+            ticker,
+            price_currency,
+            price_start_date=asset_start.isoformat() if asset_start else None,
+            dry_run=dry_run,
+            request_start_date=request_start.isoformat() if request_start else None,
+            asset_start_date=asset_start.isoformat() if asset_start else None,
+        )
         summary["processed"] += 1
+        summary["parsed"] += int(res.get("parsed", 0) or 0)
+        summary["to_upsert"] += int(res.get("to_upsert", 0) or 0)
+        summary["upserted"] += int(res.get("upserted", 0) or 0)
+        summary["unchanged"] += int(res.get("unchanged", 0) or 0)
         if res.get("skipped"):
             summary["skipped"] += 1
         if res.get("error"):

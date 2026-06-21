@@ -151,6 +151,8 @@ CREATE TABLE IF NOT EXISTS shared.asset_prices (
     price_date_original DATE NOT NULL, -- stores the original date of the price
     dividend_cash NUMERIC(20, 6) DEFAULT 0.0,
     split_factor NUMERIC(20, 10) DEFAULT 1.0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
     -- Composite primary key: ensures one price per asset per day
     PRIMARY KEY (isin, price_date),
 
