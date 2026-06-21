@@ -47,31 +47,24 @@ else:
 
 # Now it's safe to import internal modules
 import src.database as database
-from src.utils import my_yf, fetch_and_fill_price_gaps
+from src.utils import (
+    my_yf,
+    fetch_and_fill_price_gaps,
+    normalize_float,
+    normalize_date,
+    calculate_request_start_date,
+    compare_and_deduplicate,
+)
 
 
-def _normalize_fx_rate_value(value):
-    try:
-        return round(float(value), 10)
-    except Exception:
-        return None
-
-
-def _normalize_fx_rate_date(value):
-    try:
-        return pd.to_datetime(value).date().isoformat()
-    except Exception:
-        return None
-
-
-def headless_load_missing_fx_rates():
+def headless_load_missing_fx_rates(dry_run: bool = False):
     """
     Orchestrates an API-efficient FX update process.
     - Uses a 7-day window for normal incremental daily updates.
     - Automatically falls back to full history mode if a currency is new 
       or has a large database gap (> 7 days).
     """
-    print("Starting API-optimized automated FX rates update...")
+    print(f"Starting API-optimized automated FX rates update (dry_run={dry_run})...")
 
     # Fetch required start dates from assets and existing bounds from DB
     target_starts_raw = database.get_non_eur_asset_currency_start_dates(use_admin=True)
@@ -91,10 +84,12 @@ def headless_load_missing_fx_rates():
         fx_start = pd.to_datetime(start_date).date()
         bounds = current_bounds.get(currency)
 
-        if not bounds or fx_start < bounds["min"]:
-            request_start = fx_start - datetime.timedelta(days=7)
-        else:
-            request_start = bounds["max"] - datetime.timedelta(days=35)
+        request_start = calculate_request_start_date(
+            asset_start=fx_start,
+            bounds=bounds,
+            lookback_days=7,
+            refresh_days=35,
+        )
 
         request_plan.append((currency, fx_start, request_start))
 
@@ -152,7 +147,7 @@ def headless_load_missing_fx_rates():
                 continue
 
             rate_value = entry["value"] * 100 if currency == "GBX" else entry["value"]
-            exchange_rate = _normalize_fx_rate_value(rate_value)
+            exchange_rate = normalize_float(rate_value, decimals=10)
             all_records.append({
                 "currency": currency,
                 "rate_date": entry["date"].isoformat(),
@@ -170,30 +165,29 @@ def headless_load_missing_fx_rates():
     min_date = min(pd.to_datetime(rec["rate_date"]).date() for rec in all_records)
     currencies = sorted({rec["currency"] for rec in all_records})
     existing_rows = database.get_fx_rates_for_currency_dates(currencies, min_date, limit_date, use_admin=True)
-    existing_map = {}
-    for row in existing_rows:
-        normalized_rate_date = _normalize_fx_rate_date(row.get("rate_date"))
-        normalized_rate_date_original = _normalize_fx_rate_date(row.get("rate_date_original"))
-        normalized_exchange_rate = _normalize_fx_rate_value(row.get("exchange_rate"))
+    upsert_records, compare_summary = compare_and_deduplicate(
+        loaded_records=all_records,
+        existing_records=existing_rows,
+        key_fields=["currency", "rate_date"],
+        compare_fields=["exchange_rate", "rate_date_original"],
+        normalizers={
+            "rate_date": normalize_date,
+            "rate_date_original": normalize_date,
+            "exchange_rate": lambda v: normalize_float(v, decimals=10),
+        },
+    )
+    print(
+        "FX compare summary: "
+        f"loaded={compare_summary['loaded']} new={compare_summary['new']} "
+        f"changed={compare_summary['changed']} unchanged={compare_summary['unchanged']}"
+    )
 
-        if row.get("currency") and normalized_rate_date is not None:
-            existing_map[(row["currency"], normalized_rate_date)] = (
-                normalized_exchange_rate,
-                normalized_rate_date_original
-            )
-
-    upsert_records = []
-    for record in all_records:
-        key = (record["currency"], record["rate_date"])
-        existing = existing_map.get(key)
-        if existing and existing[0] == record["exchange_rate"] and existing[1] == record["rate_date_original"]:
-            continue
+    for record in upsert_records:
         record["updated_at"] = datetime.datetime.utcnow().isoformat()
-        upsert_records.append(record)
 
     if not upsert_records:
         print("Everything is up to date. No changed or new FX rows to insert.")
-        return
+        return {"loaded": compare_summary["loaded"], "to_upsert": 0, "dry_run": dry_run}
 
     # Print per-currency upsert counts for visibility
     from collections import Counter
@@ -201,9 +195,14 @@ def headless_load_missing_fx_rates():
     for cur, cnt in upsert_counter.items():
         print(f"[{cur}] Number of fx rates to upsert after deduplication: {cnt}")
 
+    if dry_run:
+        print(f"DRY-RUN: Would upsert {len(upsert_records)} FX records into Supabase.")
+        return {"loaded": compare_summary["loaded"], "to_upsert": len(upsert_records), "dry_run": True}
+
     try:
         database.save_fx_rates_bulk(upsert_records)
         print(f"Successfully upserted {len(upsert_records)} FX records into Supabase.")
+        return {"loaded": compare_summary["loaded"], "upserted": len(upsert_records), "dry_run": False}
     except Exception as e:
         print(f"Database Error while saving records: {e}")
         sys.exit(1)
