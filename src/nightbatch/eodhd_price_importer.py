@@ -78,8 +78,19 @@ def import_eodhd_history_for_ticker(
         print(f"Failed to download EODHD data for {ticker}: {e}")
         return {"error": str(e)}
 
+    raw_fetched = len(rows)
+
     if not rows:
-        return {"parsed": 0}
+        return {
+            "parsed": 0,
+            "raw_fetched": raw_fetched,
+            "after_gap_fill": 0,
+            "after_dedup": 0,
+            "new": 0,
+            "changed": 0,
+            "inserted": 0,
+            "upserted": 0,
+        }
 
     provider_df = pd.DataFrame(rows)
     if provider_df.empty:
@@ -102,7 +113,16 @@ def import_eodhd_history_for_ticker(
     # Keep only requested range before gap fill to avoid unnecessary processing.
     provider_df = provider_df[provider_df["price_date"] >= request_start].copy()
     if provider_df.empty:
-        return {"parsed": 0}
+        return {
+            "parsed": 0,
+            "raw_fetched": raw_fetched,
+            "after_gap_fill": 0,
+            "after_dedup": 0,
+            "new": 0,
+            "changed": 0,
+            "inserted": 0,
+            "upserted": 0,
+        }
 
     source_max_date = max(provider_df["price_date"])
     fill_end_date = calculate_gap_fill_end_date(
@@ -113,6 +133,7 @@ def import_eodhd_history_for_ticker(
 
     tmp_df = pd.DataFrame({"Close": provider_df.set_index("price_date")["price_close"]})
     gap_data = fetch_and_fill_price_gaps(ticker, request_start, fill_end_date, tmp_df)
+    after_gap_fill = len(gap_data)
 
     records = []
     for entry in gap_data:
@@ -133,7 +154,16 @@ def import_eodhd_history_for_ticker(
 
     parsed = len(records)
     if parsed == 0:
-        return {"parsed": 0}
+        return {
+            "parsed": 0,
+            "raw_fetched": raw_fetched,
+            "after_gap_fill": after_gap_fill,
+            "after_dedup": 0,
+            "new": 0,
+            "changed": 0,
+            "inserted": 0,
+            "upserted": 0,
+        }
 
     min_loaded = min(r["price_date"] for r in records)
     max_loaded = max(r["price_date"] for r in records)
@@ -152,6 +182,10 @@ def import_eodhd_history_for_ticker(
         },
     )
 
+    after_dedup = len(upsert_records)
+    inserted_count = compare_summary["new"]
+    changed_count = compare_summary["changed"]
+
     if dry_run:
         return {
             "parsed": parsed,
@@ -159,10 +193,25 @@ def import_eodhd_history_for_ticker(
             "unchanged": compare_summary["unchanged"],
             "new": compare_summary["new"],
             "changed": compare_summary["changed"],
+            "raw_fetched": raw_fetched,
+            "after_gap_fill": after_gap_fill,
+            "after_dedup": after_dedup,
+            "inserted": inserted_count,
+            "upserted": after_dedup,
         }
 
     if not upsert_records:
-        return {"parsed": parsed, "upserted": 0, "unchanged": compare_summary["unchanged"]}
+        return {
+            "parsed": parsed,
+            "upserted": 0,
+            "unchanged": compare_summary["unchanged"],
+            "new": inserted_count,
+            "changed": changed_count,
+            "raw_fetched": raw_fetched,
+            "after_gap_fill": after_gap_fill,
+            "after_dedup": 0,
+            "inserted": inserted_count,
+        }
 
     try:
         now_iso = datetime.utcnow().isoformat()
@@ -175,6 +224,10 @@ def import_eodhd_history_for_ticker(
             "unchanged": compare_summary["unchanged"],
             "new": compare_summary["new"],
             "changed": compare_summary["changed"],
+            "raw_fetched": raw_fetched,
+            "after_gap_fill": after_gap_fill,
+            "after_dedup": after_dedup,
+            "inserted": inserted_count,
         }
     except Exception as e:
         print(f"DB upsert error for {isin}: {e}")
@@ -210,14 +263,22 @@ def process_all_eodhd_assets(dry_run: bool = False):
                 grouped[isin]["price_currency"] = asset.get("price_currency")
 
     summary = {
+        "detected_isins": 0,
         "processed": 0,
         "skipped": 0,
         "errors": [],
+        "raw_fetched": 0,
+        "after_gap_fill": 0,
         "parsed": 0,
         "to_upsert": 0,
         "upserted": 0,
+        "inserted": 0,
+        "changed": 0,
         "unchanged": 0,
     }
+
+    summary["detected_isins"] = len(grouped)
+    print(f"EODHD: detected {summary['detected_isins']} relevant ISINs.")
 
     for isin, item in grouped.items():
         ticker = item.get("ticker")
@@ -248,10 +309,23 @@ def process_all_eodhd_assets(dry_run: bool = False):
         )
 
         summary["processed"] += 1
+        summary["raw_fetched"] += int(result.get("raw_fetched", 0) or 0)
+        summary["after_gap_fill"] += int(result.get("after_gap_fill", 0) or 0)
         summary["parsed"] += int(result.get("parsed", 0) or 0)
         summary["to_upsert"] += int(result.get("to_upsert", 0) or 0)
         summary["upserted"] += int(result.get("upserted", 0) or 0)
+        summary["inserted"] += int(result.get("inserted", result.get("new", 0)) or 0)
+        summary["changed"] += int(result.get("changed", 0) or 0)
         summary["unchanged"] += int(result.get("unchanged", 0) or 0)
+
+        print(
+            f"[EODHD][{isin}] request_start={request_start.isoformat()} "
+            f"raw_fetched={int(result.get('raw_fetched', 0) or 0)} "
+            f"after_gap_fill={int(result.get('after_gap_fill', 0) or 0)} "
+            f"after_dedup={int(result.get('after_dedup', result.get('to_upsert', result.get('upserted', 0))) or 0)} "
+            f"inserted={int(result.get('inserted', result.get('new', 0)) or 0)} "
+            f"changed={int(result.get('changed', 0) or 0)}"
+        )
 
         if result.get("error"):
             summary["errors"].append({"isin": isin, "error": result.get("error")})
