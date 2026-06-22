@@ -13,34 +13,42 @@ from src.nightbatch import full_nightbatch
 def test_run_full_nightbatch_forwards_dry_run_to_fx_and_ishares():
     with patch("src.nightbatch.full_nightbatch.database.initialize_runtime_from_env") as mock_init, \
          patch("src.nightbatch.full_nightbatch.fx_updater.headless_load_missing_fx_rates") as mock_fx, \
+         patch("src.nightbatch.full_nightbatch.process_all_eodhd_assets") as mock_eodhd, \
          patch("src.nightbatch.full_nightbatch.process_all_ishares_assets") as mock_ish:
         mock_fx.return_value = {"loaded": 10, "to_upsert": 3, "dry_run": True}
+        mock_eodhd.return_value = {"processed": 4, "to_upsert": 2, "upserted": 0}
         mock_ish.return_value = {"processed": 2, "to_upsert": 5, "upserted": 0}
 
         summary = full_nightbatch.run_full_nightbatch(dry_run=True)
 
     mock_init.assert_called_once_with(strict=False)
     mock_fx.assert_called_once_with(dry_run=True)
+    mock_eodhd.assert_called_once_with(dry_run=True)
     mock_ish.assert_called_once_with(dry_run=True)
 
     assert summary["dry_run"] is True
     assert summary["fx"]["to_upsert"] == 3
+    assert summary["eodhd"]["to_upsert"] == 2
     assert summary["ishares"]["to_upsert"] == 5
 
 
 def test_run_full_nightbatch_default_non_dry_run():
     with patch("src.nightbatch.full_nightbatch.database.initialize_runtime_from_env") as mock_init, \
          patch("src.nightbatch.full_nightbatch.fx_updater.headless_load_missing_fx_rates") as mock_fx, \
+         patch("src.nightbatch.full_nightbatch.process_all_eodhd_assets") as mock_eodhd, \
          patch("src.nightbatch.full_nightbatch.process_all_ishares_assets") as mock_ish:
         mock_fx.return_value = {"loaded": 10, "upserted": 3, "dry_run": False}
+        mock_eodhd.return_value = {"processed": 4, "upserted": 2}
         mock_ish.return_value = {"processed": 2, "upserted": 5}
 
         summary = full_nightbatch.run_full_nightbatch()
 
     mock_init.assert_called_once_with(strict=False)
     mock_fx.assert_called_once_with(dry_run=False)
+    mock_eodhd.assert_called_once_with(dry_run=False)
     mock_ish.assert_called_once_with(dry_run=False)
 
     assert summary["dry_run"] is False
     assert summary["fx"]["upserted"] == 3
+    assert summary["eodhd"]["upserted"] == 2
     assert summary["ishares"]["upserted"] == 5

@@ -16,8 +16,20 @@ jobs:
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
-  job-ishares-import:
+  job-eodhd-import:
     needs: job-fx-update
+    uses: ./.github/workflows/run_eodhd_importer.yml
+    with:
+      environment: ${{ github.ref_name == 'dev' && 'test' || 'production' }}
+      app_env: ${{ github.ref_name == 'dev' && 'dev' || 'main' }}
+    secrets:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
+
+  job-ishares-import:
+    needs: job-eodhd-import
     uses: ./.github/workflows/run_ishares_importer.yml
     with:
       environment: ${{ github.ref_name == 'dev' && 'test' || 'production' }}
