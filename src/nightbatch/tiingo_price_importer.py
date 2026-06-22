@@ -15,7 +15,7 @@ from src.utils import (
 )
 
 
-EODHD_URL_TEMPLATE = "https://eodhd.com/api/eod/{ticker}"
+TIINGO_URL_TEMPLATE = "https://api.tiingo.com/tiingo/daily/{ticker}/prices"
 
 
 def _parse_iso_date(value):
@@ -31,19 +31,18 @@ def _parse_iso_date(value):
         return None
 
 
-def _fetch_eodhd_history(ticker: str, api_key: str, request_start_date: date, timeout: int = 15):
+def _fetch_tiingo_history(ticker: str, api_key: str, request_start_date: date, timeout: int = 15):
     params = {
-        "api_token": api_key,
-        "fmt": "json",
-        "from": request_start_date.isoformat(),
+        "startDate": request_start_date.isoformat(),
+        "token": api_key,
     }
-    response = requests.get(EODHD_URL_TEMPLATE.format(ticker=ticker), params=params, timeout=timeout)
+    response = requests.get(TIINGO_URL_TEMPLATE.format(ticker=ticker), params=params, timeout=timeout)
     response.raise_for_status()
     payload = response.json()
     return payload if isinstance(payload, list) else []
 
 
-def import_eodhd_history_for_ticker(
+def import_tiingo_history_for_ticker(
     isin: str,
     ticker: str,
     price_currency: str,
@@ -52,12 +51,7 @@ def import_eodhd_history_for_ticker(
     request_start_date: str = None,
     asset_start_date: str = None,
 ):
-    """
-    Downloads and imports EODHD EOD price history for a single asset.
-
-    Dividend and split handling are intentionally fixed for now and isolated
-    so dedicated endpoints can be integrated later with minimal refactoring.
-    """
+    """Downloads and imports TIINGO EOD price history for a single asset."""
     request_start = _parse_iso_date(request_start_date)
     asset_start = _parse_iso_date(asset_start_date) or _parse_iso_date(price_start_date)
 
@@ -68,14 +62,14 @@ def import_eodhd_history_for_ticker(
     if request_start is None:
         return {"error": "missing_request_start"}
 
-    api_key = os.getenv("EODHD_API_KEY")
+    api_key = os.getenv("TIINGO_API_KEY")
     if not api_key:
-        return {"error": "missing_eodhd_api_key"}
+        return {"error": "missing_tiingo_api_key"}
 
     try:
-        rows = _fetch_eodhd_history(ticker=ticker, api_key=api_key, request_start_date=request_start)
+        rows = _fetch_tiingo_history(ticker=ticker, api_key=api_key, request_start_date=request_start)
     except Exception as e:
-        print(f"Failed to download EODHD data for {ticker}: {e}")
+        print(f"Failed to download TIINGO data for {ticker}: {e}")
         return {"error": str(e)}
 
     if not rows:
@@ -85,18 +79,15 @@ def import_eodhd_history_for_ticker(
     if provider_df.empty:
         return {"parsed": 0}
 
-    date_col = "date" if "date" in provider_df.columns else "Date" if "Date" in provider_df.columns else None
-    close_col = None
-    for candidate in ["close", "Close", "adjusted_close", "Adjusted_close", "Adjusted_Close"]:
-        if candidate in provider_df.columns:
-            close_col = candidate
-            break
+    required_fields = ["date", "close", "divCash", "splitFactor"]
+    missing_fields = [f for f in required_fields if f not in provider_df.columns]
+    if missing_fields:
+        return {"error": f"missing_tiingo_columns:{','.join(missing_fields)}"}
 
-    if date_col is None or close_col is None:
-        return {"error": "missing_eodhd_columns"}
-
-    provider_df["price_date"] = pd.to_datetime(provider_df[date_col], errors="coerce").dt.date
-    provider_df["price_close"] = pd.to_numeric(provider_df[close_col], errors="coerce")
+    provider_df["price_date"] = pd.to_datetime(provider_df["date"], errors="coerce").dt.date
+    provider_df["price_close"] = pd.to_numeric(provider_df["close"], errors="coerce")
+    provider_df["dividend_cash"] = pd.to_numeric(provider_df["divCash"], errors="coerce").fillna(0.0)
+    provider_df["split_factor"] = pd.to_numeric(provider_df["splitFactor"], errors="coerce").fillna(1.0)
     provider_df = provider_df.dropna(subset=["price_date", "price_close"]).copy()
 
     # Keep only requested range before gap fill to avoid unnecessary processing.
@@ -114,6 +105,16 @@ def import_eodhd_history_for_ticker(
     tmp_df = pd.DataFrame({"Close": provider_df.set_index("price_date")["price_close"]})
     gap_data = fetch_and_fill_price_gaps(ticker, request_start, fill_end_date, tmp_df)
 
+    # Dividends and splits are provider-native TIINGO fields keyed by actual provider date.
+    div_map = {
+        row["price_date"]: normalize_float(row["dividend_cash"], decimals=10) or 0.0
+        for _, row in provider_df.iterrows()
+    }
+    split_map = {
+        row["price_date"]: normalize_float(row["split_factor"], decimals=10) or 1.0
+        for _, row in provider_df.iterrows()
+    }
+
     records = []
     for entry in gap_data:
         row_date = entry["date"]
@@ -126,8 +127,8 @@ def import_eodhd_history_for_ticker(
                 "price_date": row_date.isoformat(),
                 "price_close": normalize_float(entry["value"], decimals=10),
                 "price_date_original": entry.get("origin", row_date).isoformat(),
-                "dividend_cash": 0.0,
-                "split_factor": 1.0,
+                "dividend_cash": div_map.get(row_date, 0.0),
+                "split_factor": split_map.get(row_date, 1.0),
             }
         )
 
@@ -143,12 +144,13 @@ def import_eodhd_history_for_ticker(
         loaded_records=records,
         existing_records=existing_rows,
         key_fields=["isin", "price_date"],
-        compare_fields=["price_close", "price_date_original", "dividend_cash"],
+        compare_fields=["price_close", "price_date_original", "dividend_cash", "split_factor"],
         normalizers={
             "price_date": normalize_date,
             "price_date_original": normalize_date,
             "price_close": lambda v: normalize_float(v, decimals=10),
             "dividend_cash": lambda v: normalize_float(v, decimals=10),
+            "split_factor": lambda v: normalize_float(v, decimals=10),
         },
     )
 
@@ -181,8 +183,8 @@ def import_eodhd_history_for_ticker(
         return {"error": str(e)}
 
 
-def process_all_eodhd_assets(dry_run: bool = False):
-    assets = database.get_assets_by_price_source("EODHD")
+def process_all_tiingo_assets(dry_run: bool = False):
+    assets = database.get_assets_by_price_source("TGO")
     bounds_map = database.get_asset_price_bounds()
 
     grouped = {}
@@ -237,7 +239,7 @@ def process_all_eodhd_assets(dry_run: bool = False):
             refresh_days=35,
         )
 
-        result = import_eodhd_history_for_ticker(
+        result = import_tiingo_history_for_ticker(
             isin=isin,
             ticker=ticker,
             price_currency=price_currency,
@@ -260,4 +262,4 @@ def process_all_eodhd_assets(dry_run: bool = False):
 
 
 if __name__ == "__main__":
-    process_all_eodhd_assets(dry_run=False)
+    process_all_tiingo_assets(dry_run=False)

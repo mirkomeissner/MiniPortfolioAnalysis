@@ -1,0 +1,59 @@
+name: Run TIINGO Importer
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      app_env:
+        required: true
+        type: string
+    secrets:
+      SUPABASE_URL:
+        required: true
+      SUPABASE_SERVICE_KEY:
+        required: true
+      SUPABASE_KEY:
+        required: true
+      TIINGO_API_KEY:
+        required: true
+
+jobs:
+  run-tiingo-importer:
+    runs-on: ubuntu-latest
+    environment: >-
+      ${{ github.event_name == 'workflow_call' && inputs.environment ||
+          (github.ref_name == 'dev' && 'test' || 'production') }}
+    env:
+      APP_ENV: >-
+        ${{ github.event_name == 'workflow_call' && inputs.app_env ||
+            (github.ref_name == 'dev' && 'dev' || 'main') }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run TIINGO Importer
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
+        run: |
+          python - <<'PY'
+          from src.nightbatch.tiingo_price_importer import process_all_tiingo_assets
+          process_all_tiingo_assets(dry_run=False)
+          PY

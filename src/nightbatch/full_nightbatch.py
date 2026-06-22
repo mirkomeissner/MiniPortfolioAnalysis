@@ -9,6 +9,7 @@ if project_root not in sys.path:
 
 import src.nightbatch.fx_update as fx_updater
 from src.nightbatch.eodhd_price_importer import process_all_eodhd_assets
+from src.nightbatch.tiingo_price_importer import process_all_tiingo_assets
 from src.nightbatch.ishares_importer import process_all_ishares_assets
 import src.database as database
 
@@ -26,11 +27,21 @@ def run_full_nightbatch(dry_run: bool = False):
     eodhd_summary = process_all_eodhd_assets(dry_run=dry_run)
     print(f"EODHD import summary: {eodhd_summary}")
 
-    print("Step 3: iShares asset price update")
+    print("Step 3: TIINGO asset price update")
+    tiingo_summary = process_all_tiingo_assets(dry_run=dry_run)
+    print(f"TIINGO import summary: {tiingo_summary}")
+
+    print("Step 4: iShares asset price update")
     ishares_summary = process_all_ishares_assets(dry_run=dry_run)
     print(f"iShares import summary: {ishares_summary}")
 
-    return {"fx": fx_summary, "eodhd": eodhd_summary, "ishares": ishares_summary, "dry_run": dry_run}
+    return {
+        "fx": fx_summary,
+        "eodhd": eodhd_summary,
+        "tiingo": tiingo_summary,
+        "ishares": ishares_summary,
+        "dry_run": dry_run,
+    }
 
 
 if __name__ == "__main__":
