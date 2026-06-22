@@ -298,22 +298,22 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
     # 4) extract ausschüttungen
     dis = xls.get("Ausschüttungen")
     if dis is None:
-        dis = pd.DataFrame(columns=["Fälligkeitsdatum", "Gesamtausschüttung"])
+        dis = pd.DataFrame(columns=["Ex-Tag", "Gesamtausschüttung"])
     dis_cols = {c.lower(): c for c in dis.columns}
-    if "fälligkeitsdatum" in dis_cols and "gesamtausschüttung" in dis_cols:
-        dis_df = dis[[dis_cols["fälligkeitsdatum"], dis_cols["gesamtausschüttung"]]].rename(
-            columns={dis_cols["fälligkeitsdatum"]: "Fälligkeitsdatum", dis_cols["gesamtausschüttung"]: "Gesamtausschüttung"}
+    if "Ex-Tag" in dis_cols and "gesamtausschüttung" in dis_cols:
+        dis_df = dis[[dis_cols["Ex-Tag"], dis_cols["gesamtausschüttung"]]].rename(
+            columns={dis_cols["Ex-Tag"]: "Ex-Tag", dis_cols["gesamtausschüttung"]: "Gesamtausschüttung"}
         )
-        dis_df = dis_df.dropna(subset=["Fälligkeitsdatum"]).copy()
-        # parse Fälligkeitsdatum using the same helper
-        dis_df["Fälligkeitsdatum"] = dis_df["Fälligkeitsdatum"].apply(_parse_date_str)
+        dis_df = dis_df.dropna(subset=["Ex-Tag"]).copy()
+        # parse Ex-Tag using the same helper
+        dis_df["Ex-Tag"] = dis_df["Ex-Tag"].apply(_parse_date_str)
         dis_df["Gesamtausschüttung"] = pd.to_numeric(dis_df["Gesamtausschüttung"], errors="coerce")
 
-        # Requirement step 4c: drop rows where Fälligkeitsdatum <= request_start_date
+        # Requirement step 4c: drop rows where Ex-Tag <= request_start_date
         if request_start is not None:
-            dis_df = dis_df[dis_df["Fälligkeitsdatum"] > request_start].copy()
+            dis_df = dis_df[dis_df["Ex-Tag"] > request_start].copy()
     else:
-        dis_df = pd.DataFrame(columns=["Fälligkeitsdatum", "Gesamtausschüttung"])
+        dis_df = pd.DataFrame(columns=["Ex-Tag", "Gesamtausschüttung"])
 
     # 5) currency check - look at first non-null currency in historisch
     sheet_currency = hist_df["Währung"].dropna().astype(str).str.strip().iloc[0] if not hist_df["Währung"].dropna().empty else None
@@ -328,7 +328,7 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
 
     # Map dividends onto price dates
     if not dis_df.empty:
-        divs = dis_df.rename(columns={"Fälligkeitsdatum": "price_date", "Gesamtausschüttung": "dividend_cash"})
+        divs = dis_df.rename(columns={"Ex-Tag": "price_date", "Gesamtausschüttung": "dividend_cash"})
         divs = divs.groupby("price_date").sum().reset_index()
         prices = prices.merge(divs, on="price_date", how="left", suffixes=("", "_d"))
         prices["dividend_cash"] = prices["dividend_cash_d"].fillna(prices["dividend_cash"]).fillna(0.0)
