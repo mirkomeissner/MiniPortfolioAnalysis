@@ -8,6 +8,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 import src.nightbatch.fx_update as fx_updater
+from src.nightbatch.eodhd_price_importer import process_all_eodhd_assets
 from src.nightbatch.ishares_importer import process_all_ishares_assets
 import src.database as database
 
@@ -21,11 +22,15 @@ def run_full_nightbatch(dry_run: bool = False):
     fx_summary = fx_updater.headless_load_missing_fx_rates(dry_run=dry_run)
     print(f"FX update summary: {fx_summary}")
 
-    print("Step 2: iShares asset price update")
-    summary = process_all_ishares_assets(dry_run=dry_run)
-    print(f"iShares import summary: {summary}")
+    print("Step 2: EODHD asset price update")
+    eodhd_summary = process_all_eodhd_assets(dry_run=dry_run)
+    print(f"EODHD import summary: {eodhd_summary}")
 
-    return {"fx": fx_summary, "ishares": summary, "dry_run": dry_run}
+    print("Step 3: iShares asset price update")
+    ishares_summary = process_all_ishares_assets(dry_run=dry_run)
+    print(f"iShares import summary: {ishares_summary}")
+
+    return {"fx": fx_summary, "eodhd": eodhd_summary, "ishares": ishares_summary, "dry_run": dry_run}
 
 
 if __name__ == "__main__":
