@@ -300,9 +300,9 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
     if dis is None:
         dis = pd.DataFrame(columns=["Ex-Tag", "Gesamtausschüttung"])
     dis_cols = {c.lower(): c for c in dis.columns}
-    if "Ex-Tag" in dis_cols and "gesamtausschüttung" in dis_cols:
-        dis_df = dis[[dis_cols["Ex-Tag"], dis_cols["gesamtausschüttung"]]].rename(
-            columns={dis_cols["Ex-Tag"]: "Ex-Tag", dis_cols["gesamtausschüttung"]: "Gesamtausschüttung"}
+    if "ex-tag" in dis_cols and "gesamtausschüttung" in dis_cols:
+        dis_df = dis[[dis_cols["ex-tag"], dis_cols["gesamtausschüttung"]]].rename(
+            columns={dis_cols["ex-tag"]: "Ex-Tag", dis_cols["gesamtausschüttung"]: "Gesamtausschüttung"}
         )
         dis_df = dis_df.dropna(subset=["Ex-Tag"]).copy()
         # parse Ex-Tag using the same helper
