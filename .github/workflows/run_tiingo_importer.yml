@@ -54,6 +54,6 @@ jobs:
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
         run: |
           python - <<'PY'
-          from src.nightbatch.tiingo_price_importer import process_all_tiingo_assets
+          from src.nightbatch.tiingo_update import process_all_tiingo_assets
           process_all_tiingo_assets(dry_run=False)
           PY

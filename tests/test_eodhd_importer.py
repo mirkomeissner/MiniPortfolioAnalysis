@@ -10,7 +10,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src.nightbatch import eodhd_price_importer
+from src.nightbatch import eodhd_update as eodhd_price_importer
 
 
 def test_import_eodhd_dry_run_trims_and_deduplicates_normalized_rows():
@@ -26,10 +26,10 @@ def test_import_eodhd_dry_run_trims_and_deduplicates_normalized_rows():
     ]
 
     with patch.dict(os.environ, {"EODHD_API_KEY": "token"}, clear=False), \
-         patch("src.nightbatch.eodhd_price_importer._fetch_eodhd_history", return_value=mock_rows), \
-         patch("src.nightbatch.eodhd_price_importer.fetch_and_fill_price_gaps", return_value=gap_rows), \
-         patch("src.nightbatch.eodhd_price_importer.database") as mock_db, \
-         patch("src.nightbatch.eodhd_price_importer.date") as mock_date:
+         patch("src.nightbatch.eodhd_update._fetch_eodhd_history", return_value=mock_rows), \
+         patch("src.nightbatch.eodhd_update.fetch_and_fill_price_gaps", return_value=gap_rows), \
+         patch("src.nightbatch.eodhd_update.database") as mock_db, \
+         patch("src.nightbatch.eodhd_update.date") as mock_date:
         mock_date.today.return_value = date(2026, 6, 3)
         mock_date.side_effect = date
         mock_db.get_asset_prices_for_isin.return_value = [
@@ -62,7 +62,8 @@ def test_import_eodhd_dry_run_trims_and_deduplicates_normalized_rows():
 
 def test_import_eodhd_missing_api_key_returns_error():
     with patch.dict(os.environ, {}, clear=True):
-        res = eodhd_price_importer.import_eodhd_history_for_ticker(
+        from src.nightbatch.eodhd_update import import_eodhd_history_for_ticker
+        res = import_eodhd_history_for_ticker(
             isin="IE000TEST01",
             ticker="AAPL.US",
             price_currency="USD",
@@ -107,12 +108,13 @@ def test_process_all_eodhd_assets_uses_distinct_isin_min_start_and_bounds():
         captured_calls.append(kwargs)
         return {"parsed": 2, "to_upsert": 1, "unchanged": 1}
 
-    with patch("src.nightbatch.eodhd_price_importer.database") as mock_db, \
-         patch("src.nightbatch.eodhd_price_importer.import_eodhd_history_for_ticker", side_effect=_fake_import):
+    with patch("src.utils.data_import_helpers.database") as mock_db, \
+         patch("src.nightbatch.eodhd_update.import_eodhd_history_for_ticker", side_effect=_fake_import):
         mock_db.get_assets_by_price_source.return_value = assets
         mock_db.get_asset_price_bounds.return_value = bounds
 
-        summary = eodhd_price_importer.process_all_eodhd_assets(dry_run=True)
+        from src.nightbatch.eodhd_update import process_all_eodhd_assets
+        summary = process_all_eodhd_assets(dry_run=True)
 
     assert summary["processed"] == 2
     assert summary["parsed"] == 4
@@ -134,8 +136,8 @@ def test_process_all_eodhd_assets_uses_distinct_isin_min_start_and_bounds():
 
 
 def test_process_all_eodhd_assets_reports_errors_per_isin():
-    with patch("src.nightbatch.eodhd_price_importer.database") as mock_db, \
-         patch("src.nightbatch.eodhd_price_importer.import_eodhd_history_for_ticker", return_value={"error": "boom"}):
+    with patch("src.utils.data_import_helpers.database") as mock_db, \
+         patch("src.nightbatch.eodhd_update.import_eodhd_history_for_ticker", return_value={"error": "boom"}):
         mock_db.get_assets_by_price_source.return_value = [
             {
                 "isin": "IE000A",
@@ -146,7 +148,8 @@ def test_process_all_eodhd_assets_reports_errors_per_isin():
         ]
         mock_db.get_asset_price_bounds.return_value = {}
 
-        summary = eodhd_price_importer.process_all_eodhd_assets(dry_run=True)
+        from src.nightbatch.eodhd_update import process_all_eodhd_assets
+        summary = process_all_eodhd_assets(dry_run=True)
 
     assert summary["processed"] == 1
     assert len(summary["errors"]) == 1

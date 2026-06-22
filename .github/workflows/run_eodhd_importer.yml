@@ -54,6 +54,6 @@ jobs:
           EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
         run: |
           python - <<'PY'
-          from src.nightbatch.eodhd_price_importer import process_all_eodhd_assets
+          from src.nightbatch.eodhd_update import process_all_eodhd_assets
           process_all_eodhd_assets(dry_run=False)
           PY

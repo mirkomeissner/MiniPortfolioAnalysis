@@ -8,9 +8,9 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 import src.nightbatch.fx_update as fx_updater
-from src.nightbatch.eodhd_price_importer import process_all_eodhd_assets
-from src.nightbatch.tiingo_price_importer import process_all_tiingo_assets
-from src.nightbatch.ishares_importer import process_all_ishares_assets
+from src.nightbatch.eodhd_update import process_all_eodhd_assets
+from src.nightbatch.tiingo_update import process_all_tiingo_assets
+from src.nightbatch.ishares_update import process_all_ishares_assets
 import src.database as database
 
 
