@@ -312,7 +312,14 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
         # Requirement step 4c: drop rows where Ex-Tag <= request_start_date
         if request_start is not None:
             dis_df = dis_df[dis_df["Ex-Tag"] > request_start].copy()
+            # --- DEBUG 2: Nach dem Filtern ---
+            print("\n=== DEBUG: Ausschüttungen NACH Datum-Filter ===")
+            print(f"Anzahl Zeilen übrig: {len(dis_df)}")
+            print(dis_df.to_string())
+            print("==============================================\n")
+            # ---------------------------------
     else:
+        print("\n[DEBUG] 'ex-tag' oder 'gesamtausschüttung' nicht in den Spalten gefunden!")
         dis_df = pd.DataFrame(columns=["Ex-Tag", "Gesamtausschüttung"])
 
     # 5) currency check - look at first non-null currency in historisch
@@ -330,9 +337,15 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
     if not dis_df.empty:
         divs = dis_df.rename(columns={"Ex-Tag": "price_date", "Gesamtausschüttung": "dividend_cash"})
         divs = divs.groupby("price_date").sum().reset_index()
+        print("\n=== DEBUG: divs ===")
+        print(divs.to_string())
+        print("==============================================\n")
         prices = prices.merge(divs, on="price_date", how="left", suffixes=("", "_d"))
         prices["dividend_cash"] = prices["dividend_cash_d"].fillna(prices["dividend_cash"]).fillna(0.0)
         prices = prices.drop(columns=[c for c in prices.columns if c.endswith("_d")])
+        print("\n=== DEBUG: prices ===")
+        print(prices.to_string())
+        print("==============================================\n")
 
     # 7) Fill gaps using existing fetch_and_fill_price_gaps
     if prices.empty:
