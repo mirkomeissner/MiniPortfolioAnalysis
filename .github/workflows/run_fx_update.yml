@@ -2,15 +2,7 @@ name: Run FX Update
 
 on:
   workflow_dispatch:
-    inputs:
-      environment:
-        description: Deployment environment
-        required: true
-        type: string
-      app_env:
-        description: Application environment
-        required: true
-        type: string
+    # Inputs entfernt -> Keine Felder mehr bei manuellem Start im UI
   workflow_call:
     inputs:
       environment:
@@ -30,9 +22,15 @@ on:
 jobs:
   run-fx-update:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    # Wenn per workflow_call (Nightbatch) aufgerufen, nimm die Inputs.
+    # Wenn manuell gestartet, bestimme die Werte anhand des Branches.
+    environment: >-
+      ${{ github.event_name == 'workflow_call' && inputs.environment || 
+          (github.ref_name == 'dev' && 'test' || 'production') }}
     env:
-      APP_ENV: ${{ inputs.app_env }}
+      APP_ENV: >-
+        ${{ github.event_name == 'workflow_call' && inputs.app_env || 
+            (github.ref_name == 'dev' && 'dev' || 'main') }}
 
     steps:
       - name: Checkout Repository
