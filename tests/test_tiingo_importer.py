@@ -10,7 +10,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src.nightbatch import tiingo_price_importer
+from src.nightbatch import tiingo_update as tiingo_price_importer
 
 
 def test_import_tiingo_dry_run_uses_dividend_and_split_fields_and_deduplicates():
@@ -28,10 +28,10 @@ def test_import_tiingo_dry_run_uses_dividend_and_split_fields_and_deduplicates()
     ]
 
     with patch.dict(os.environ, {"TIINGO_API_KEY": "token"}, clear=False), \
-         patch("src.nightbatch.tiingo_price_importer._fetch_tiingo_history", return_value=mock_rows), \
-         patch("src.nightbatch.tiingo_price_importer.fetch_and_fill_price_gaps", return_value=gap_rows), \
-         patch("src.nightbatch.tiingo_price_importer.database") as mock_db, \
-         patch("src.nightbatch.tiingo_price_importer.date") as mock_date:
+         patch("src.nightbatch.tiingo_update._fetch_tiingo_history", return_value=mock_rows), \
+         patch("src.nightbatch.tiingo_update.fetch_and_fill_price_gaps", return_value=gap_rows), \
+         patch("src.nightbatch.tiingo_update.database") as mock_db, \
+         patch("src.nightbatch.tiingo_update.date") as mock_date:
         mock_date.today.return_value = date(2026, 6, 4)
         mock_date.side_effect = date
         mock_db.get_asset_prices_for_isin.return_value = [
@@ -65,7 +65,8 @@ def test_import_tiingo_dry_run_uses_dividend_and_split_fields_and_deduplicates()
 
 def test_import_tiingo_missing_api_key_returns_error():
     with patch.dict(os.environ, {}, clear=True):
-        res = tiingo_price_importer.import_tiingo_history_for_ticker(
+        from src.nightbatch.tiingo_update import import_tiingo_history_for_ticker
+        res = import_tiingo_history_for_ticker(
             isin="IE000TEST01",
             ticker="aapl",
             price_currency="USD",
@@ -110,12 +111,13 @@ def test_process_all_tiingo_assets_uses_distinct_isin_min_start_and_bounds():
         captured_calls.append(kwargs)
         return {"parsed": 2, "to_upsert": 1, "unchanged": 1}
 
-    with patch("src.nightbatch.tiingo_price_importer.database") as mock_db, \
-         patch("src.nightbatch.tiingo_price_importer.import_tiingo_history_for_ticker", side_effect=_fake_import):
+    with patch("src.utils.data_import_helpers.database") as mock_db, \
+         patch("src.nightbatch.tiingo_update.import_tiingo_history_for_ticker", side_effect=_fake_import):
         mock_db.get_assets_by_price_source.return_value = assets
         mock_db.get_asset_price_bounds.return_value = bounds
 
-        summary = tiingo_price_importer.process_all_tiingo_assets(dry_run=True)
+        from src.nightbatch.tiingo_update import process_all_tiingo_assets
+        summary = process_all_tiingo_assets(dry_run=True)
 
     assert summary["processed"] == 2
     assert summary["parsed"] == 4
@@ -137,19 +139,20 @@ def test_process_all_tiingo_assets_uses_distinct_isin_min_start_and_bounds():
 
 
 def test_process_all_tiingo_assets_reports_errors_per_isin():
-    with patch("src.nightbatch.tiingo_price_importer.database") as mock_db, \
-         patch("src.nightbatch.tiingo_price_importer.import_tiingo_history_for_ticker", return_value={"error": "boom"}):
+    with patch("src.utils.data_import_helpers.database") as mock_db, \
+         patch("src.nightbatch.tiingo_update.import_tiingo_history_for_ticker", return_value={"error": "boom"}):
         mock_db.get_assets_by_price_source.return_value = [
             {
                 "isin": "IE000A",
-                "ticker": "aapl",
+                "ticker": "AAPL.US",
                 "price_currency": "USD",
                 "price_start_date": "2026-01-01",
             }
         ]
         mock_db.get_asset_price_bounds.return_value = {}
 
-        summary = tiingo_price_importer.process_all_tiingo_assets(dry_run=True)
+        from src.nightbatch.tiingo_update import process_all_tiingo_assets
+        summary = process_all_tiingo_assets(dry_run=True)
 
     assert summary["processed"] == 1
     assert len(summary["errors"]) == 1

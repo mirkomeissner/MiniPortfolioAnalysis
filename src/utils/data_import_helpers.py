@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
+import src.database as database
 
 
 def normalize_float(value: Any, decimals: int = 10) -> Optional[float]:
@@ -150,3 +151,428 @@ def compare_and_deduplicate(
         "unchanged": unchanged,
         "to_upsert": len(upsert_records),
     }
+
+
+def plan_asset_price_requests(
+    assets: Iterable[Dict[str, Any]],
+    bounds_map: Dict[str, Dict[str, Optional[date]]],
+    lookback_days: int = 7,
+    refresh_days: int = 35,
+) -> List[Dict[str, Any]]:
+    """
+    Plan asset price requests by grouping assets by ISIN, selecting the minimum asset_start_date,
+    and computing request_start_date using bounds and refresh policy.
+    
+    Args:
+        assets: List of asset records from database.get_assets_by_price_source()
+        bounds_map: Dict mapping ISIN to bounds from database.get_asset_price_bounds()
+        lookback_days: Days to look back from asset_start if no bounds available
+        refresh_days: Days to refresh from max_date if bounds available
+    
+    Returns:
+        List of request plans, each with keys: isin, ticker, price_currency, asset_start_date, request_start_date
+    """
+    # Group by ISIN, select min asset_start_date
+    grouped = {}
+    for asset in assets:
+        isin = asset.get("isin")
+        ticker = asset.get("ticker")
+        if not isin:
+            continue
+        
+        price_start_date_str = asset.get("price_start_date")
+        try:
+            if isinstance(price_start_date_str, date):
+                start_dt = price_start_date_str
+            else:
+                start_dt = pd.to_datetime(price_start_date_str).date() if price_start_date_str else None
+        except Exception:
+            start_dt = None
+        
+        if isin not in grouped:
+            grouped[isin] = {
+                "isin": isin,
+                "ticker": ticker,
+                "price_currency": asset.get("price_currency"),
+                "asset_start": start_dt,
+            }
+        else:
+            current_start = grouped[isin].get("asset_start")
+            if start_dt is not None and (current_start is None or start_dt < current_start):
+                grouped[isin]["asset_start"] = start_dt
+            if not grouped[isin].get("ticker") and ticker:
+                grouped[isin]["ticker"] = ticker
+            if not grouped[isin].get("price_currency") and asset.get("price_currency"):
+                grouped[isin]["price_currency"] = asset.get("price_currency")
+    
+    # Build request plans with computed request_start_date
+    plans = []
+    for isin, item in grouped.items():
+        asset_start = item.get("asset_start")
+        if asset_start is None:
+            continue  # Skip assets without a start date
+        
+        bounds = bounds_map.get(isin)
+        request_start = calculate_request_start_date(
+            asset_start=asset_start,
+            bounds=bounds,
+            lookback_days=lookback_days,
+            refresh_days=refresh_days,
+        )
+        
+        if request_start is not None:
+            plans.append({
+                "isin": isin,
+                "ticker": item.get("ticker"),
+                "price_currency": item.get("price_currency"),
+                "asset_start_date": asset_start,
+                "request_start_date": request_start,
+            })
+    
+    return plans
+
+
+def reconcile_asset_price_data(
+    isin: str,
+    asset_start_date: date,
+    request_start_date: date,
+    canonical_rows: List[Dict[str, Any]],
+    existing_rows: Iterable[Dict[str, Any]],
+    key_fields: List[str] = None,
+    compare_fields: List[str] = None,
+    normalizers: Dict[str, Callable[[Any], Any]] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Shared reconciliation logic for asset price data across all providers.
+    
+    Performs:
+    1. Trim rows with price_date < asset_start_date
+    2. Compare/deduplicate against existing rows
+    
+    Note: Gap-fill should be performed by the provider before calling this function,
+    as gap-fill logic may vary by provider.
+    
+    Args:
+        isin: Asset ISIN identifier
+        asset_start_date: Earliest date this asset has prices (trim boundary)
+        request_start_date: Start date for the current request (for reference)
+        canonical_rows: Processed rows from provider in canonical schema
+        existing_rows: Current rows from database
+        key_fields: Fields to use for identifying duplicates (default: ["isin", "price_date"])
+        compare_fields: Fields to compare for change detection
+        normalizers: Functions to normalize values for comparison
+    
+    Returns:
+        Tuple of (upsert_records, summary_dict) where summary includes:
+        - number_fetched: rows after initial parse
+        - number_trimmed: rows after asset_start trim
+        - inserted: new rows
+        - changed: changed rows
+        - unchanged: unchanged rows
+        - after_dedup: rows to upsert
+    """
+    if key_fields is None:
+        key_fields = ["isin", "price_date"]
+    if compare_fields is None:
+        compare_fields = ["price_close", "price_date_original", "dividend_cash"]
+    if normalizers is None:
+        normalizers = {}
+    
+    number_fetched = len(canonical_rows)
+    
+    # Trim rows below asset_start_date
+    trimmed_rows = [
+        r for r in canonical_rows
+        if _parse_date(r.get("price_date")) and _parse_date(r.get("price_date")) >= asset_start_date
+    ]
+    number_trimmed = len(canonical_rows) - len(trimmed_rows)
+    
+    if not trimmed_rows:
+        return [], {
+            "number_fetched": number_fetched,
+            "number_trimmed": number_trimmed,
+            "inserted": 0,
+            "changed": 0,
+            "unchanged": 0,
+            "after_dedup": 0,
+        }
+    
+    # Compare and deduplicate
+    upsert_records, compare_summary = compare_and_deduplicate(
+        loaded_records=trimmed_rows,
+        existing_records=existing_rows,
+        key_fields=key_fields,
+        compare_fields=compare_fields,
+        normalizers=normalizers,
+    )
+    
+    after_dedup = len(upsert_records)
+    inserted = compare_summary["new"]
+    changed = compare_summary["changed"]
+    unchanged = compare_summary["unchanged"]
+    
+    return upsert_records, {
+        "number_fetched": number_fetched,
+        "number_trimmed": number_trimmed,
+        "inserted": inserted,
+        "changed": changed,
+        "unchanged": unchanged,
+        "after_dedup": after_dedup,
+    }
+
+
+def _parse_date(value: Any) -> Optional[date]:
+    """Helper to parse date values to date objects."""
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    try:
+        if isinstance(value, str):
+            raw = value.strip()
+            if len(raw) >= 10 and raw[4] == "-" and raw[7] == "-":
+                return datetime.fromisoformat(raw[:10]).date()
+        return pd.to_datetime(value, dayfirst=True).date()
+    except Exception:
+        return None
+
+
+def parse_iso_date(value: Any) -> Optional[date]:
+    """
+    Consolidated date parsing function exported for provider modules.
+    Replaces the duplicated _parse_iso_date in each provider.
+    
+    Args:
+        value: Value to parse (ISO string, date object, or other datetime-like)
+    
+    Returns:
+        date object or None
+    """
+    return _parse_date(value)
+
+
+def empty_provider_result(raw_fetched: int = 0, parsed: int = 0) -> Dict[str, Any]:
+    """
+    Factory function for canonical empty provider result structure.
+    Consolidates the repeated empty result dicts across all providers.
+    
+    Args:
+        raw_fetched: Number of raw records from API
+        parsed: Number of records after parsing
+    
+    Returns:
+        Canonical empty result dict
+    """
+    return {
+        "parsed": parsed,
+        "raw_fetched": raw_fetched,
+        "after_gap_fill": 0,
+        "after_dedup": 0,
+        "new": 0,
+        "changed": 0,
+        "inserted": 0,
+        "upserted": 0,
+    }
+
+
+def validate_provider_request(
+    ticker: str,
+    asset_start: Optional[date],
+    request_start: Optional[date],
+    api_key_env_var: str,
+) -> Optional[Dict[str, str]]:
+    """
+    Consolidated validation for provider requests.
+    Used by EODHD and TIINGO to avoid duplicating validation logic.
+    
+    Args:
+        ticker: Asset ticker to validate
+        asset_start: Asset start date to validate
+        request_start: Request start date to validate
+        api_key_env_var: Environment variable name for API key (e.g., "EODHD_API_KEY")
+    
+    Returns:
+        Error dict if validation fails, None if all valid
+    """
+    import os
+    
+    if not ticker:
+        return {"error": "missing_ticker"}
+    if asset_start is None:
+        return {"error": "missing_asset_start"}
+    if request_start is None:
+        return {"error": "missing_request_start"}
+    
+    api_key = os.getenv(api_key_env_var)
+    if not api_key:
+        # Extract provider name from env var (e.g., "TIINGO_API_KEY" -> "tiingo")
+        provider_name = api_key_env_var.split("_")[0].lower()
+        return {"error": f"missing_{provider_name}_api_key"}
+    
+    return None
+
+
+def persist_price_records(
+    isin: str,
+    records: List[Dict[str, Any]],
+    dry_run: bool = False,
+    recon_summary: Optional[Dict[str, Any]] = None,
+    parsed: int = 0,
+    raw_fetched: int = 0,
+) -> Dict[str, Any]:
+    """
+    Consolidated persistence logic for all providers.
+    Handles dry-run mode, empty records, DB upsert, and error handling.
+    
+    Args:
+        isin: Asset ISIN identifier
+        records: Price records to persist
+        dry_run: If True, skip database write
+        recon_summary: Summary from reconcile_asset_price_data
+        parsed: Count of parsed records
+        raw_fetched: Count of raw fetched records
+    
+    Returns:
+        Result dict with persistence outcome
+    """
+    recon_summary = recon_summary or {}
+    after_dedup = recon_summary.get("after_dedup", len(records))
+    
+    result_base = {
+        "parsed": parsed,
+        "to_upsert": len(records),
+        "unchanged": recon_summary.get("unchanged", 0),
+        "new": recon_summary.get("inserted", 0),
+        "changed": recon_summary.get("changed", 0),
+        "raw_fetched": raw_fetched,
+        "after_gap_fill": recon_summary.get("number_trimmed", 0),
+        "after_dedup": after_dedup,
+        "inserted": recon_summary.get("inserted", 0),
+    }
+    
+    if dry_run:
+        return {"dry_run": True, **result_base, "upserted": after_dedup}
+    
+    if not records:
+        return {**result_base, "upserted": 0}
+    
+    try:
+        now_iso = datetime.utcnow().isoformat()
+        for row in records:
+            row["updated_at"] = now_iso
+        database.save_asset_prices_bulk(records)
+        return {**result_base, "upserted": len(records)}
+    except Exception as e:
+        print(f"DB upsert error for {isin}: {e}")
+        return {"error": str(e)}
+
+
+def process_provider_batch(
+    provider_code: str,
+    import_func: Callable,
+    dry_run: bool = False,
+    lookback_days: int = 7,
+    refresh_days: int = 35,
+) -> Dict[str, Any]:
+    """
+    Generic orchestrator for processing all assets from a provider.
+    Consolidates the 200+ duplicated lines across process_all_*_assets functions.
+    
+    Args:
+        provider_code: Provider code (e.g., "EODHD", "TGO", "ISH")
+        import_func: Provider-specific import function (e.g., import_eodhd_history_for_ticker)
+        dry_run: If True, skip database writes
+        lookback_days: Lookback days for new assets
+        refresh_days: Refresh days for incremental updates
+    
+    Returns:
+        Summary dict with aggregated results
+    """
+    assets = database.get_assets_by_price_source(provider_code)
+    bounds_map = database.get_asset_price_bounds()
+    
+    plans = plan_asset_price_requests(
+        assets=assets,
+        bounds_map=bounds_map,
+        lookback_days=lookback_days,
+        refresh_days=refresh_days,
+    )
+    
+    summary = {
+        "detected_isins": len(assets),
+        "processed": 0,
+        "skipped": 0,
+        "errors": [],
+        "raw_fetched": 0,
+        "after_gap_fill": 0,
+        "parsed": 0,
+        "to_upsert": 0,
+        "upserted": 0,
+        "inserted": 0,
+        "changed": 0,
+        "unchanged": 0,
+    }
+    
+    print(f"{provider_code}: detected {len(assets)} relevant ISINs.")
+    
+    for plan in plans:
+        isin = plan.get("isin")
+        ticker = plan.get("ticker")
+        asset_start = parse_iso_date(plan.get("asset_start_date"))
+        request_start = parse_iso_date(plan.get("request_start_date"))
+        price_currency = plan.get("price_currency")
+        
+        result = import_func(
+            isin=isin,
+            ticker=ticker,
+            price_currency=price_currency,
+            price_start_date=asset_start.isoformat() if asset_start else None,
+            dry_run=dry_run,
+            request_start_date=request_start.isoformat() if request_start else None,
+            asset_start_date=asset_start.isoformat() if asset_start else None,
+        )
+        
+        _accumulate_provider_result(summary, result, isin, request_start, provider_code)
+    
+    return summary
+
+
+def _accumulate_provider_result(
+    summary: Dict[str, Any],
+    result: Dict[str, Any],
+    isin: str,
+    request_start: Optional[date],
+    provider_code: str,
+) -> None:
+    """
+    Helper to accumulate individual provider result into batch summary.
+    
+    Args:
+        summary: Batch summary dict to update (modified in-place)
+        result: Individual import result
+        isin: Asset ISIN
+        request_start: Request start date
+        provider_code: Provider code for logging
+    """
+    summary["processed"] += 1
+    summary["raw_fetched"] += int(result.get("raw_fetched", 0) or 0)
+    summary["after_gap_fill"] += int(result.get("after_gap_fill", 0) or 0)
+    summary["parsed"] += int(result.get("parsed", 0) or 0)
+    summary["to_upsert"] += int(result.get("to_upsert", 0) or 0)
+    summary["upserted"] += int(result.get("upserted", 0) or 0)
+    summary["inserted"] += int(result.get("inserted", result.get("new", 0)) or 0)
+    summary["changed"] += int(result.get("changed", 0) or 0)
+    summary["unchanged"] += int(result.get("unchanged", 0) or 0)
+    
+    log_str = (
+        f"[{provider_code}][{isin}] request_start={request_start.isoformat() if request_start else 'N/A'} "
+        f"raw_fetched={int(result.get('raw_fetched', 0) or 0)} "
+        f"after_gap_fill={int(result.get('after_gap_fill', 0) or 0)} "
+        f"after_dedup={int(result.get('after_dedup', result.get('to_upsert', result.get('upserted', 0))) or 0)} "
+        f"inserted={int(result.get('inserted', result.get('new', 0)) or 0)} "
+        f"changed={int(result.get('changed', 0) or 0)}"
+    )
+    print(log_str)
+    
+    if result.get("error"):
+        summary["errors"].append({"isin": isin, "error": result.get("error")})

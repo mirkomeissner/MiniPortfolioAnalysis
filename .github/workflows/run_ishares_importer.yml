@@ -54,6 +54,6 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
           python - <<'PY'
-          from src.nightbatch.ishares_importer import process_all_ishares_assets
+          from src.nightbatch.ishares_update import process_all_ishares_assets
           process_all_ishares_assets(dry_run=False)
           PY

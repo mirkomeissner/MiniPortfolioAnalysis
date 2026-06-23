@@ -14,6 +14,7 @@ from src.utils.data_import_helpers import (
     calculate_request_start_date,
     calculate_gap_fill_end_date,
     compare_and_deduplicate,
+    plan_asset_price_requests,
 )
 
 
@@ -120,3 +121,92 @@ def test_calculate_gap_fill_end_date_uses_max_of_source_and_run_boundary():
 
     # no source -> no fill end
     assert calculate_gap_fill_end_date(None, run_date=run_date, lag_days=1) is None
+
+
+def test_plan_asset_price_requests_groups_by_isin_and_selects_min_start():
+    """Test that plan_asset_price_requests groups by ISIN and selects the minimum asset_start_date"""
+    assets = [
+        {
+            "isin": "IE000A",
+            "ticker": "AAPL.US",
+            "price_currency": "USD",
+            "price_start_date": "2026-01-10",
+        },
+        {
+            "isin": "IE000A",
+            "ticker": "AAPL.US",
+            "price_currency": "USD",
+            "price_start_date": "2026-01-05",  # This should be selected (min)
+        },
+        {
+            "isin": "IE000B",
+            "ticker": "BMW.XETRA",
+            "price_currency": "EUR",
+            "price_start_date": "2026-02-01",
+        },
+    ]
+    bounds = {
+        "IE000A": {"min": date(2026, 1, 20), "max": date(2026, 3, 1)},
+        "IE000B": {"min": date(2026, 1, 1), "max": date(2026, 3, 10)},
+    }
+
+    plans = plan_asset_price_requests(assets, bounds, lookback_days=7, refresh_days=35)
+
+    assert len(plans) == 2
+    plan_a = next(p for p in plans if p["isin"] == "IE000A")
+    plan_b = next(p for p in plans if p["isin"] == "IE000B")
+
+    assert plan_a["asset_start_date"] == date(2026, 1, 5)
+    assert plan_a["ticker"] == "AAPL.US"
+    assert plan_a["price_currency"] == "USD"
+    # asset_start (2026-01-05) < min (2026-01-20) => request_start = 2025-12-29
+    assert plan_a["request_start_date"] == date(2025, 12, 29)
+
+    assert plan_b["asset_start_date"] == date(2026, 2, 1)
+    # asset_start (2026-02-01) >= min (2026-01-01), max (2026-03-10) => request_start = 2026-02-03
+    assert plan_b["request_start_date"] == date(2026, 2, 3)
+
+
+def test_plan_asset_price_requests_handles_missing_bounds():
+    """Test that plan_asset_price_requests handles assets with no bounds"""
+    assets = [
+        {
+            "isin": "IE000A",
+            "ticker": "AAPL.US",
+            "price_currency": "USD",
+            "price_start_date": "2026-01-10",
+        },
+    ]
+    bounds = {}  # No bounds for this ISIN
+
+    plans = plan_asset_price_requests(assets, bounds, lookback_days=7, refresh_days=35)
+
+    assert len(plans) == 1
+    plan = plans[0]
+    assert plan["asset_start_date"] == date(2026, 1, 10)
+    # No bounds => request_start = asset_start - lookback_days
+    assert plan["request_start_date"] == date(2026, 1, 3)
+
+
+def test_plan_asset_price_requests_skips_assets_without_start_date():
+    """Test that plan_asset_price_requests skips assets without a valid start date"""
+    assets = [
+        {
+            "isin": "IE000A",
+            "ticker": "AAPL.US",
+            "price_currency": "USD",
+            "price_start_date": "2026-01-10",
+        },
+        {
+            "isin": "IE000B",
+            "ticker": "BMW.XETRA",
+            "price_currency": "EUR",
+            "price_start_date": None,  # Missing start date
+        },
+    ]
+    bounds = {}
+
+    plans = plan_asset_price_requests(assets, bounds)
+
+    assert len(plans) == 1
+    assert plans[0]["isin"] == "IE000A"
