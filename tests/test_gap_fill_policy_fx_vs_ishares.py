@@ -10,7 +10,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src.nightbatch import fx_update as run_fx_update, ishares_importer
+from src.nightbatch import fx_update as run_fx_update
+from src.nightbatch import ishares_update as ishares_importer
 
 
 def test_fx_gap_fill_uses_yesterday_as_end_boundary():
@@ -77,9 +78,9 @@ def test_ishares_gap_fill_should_extend_to_yesterday_on_weekend():
         ),
     }
 
-    with patch("src.nightbatch.ishares_importer.pd.read_excel", return_value=sheets), \
-         patch("src.nightbatch.ishares_importer.database") as mock_db, \
-         patch("src.nightbatch.ishares_importer.date") as mock_date:
+    with patch("src.nightbatch.ishares_update.pd.read_excel", return_value=sheets), \
+         patch("src.nightbatch.ishares_update.database") as mock_db, \
+         patch("src.nightbatch.ishares_update.date") as mock_date:
         mock_date.today.return_value = datetime.date(2026, 6, 21)
         mock_db.get_asset_prices_for_isin.return_value = []
         mock_db.save_asset_prices_bulk = Mock()

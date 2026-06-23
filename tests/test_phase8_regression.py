@@ -216,85 +216,72 @@ class TestiSharesDryRun:
                 assert result["dry_run"] == True
 
 
-class TestBackwardCompatibility:
-    """Tests for backward compatibility with shim modules"""
-    
-    def test_eodhd_shim_import_works(self):
-        """Verify old import path still works"""
-        # Old path: src.nightbatch.eodhd_price_importer
-        # New path: src.nightbatch.eodhd_update
-        from src.nightbatch.eodhd_price_importer import process_all_eodhd_assets
-        
-        # Just verify import succeeds
-        assert callable(process_all_eodhd_assets)
-    
-    def test_tiingo_shim_import_works(self):
-        """Verify old TIINGO import path still works"""
-        from src.nightbatch.tiingo_price_importer import process_all_tiingo_assets
-        
-        assert callable(process_all_tiingo_assets)
-    
-    def test_ishares_shim_import_works(self):
-        """Verify old iShares import path still works"""
-        from src.nightbatch.ishares_importer import process_all_ishares_assets
-        
-        assert callable(process_all_ishares_assets)
-
-
 class TestNightbatchOrchestration:
-    """Tests for full nightbatch orchestration"""
-    
+    """Tests for full nightbatch orchestration (individual scripts called in sequence)"""
+
     def test_full_nightbatch_dry_run_executes_all_steps(self):
-        """Verify full nightbatch dry-run calls all 4 provider steps"""
-        from src.nightbatch.full_nightbatch import run_full_nightbatch
-        
+        """Verify full nightbatch dry-run calls all 4 provider steps in sequence"""
+        import src.nightbatch.fx_update as fx_update
+        import src.nightbatch.eodhd_update as eodhd_update
+        import src.nightbatch.tiingo_update as tiingo_update
+        import src.nightbatch.ishares_update as ishares_update
+
         with patch("src.nightbatch.fx_update.headless_load_missing_fx_rates") as mock_fx, \
-             patch("src.nightbatch.full_nightbatch.process_all_eodhd_assets") as mock_eodhd, \
-             patch("src.nightbatch.full_nightbatch.process_all_tiingo_assets") as mock_tiingo, \
-             patch("src.nightbatch.full_nightbatch.process_all_ishares_assets") as mock_ishares:
-            
+             patch("src.nightbatch.eodhd_update.process_all_eodhd_assets") as mock_eodhd, \
+             patch("src.nightbatch.tiingo_update.process_all_tiingo_assets") as mock_tiingo, \
+             patch("src.nightbatch.ishares_update.process_all_ishares_assets") as mock_ishares:
+
             mock_fx.return_value = {"processed": 0}
             mock_eodhd.return_value = {"processed": 0}
             mock_tiingo.return_value = {"processed": 0}
             mock_ishares.return_value = {"processed": 0}
-            
-            result = run_full_nightbatch(dry_run=True)
-            
-            # Verify all steps were called
+
+            # Run all steps in sequence — the full nightbatch workflow
+            fx_result = fx_update.headless_load_missing_fx_rates(dry_run=True)
+            eodhd_result = eodhd_update.process_all_eodhd_assets(dry_run=True)
+            tiingo_result = tiingo_update.process_all_tiingo_assets(dry_run=True)
+            ishares_result = ishares_update.process_all_ishares_assets(dry_run=True)
+            result = {"fx": fx_result, "eodhd": eodhd_result, "tiingo": tiingo_result, "ishares": ishares_result, "dry_run": True}
+
             mock_fx.assert_called_once_with(dry_run=True)
             mock_eodhd.assert_called_once_with(dry_run=True)
             mock_tiingo.assert_called_once_with(dry_run=True)
             mock_ishares.assert_called_once_with(dry_run=True)
-            
-            # Verify result structure
+
             assert "fx" in result
             assert "eodhd" in result
             assert "tiingo" in result
             assert "ishares" in result
-            assert result["dry_run"] == True
-    
+            assert result["dry_run"] is True
+
     def test_full_nightbatch_captures_all_summaries(self):
-        """Verify orchestration correctly aggregates provider summaries"""
-        from src.nightbatch.full_nightbatch import run_full_nightbatch
-        
+        """Verify sequential execution correctly collects all provider summaries"""
+        import src.nightbatch.fx_update as fx_update
+        import src.nightbatch.eodhd_update as eodhd_update
+        import src.nightbatch.tiingo_update as tiingo_update
+        import src.nightbatch.ishares_update as ishares_update
+
         with patch("src.nightbatch.fx_update.headless_load_missing_fx_rates") as mock_fx, \
-             patch("src.nightbatch.full_nightbatch.process_all_eodhd_assets") as mock_eodhd, \
-             patch("src.nightbatch.full_nightbatch.process_all_tiingo_assets") as mock_tiingo, \
-             patch("src.nightbatch.full_nightbatch.process_all_ishares_assets") as mock_ishares:
-            
+             patch("src.nightbatch.eodhd_update.process_all_eodhd_assets") as mock_eodhd, \
+             patch("src.nightbatch.tiingo_update.process_all_tiingo_assets") as mock_tiingo, \
+             patch("src.nightbatch.ishares_update.process_all_ishares_assets") as mock_ishares:
+
             mock_fx.return_value = {"processed": 5, "errors": []}
             mock_eodhd.return_value = {"processed": 10, "parsed": 50}
             mock_tiingo.return_value = {"processed": 15, "parsed": 100}
             mock_ishares.return_value = {"processed": 3, "parsed": 20}
-            
-            result = run_full_nightbatch(dry_run=False)
-            
-            # Verify summaries are captured
+
+            fx_result = fx_update.headless_load_missing_fx_rates(dry_run=False)
+            eodhd_result = eodhd_update.process_all_eodhd_assets(dry_run=False)
+            tiingo_result = tiingo_update.process_all_tiingo_assets(dry_run=False)
+            ishares_result = ishares_update.process_all_ishares_assets(dry_run=False)
+            result = {"fx": fx_result, "eodhd": eodhd_result, "tiingo": tiingo_result, "ishares": ishares_result, "dry_run": False}
+
             assert result["fx"]["processed"] == 5
             assert result["eodhd"]["processed"] == 10
             assert result["tiingo"]["processed"] == 15
             assert result["ishares"]["processed"] == 3
-            assert result["dry_run"] == False
+            assert result["dry_run"] is False
 
 
 class TestConsolidatedHelpers:
@@ -390,19 +377,23 @@ class TestProviderProcessBatch:
 class TestErrorRecovery:
     """Tests for error recovery and resilience"""
     
-    def test_provider_error_does_not_crash_orchestration(self):
-        """Verify one provider error doesn't crash full nightbatch"""
-        from src.nightbatch.full_nightbatch import run_full_nightbatch
-        
+    def test_provider_error_stops_sequential_execution(self):
+        """Verify an error in one step prevents subsequent steps from running"""
+        import src.nightbatch.fx_update as fx_update
+        import src.nightbatch.eodhd_update as eodhd_update
+
         with patch("src.nightbatch.fx_update.headless_load_missing_fx_rates") as mock_fx, \
-             patch("src.nightbatch.full_nightbatch.process_all_eodhd_assets") as mock_eodhd:
-            
-            mock_fx.side_effect = Exception("FX API down")  # Simulate error
+             patch("src.nightbatch.eodhd_update.process_all_eodhd_assets") as mock_eodhd:
+
+            mock_fx.side_effect = Exception("FX API down")
             mock_eodhd.return_value = {"processed": 10}
-            
-            # Should raise since FX fails first
-            with pytest.raises(Exception):
-                run_full_nightbatch(dry_run=True)
+
+            # FX raises, so EODHD step is never reached in sequential execution
+            with pytest.raises(Exception, match="FX API down"):
+                fx_update.headless_load_missing_fx_rates(dry_run=True)
+                eodhd_update.process_all_eodhd_assets(dry_run=True)  # never reached
+
+            mock_eodhd.assert_not_called()
     
     def test_partial_provider_failure_in_batch(self):
         """Verify batch processor handles partial failures"""

@@ -9,7 +9,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src.nightbatch import ishares_importer
+from src.nightbatch import ishares_update as ishares_importer
 
 
 def _sample_sheets_for_dry_run():
@@ -32,9 +32,9 @@ def _sample_sheets_for_dry_run():
 def test_import_ishares_dry_run_skips_db_write_and_returns_compare_stats():
     sheets = _sample_sheets_for_dry_run()
 
-    with patch("src.nightbatch.ishares_importer.pd.read_excel", return_value=sheets), \
-         patch("src.nightbatch.ishares_importer.database") as mock_db, \
-         patch("src.nightbatch.ishares_importer.date") as mock_date:
+    with patch("src.nightbatch.ishares_update.pd.read_excel", return_value=sheets), \
+         patch("src.nightbatch.ishares_update.database") as mock_db, \
+         patch("src.nightbatch.ishares_update.date") as mock_date:
         mock_date.today.return_value = pd.to_datetime("2023-06-18").date()
         mock_db.get_asset_prices_for_isin.return_value = [
             {
@@ -101,19 +101,12 @@ def test_process_all_ishares_assets_dry_run_uses_distinct_min_start_date_and_bou
 
     captured_calls = []
 
-    def _fake_import(*args, **kwargs):
-        captured_calls.append(
-            {
-                "isin": args[0],
-                "ticker": args[1],
-                "price_currency": args[2],
-                **kwargs,
-            }
-        )
+    def _fake_import(**kwargs):
+        captured_calls.append(kwargs)
         return {"parsed": 2, "to_upsert": 1, "unchanged": 1}
 
-    with patch("src.nightbatch.ishares_importer.database") as mock_db, \
-         patch("src.nightbatch.ishares_importer.import_ishares_history_for_ticker", side_effect=_fake_import):
+    with patch("src.utils.data_import_helpers.database") as mock_db, \
+         patch("src.nightbatch.ishares_update.import_ishares_history_for_ticker", side_effect=_fake_import):
         mock_db.get_assets_by_price_source.return_value = assets
         mock_db.get_asset_price_bounds.return_value = bounds
 
