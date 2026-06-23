@@ -157,3 +157,12 @@ def test_process_all_tiingo_assets_reports_errors_per_isin():
     assert summary["processed"] == 1
     assert len(summary["errors"]) == 1
     assert summary["errors"][0]["isin"] == "IE000A"
+
+
+def test_process_all_tiingo_assets_uses_tgo_provider_code():
+    with patch("src.nightbatch.tiingo_update.process_provider_batch") as mock_process_provider_batch:
+        from src.nightbatch.tiingo_update import process_all_tiingo_assets
+
+        process_all_tiingo_assets(dry_run=True)
+
+    mock_process_provider_batch.assert_called_once_with("TGO", tiingo_price_importer.import_tiingo_history_for_ticker, True)
