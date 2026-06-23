@@ -149,7 +149,7 @@ def import_tiingo_history_for_ticker(
 
 def process_all_tiingo_assets(dry_run: bool = False):
     """Process all TIINGO assets using the generic batch processor."""
-    return process_provider_batch("TIINGO", import_tiingo_history_for_ticker, dry_run)
+    return process_provider_batch("TGO", import_tiingo_history_for_ticker, dry_run)
 
 
 if __name__ == "__main__":
