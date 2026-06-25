@@ -4,6 +4,7 @@ from .transaction_management import transaction_table_view
 from .admin_management import admin_approval_page
 from .accounts_management import accounts_settings_view
 from .price_management import price_table_view, price_management_view
+from .holdings_analysis import render_holdings_view
 
 __all__ = [
     'asset_table_view',
@@ -11,5 +12,6 @@ __all__ = [
     'admin_approval_page',
     'accounts_settings_view',
     'price_table_view',
-    'price_management_view'
+    'price_management_view',
+    'render_holdings_view'
 ]

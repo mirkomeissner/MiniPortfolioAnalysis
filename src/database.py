@@ -478,6 +478,82 @@ def get_all_transactions():
         _report_error("Error", e)
         return []
 
+
+def _parse_supabase_timestamp(value):
+    if value is None:
+        return None
+    if isinstance(value, dt_class):
+        return value
+    if isinstance(value, str):
+        normalized = value.replace("Z", "+00:00")
+        try:
+            return dt_class.fromisoformat(normalized)
+        except ValueError:
+            return None
+    return None
+
+
+def get_user_holdings_reorganization_status(user_id=None):
+    """Return the latest transaction modification and reorganization timestamps for one user."""
+    if not user_id:
+        user_id = get_current_user_id()
+    if not user_id:
+        return None
+
+    supabase = _get_client()
+    try:
+        response = (
+            supabase.schema("public")
+            .table("v_user_account_reorganization")
+            .select("user_id, account_code, last_transaction_modification, last_reorganization")
+            .eq("user_id", user_id)
+            .execute()
+        )
+ 
+        rows = response.data or []
+        if not rows:
+            return None
+
+        latest_transaction = None
+        latest_reorganization = None
+
+        for row in rows:
+            transaction_ts = _parse_supabase_timestamp(row.get("last_transaction_modification"))
+            reorganization_ts = _parse_supabase_timestamp(row.get("last_reorganization"))
+
+            if transaction_ts and (latest_transaction is None or transaction_ts > latest_transaction):
+                latest_transaction = transaction_ts
+            if reorganization_ts and (latest_reorganization is None or reorganization_ts > latest_reorganization):
+                latest_reorganization = reorganization_ts
+
+
+
+        return {
+            "user_id": user_id,
+            "last_transaction_modification": latest_transaction,
+            "last_reorganization": latest_reorganization,
+            "account_count": len(rows),
+        }
+    except Exception as e:
+        _report_error("Error loading user holdings reorganization status", e)
+        return None
+
+
+def insert_user_holdings_reorganization(user_id=None):
+    """Insert a reorganization marker row for a user."""
+    if not user_id:
+        user_id = get_current_user_id()
+    if not user_id:
+        raise ValueError("Missing user_id for holdings reorganization insert")
+
+    supabase = get_admin_client()
+    payload = {"user_id": user_id}
+    try:
+        return supabase.schema("public").table("user_holdings_reorganization").insert(payload).execute()
+    except Exception as e:
+        _report_error("Error inserting user holdings reorganization", e)
+        raise e
+
 def get_asset_ref_options():
     supabase = _get_client()
     try:
