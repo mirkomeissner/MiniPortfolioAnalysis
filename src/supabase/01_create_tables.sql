@@ -389,6 +389,39 @@ CREATE TABLE IF NOT EXISTS public.user_holdings_reorganization (
 
 
 
+-- this view combines the last transaction modification and the last reorganization timestamp for each user and account
+CREATE OR REPLACE VIEW public.v_user_account_reorganization 
+WITH (security_invoker = true) AS 
+WITH last_transactions AS (
+    -- 1. Determine the latest modification per user and account from transactions
+    SELECT 
+        user_id,
+        account_code,
+        MAX(GREATEST(created_at, COALESCE(updated_at, created_at))) AS last_transaction_modification
+    FROM public.transactions
+    GROUP BY user_id, account_code
+),
+last_reorg AS (
+    -- 2. Determine the latest reorganization timestamp per user
+    SELECT 
+        user_id,
+        MAX(reorg_timestamp) AS last_reorganization
+    FROM public.user_holdings_reorganization
+    GROUP BY user_id
+)
+-- 3. Combine users and their accounts with the calculated timestamps
+SELECT 
+    a.user_id,
+    a.account_code,
+    t.last_transaction_modification,
+    r.last_reorganization
+FROM public.accounts a
+LEFT JOIN last_transactions t 
+    ON a.user_id = t.user_id AND a.account_code = t.account_code
+LEFT JOIN last_reorg r 
+    ON a.user_id = r.user_id;
+
+
 
 
 
@@ -427,7 +460,7 @@ DO $$
 DECLARE 
     t text;
     -- Liste deiner User-Tabellen
-    tables text[] := ARRAY['accounts', 'transactions', 'user_import_settings', 'incremental_holdings'];
+    tables text[] := ARRAY['accounts', 'transactions', 'user_import_settings', 'incremental_holdings', 'user_holdings_reorganization'];
 BEGIN
     FOREACH t IN ARRAY tables LOOP
         EXECUTE format('DROP POLICY IF EXISTS "Users can only access their own %I" ON public.%I', t, t);
