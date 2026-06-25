@@ -7,12 +7,12 @@ initialize_runtime_from_streamlit(st)
 
 if check_password():  
     # ERST HIER: Komponenten importieren, nachdem der Login erfolgreich war
-    from src.components import asset_table_view, transaction_table_view, admin_approval_page, accounts_settings_view, price_management_view
+    from src.components import asset_table_view, transaction_table_view, admin_approval_page, accounts_settings_view, price_management_view, render_holdings_view
 
     st.sidebar.title(f"User: {st.session_state['user_name']}")  
 
     # 1. Menüoptionen definieren
-    menu_options = ["Home", "User Settings", "Accounts Settings", "Asset Data", "Price Data", "Transactions"]
+    menu_options = ["Home", "User Settings", "Accounts Settings", "Asset Data", "Price Data", "Transactions", "Holdings"]
     
     # 2. Admin Console hinzufügen
     if st.session_state.get("is_admin"):
@@ -53,3 +53,6 @@ if check_password():
 
     elif menu == "Accounts Settings":
         accounts_settings_view()
+
+    elif menu == "Holdings":
+        render_holdings_view()

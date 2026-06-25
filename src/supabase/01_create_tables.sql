@@ -312,8 +312,11 @@ CREATE TABLE IF NOT EXISTS public.user_import_settings (
     user_id UUID NOT NULL,
     account_code TEXT NOT NULL,
     mapping_config JSONB NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
+
     PRIMARY KEY (user_id, account_code),
+    CONSTRAINT fk_user_import_user FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE,
     CONSTRAINT fk_user_import_account FOREIGN KEY (user_id, account_code) REFERENCES public.accounts(user_id, account_code) ON DELETE CASCADE
 );
 
@@ -325,6 +328,9 @@ CREATE TABLE IF NOT EXISTS public.incremental_holdings (
     holding_date DATE NOT NULL,
     isin VARCHAR(12) NOT NULL,
     quantity NUMERIC(20, 8) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
+
     PRIMARY KEY (user_id, account_code, holding_date, isin),
     CONSTRAINT fk_incremental_holdings_account FOREIGN KEY (user_id, account_code) REFERENCES public.accounts(user_id, account_code) ON DELETE CASCADE,
     CONSTRAINT fk_incremental_holdings_isin FOREIGN KEY (isin) REFERENCES shared.asset_static_data(isin) ON DELETE CASCADE
@@ -374,7 +380,12 @@ LEFT JOIN LATERAL (
 WHERE h.quantity IS NOT NULL; -- Verhindert Zeilen für Assets vor ihrem ersten Kauf
 
 
-
+-- this table is used to track when a user reorganizes their holdings
+CREATE TABLE IF NOT EXISTS public.user_holdings_reorganization (
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    reorg_timestamp TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, reorg_timestamp)
+);
 
 
 
