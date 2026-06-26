@@ -422,6 +422,285 @@ LEFT JOIN last_reorg r
     ON a.user_id = r.user_id;
 
 
+-- Hybrid holdings reorganization function:
+-- - determines relevant accounts
+-- - recomputes incremental snapshots from transactions
+-- - applies delete/insert/update diff atomically
+-- - writes reorganization timestamp only on success
+CREATE OR REPLACE FUNCTION public.reorganize_incremental_holdings(
+    p_user_id UUID,
+    p_account_codes TEXT[] DEFAULT NULL,
+    p_dry_run BOOLEAN DEFAULT FALSE
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_relevant_accounts_count INT := 0;
+    v_transactions_scanned INT := 0;
+    v_snapshots_generated INT := 0;
+    v_rows_deleted INT := 0;
+    v_rows_inserted INT := 0;
+    v_rows_updated INT := 0;
+    v_rows_unchanged INT := 0;
+    v_reorg_timestamp TIMESTAMPTZ := NULL;
+BEGIN
+    IF p_user_id IS NULL THEN
+        RAISE EXCEPTION 'p_user_id must not be null';
+    END IF;
+
+    CREATE TEMP TABLE tmp_relevant_accounts ON COMMIT DROP AS
+    SELECT DISTINCT v.user_id, v.account_code
+    FROM public.v_user_account_reorganization v
+    WHERE v.user_id = p_user_id
+      AND v.last_transaction_modification IS NOT NULL
+      AND (v.last_reorganization IS NULL OR v.last_transaction_modification > v.last_reorganization)
+      AND (p_account_codes IS NULL OR v.account_code = ANY (p_account_codes));
+
+    SELECT COUNT(*) INTO v_relevant_accounts_count FROM tmp_relevant_accounts;
+
+    IF v_relevant_accounts_count = 0 THEN
+        RETURN jsonb_build_object(
+            'user_id', p_user_id,
+            'relevant_accounts_count', 0,
+            'transactions_scanned', 0,
+            'snapshots_generated', 0,
+            'rows_deleted', 0,
+            'rows_inserted', 0,
+            'rows_updated', 0,
+            'rows_unchanged', 0,
+            'reorg_timestamp_written', false,
+            'dry_run', p_dry_run
+        );
+    END IF;
+
+    CREATE TEMP TABLE tmp_tx_daily_delta ON COMMIT DROP AS
+    SELECT
+        t.user_id,
+        t.account_code,
+        t.date AS holding_date,
+        t.isin,
+        SUM(t.quantity)::NUMERIC(20, 8) AS daily_quantity_delta
+    FROM public.transactions t
+    JOIN tmp_relevant_accounts ra
+      ON ra.user_id = t.user_id
+     AND ra.account_code = t.account_code
+    WHERE t.user_id = p_user_id
+      AND t.isin IS NOT NULL
+      AND t.quantity IS NOT NULL
+      AND t.date IS NOT NULL
+    GROUP BY t.user_id, t.account_code, t.date, t.isin;
+
+    SELECT COALESCE(SUM(cn), 0)
+      INTO v_transactions_scanned
+    FROM (
+        SELECT COUNT(*)::INT AS cn
+        FROM public.transactions t
+        JOIN tmp_relevant_accounts ra
+          ON ra.user_id = t.user_id
+         AND ra.account_code = t.account_code
+        WHERE t.user_id = p_user_id
+          AND t.isin IS NOT NULL
+          AND t.quantity IS NOT NULL
+          AND t.date IS NOT NULL
+        GROUP BY t.account_code
+    ) c;
+
+    CREATE TEMP TABLE tmp_cumulative_positions ON COMMIT DROP AS
+    SELECT
+        d.user_id,
+        d.account_code,
+        d.holding_date,
+        d.isin,
+        SUM(d.daily_quantity_delta) OVER (
+            PARTITION BY d.user_id, d.account_code, d.isin
+            ORDER BY d.holding_date
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        )::NUMERIC(20, 8) AS quantity
+    FROM tmp_tx_daily_delta d;
+
+    CREATE TEMP TABLE tmp_account_dates ON COMMIT DROP AS
+    SELECT DISTINCT user_id, account_code, holding_date
+    FROM tmp_tx_daily_delta;
+
+    CREATE TEMP TABLE tmp_account_isins ON COMMIT DROP AS
+    SELECT DISTINCT user_id, account_code, isin
+    FROM tmp_tx_daily_delta;
+
+    CREATE TEMP TABLE tmp_snapshot_raw ON COMMIT DROP AS
+    SELECT
+        ad.user_id,
+        ad.account_code,
+        ad.holding_date,
+        ai.isin,
+        COALESCE(cp.quantity, 0)::NUMERIC(20, 8) AS quantity
+    FROM tmp_account_dates ad
+    JOIN tmp_account_isins ai
+      ON ai.user_id = ad.user_id
+     AND ai.account_code = ad.account_code
+    LEFT JOIN LATERAL (
+        SELECT c.quantity
+        FROM tmp_cumulative_positions c
+        WHERE c.user_id = ad.user_id
+          AND c.account_code = ad.account_code
+          AND c.isin = ai.isin
+          AND c.holding_date <= ad.holding_date
+        ORDER BY c.holding_date DESC
+        LIMIT 1
+    ) cp ON TRUE;
+
+    CREATE TEMP TABLE tmp_date_state ON COMMIT DROP AS
+    SELECT
+        sr.user_id,
+        sr.account_code,
+        sr.holding_date,
+        md5(
+            COALESCE(
+                string_agg(
+                    sr.isin || ':' || sr.quantity::TEXT,
+                    '|' ORDER BY sr.isin
+                ) FILTER (WHERE sr.quantity <> 0),
+                '__EMPTY__'
+            )
+        ) AS snapshot_hash
+    FROM tmp_snapshot_raw sr
+    GROUP BY sr.user_id, sr.account_code, sr.holding_date;
+
+    CREATE TEMP TABLE tmp_changed_dates ON COMMIT DROP AS
+    SELECT user_id, account_code, holding_date
+    FROM (
+        SELECT
+            ds.*,
+            LAG(ds.snapshot_hash) OVER (
+                PARTITION BY ds.user_id, ds.account_code
+                ORDER BY ds.holding_date
+            ) AS prev_snapshot_hash
+        FROM tmp_date_state ds
+    ) x
+    WHERE x.prev_snapshot_hash IS NULL
+       OR x.snapshot_hash IS DISTINCT FROM x.prev_snapshot_hash;
+
+    CREATE TEMP TABLE tmp_recomputed_holdings ON COMMIT DROP AS
+    SELECT
+        sr.user_id,
+        sr.account_code,
+        sr.holding_date,
+        sr.isin,
+        sr.quantity
+    FROM tmp_snapshot_raw sr
+    JOIN tmp_changed_dates cd
+      ON cd.user_id = sr.user_id
+     AND cd.account_code = sr.account_code
+     AND cd.holding_date = sr.holding_date
+    WHERE sr.quantity <> 0;
+
+    SELECT COUNT(*) INTO v_snapshots_generated FROM tmp_recomputed_holdings;
+
+    CREATE TEMP TABLE tmp_current_holdings ON COMMIT DROP AS
+    SELECT
+        h.user_id,
+        h.account_code,
+        h.holding_date,
+        h.isin,
+        h.quantity
+    FROM public.incremental_holdings h
+    JOIN tmp_relevant_accounts ra
+      ON ra.user_id = h.user_id
+     AND ra.account_code = h.account_code
+    WHERE h.user_id = p_user_id;
+
+    CREATE TEMP TABLE tmp_delete_set ON COMMIT DROP AS
+    SELECT ch.user_id, ch.account_code, ch.holding_date, ch.isin
+    FROM tmp_current_holdings ch
+    LEFT JOIN tmp_recomputed_holdings rh
+      ON rh.user_id = ch.user_id
+     AND rh.account_code = ch.account_code
+     AND rh.holding_date = ch.holding_date
+     AND rh.isin = ch.isin
+    WHERE rh.user_id IS NULL;
+
+    CREATE TEMP TABLE tmp_insert_set ON COMMIT DROP AS
+    SELECT rh.user_id, rh.account_code, rh.holding_date, rh.isin, rh.quantity
+    FROM tmp_recomputed_holdings rh
+    LEFT JOIN tmp_current_holdings ch
+      ON ch.user_id = rh.user_id
+     AND ch.account_code = rh.account_code
+     AND ch.holding_date = rh.holding_date
+     AND ch.isin = rh.isin
+    WHERE ch.user_id IS NULL;
+
+    CREATE TEMP TABLE tmp_update_set ON COMMIT DROP AS
+    SELECT
+        rh.user_id,
+        rh.account_code,
+        rh.holding_date,
+        rh.isin,
+        rh.quantity AS new_quantity
+    FROM tmp_recomputed_holdings rh
+    JOIN tmp_current_holdings ch
+      ON ch.user_id = rh.user_id
+     AND ch.account_code = rh.account_code
+     AND ch.holding_date = rh.holding_date
+     AND ch.isin = rh.isin
+    WHERE ch.quantity IS DISTINCT FROM rh.quantity;
+
+    SELECT COUNT(*) INTO v_rows_deleted FROM tmp_delete_set;
+    SELECT COUNT(*) INTO v_rows_inserted FROM tmp_insert_set;
+    SELECT COUNT(*) INTO v_rows_updated FROM tmp_update_set;
+
+    SELECT COUNT(*)
+      INTO v_rows_unchanged
+    FROM tmp_recomputed_holdings rh
+    JOIN tmp_current_holdings ch
+      ON ch.user_id = rh.user_id
+     AND ch.account_code = rh.account_code
+     AND ch.holding_date = rh.holding_date
+     AND ch.isin = rh.isin
+    WHERE ch.quantity IS NOT DISTINCT FROM rh.quantity;
+
+    IF NOT p_dry_run THEN
+        DELETE FROM public.incremental_holdings h
+        USING tmp_delete_set d
+        WHERE h.user_id = d.user_id
+          AND h.account_code = d.account_code
+          AND h.holding_date = d.holding_date
+          AND h.isin = d.isin;
+
+        INSERT INTO public.incremental_holdings (user_id, account_code, holding_date, isin, quantity)
+        SELECT user_id, account_code, holding_date, isin, quantity
+        FROM tmp_insert_set;
+
+        UPDATE public.incremental_holdings h
+        SET quantity = u.new_quantity,
+            updated_at = NOW()
+        FROM tmp_update_set u
+        WHERE h.user_id = u.user_id
+          AND h.account_code = u.account_code
+          AND h.holding_date = u.holding_date
+          AND h.isin = u.isin;
+
+        INSERT INTO public.user_holdings_reorganization (user_id, reorg_timestamp)
+        VALUES (p_user_id, NOW())
+        RETURNING reorg_timestamp INTO v_reorg_timestamp;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'user_id', p_user_id,
+        'relevant_accounts_count', v_relevant_accounts_count,
+        'transactions_scanned', v_transactions_scanned,
+        'snapshots_generated', v_snapshots_generated,
+        'rows_deleted', v_rows_deleted,
+        'rows_inserted', v_rows_inserted,
+        'rows_updated', v_rows_updated,
+        'rows_unchanged', v_rows_unchanged,
+        'reorg_timestamp_written', (v_reorg_timestamp IS NOT NULL),
+        'reorg_timestamp', v_reorg_timestamp,
+        'dry_run', p_dry_run
+    );
+END;
+$$;
+
+
 
 
 
@@ -504,3 +783,5 @@ GRANT USAGE ON SCHEMA public, shared TO service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public, shared TO service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public, shared TO service_role;
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public, shared TO service_role;
+GRANT EXECUTE ON FUNCTION public.reorganize_incremental_holdings(UUID, TEXT[], BOOLEAN) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.reorganize_incremental_holdings(UUID, TEXT[], BOOLEAN) TO service_role;
