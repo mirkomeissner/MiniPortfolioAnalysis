@@ -8,17 +8,18 @@ import streamlit.components.v1 as components
 from src.database import (
     get_all_assets_with_labels,
     get_daily_holdings,
+    get_ref_metadata,
     get_user_holdings_min_date,
 )
 from src.utils import apply_advanced_filters
 
 
-def _build_asset_class_pie_html(grouped_values: pd.Series) -> str:
+def _build_asset_class_pie_html(grouped_values: pd.Series, color_by_label: dict | None = None) -> str:
     total = float(grouped_values.sum())
     if total <= 0:
         return ""
 
-    palette = [
+    fallback_palette = [
         "#1f77b4",
         "#ff7f0e",
         "#2ca02c",
@@ -37,6 +38,7 @@ def _build_asset_class_pie_html(grouped_values: pd.Series) -> str:
     start_angle = -90.0
     slices = []
     legend_items = []
+    color_by_label = color_by_label or {}
 
     for idx, (label, value) in enumerate(grouped_values.items()):
         if value <= 0:
@@ -45,7 +47,7 @@ def _build_asset_class_pie_html(grouped_values: pd.Series) -> str:
         angle = (float(value) / total) * 360.0
         end_angle = start_angle + angle
         large_arc = 1 if angle > 180 else 0
-        color = palette[idx % len(palette)]
+        color = color_by_label.get(label) or fallback_palette[idx % len(fallback_palette)]
 
         start_rad = math.radians(start_angle)
         end_rad = math.radians(end_angle)
@@ -244,11 +246,17 @@ def render_holdings_view():
         },
     )
 
+    pie_dimension = st.selectbox(
+        "Pie Chart Dimension",
+        ["Asset Class", "Asset Type", "Asset Region", "Asset Sector", "Asset Risk Currency"],
+        key="holdings_pie_dimension",
+    )
+
     chart_df = filtered_df.copy()
-    if "Asset Class" in chart_df.columns:
-        chart_df["Asset Class"] = chart_df["Asset Class"].fillna("Unknown").replace("", "Unknown")
+    if pie_dimension in chart_df.columns:
+        chart_df[pie_dimension] = chart_df[pie_dimension].fillna("Unknown").replace("", "Unknown")
     else:
-        chart_df["Asset Class"] = "Unknown"
+        chart_df[pie_dimension] = "Unknown"
 
     if "Valuation (EUR)" in chart_df.columns:
         chart_values = pd.to_numeric(chart_df["Valuation (EUR)"], errors="coerce").fillna(0)
@@ -256,17 +264,46 @@ def render_holdings_view():
         chart_values = pd.Series([0] * len(chart_df), index=chart_df.index)
 
     chart_data = (
-        pd.DataFrame({"Asset Class": chart_df["Asset Class"], "Valuation (EUR)": chart_values})
-        .groupby("Asset Class", as_index=True)["Valuation (EUR)"]
+        pd.DataFrame({pie_dimension: chart_df[pie_dimension], "Valuation (EUR)": chart_values})
+        .groupby(pie_dimension, as_index=True)["Valuation (EUR)"]
         .sum()
         .sort_values(ascending=False)
     )
 
-    st.subheader("Asset Class Allocation")
+    ref_table_map = {
+        "Asset Class": "ref_asset_class",
+        "Asset Type": "ref_instrument_type",
+        "Asset Region": "ref_region",
+        "Asset Sector": "ref_sector",
+    }
+    ref_table = ref_table_map.get(pie_dimension)
+    ref_meta = get_ref_metadata(ref_table) if ref_table else []
+
+    color_by_label = {
+        item.get("label"): item.get("color_hex")
+        for item in ref_meta
+        if item.get("label") and item.get("color_hex")
+    }
+    order_by_label = {
+        item.get("label"): item.get("display_order")
+        for item in ref_meta
+        if item.get("label")
+    }
+
+    if not chart_data.empty:
+        chart_data = chart_data.sort_index(
+            key=lambda idx: idx.map(lambda label: order_by_label.get(label, 9999))
+        )
+
+    st.subheader(f"Allocation by {pie_dimension}")
     if chart_data.empty or float(chart_data.sum()) <= 0:
         st.info("No positive valuation available for the pie chart.")
     else:
-        components.html(_build_asset_class_pie_html(chart_data), height=390, scrolling=False)
+        components.html(
+            _build_asset_class_pie_html(chart_data, color_by_label=color_by_label),
+            height=390,
+            scrolling=False,
+        )
 
 
     

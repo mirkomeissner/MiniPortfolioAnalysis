@@ -156,6 +156,23 @@ def get_ref_options(table_name):
         _report_error(f"Error loading reference data {table_name}", e)
         return []
 
+
+@ttl_cache_data(ttl=600)
+def get_ref_metadata(table_name):
+    """Return reference rows including optional chart metadata like color and display order."""
+    supabase = _get_client()
+    try:
+        res = (
+            supabase.schema("shared")
+            .table(table_name)
+            .select("code, label, color_hex, display_order")
+            .execute()
+        )
+        return res.data if res.data else []
+    except Exception as e:
+        _report_error(f"Error loading reference metadata {table_name}", e)
+        return []
+
 @ttl_cache_data(ttl=3600)
 def get_country_region_map():
     supabase = _get_client()
