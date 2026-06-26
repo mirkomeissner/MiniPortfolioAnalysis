@@ -320,6 +320,40 @@ def get_asset_price_start_date(isin):
         _report_error("Error loading asset start date", e)
         return None
 
+
+def get_daily_holdings(user_id=None, holding_date=None, account_codes=None, isins=None):
+    """Return daily holdings rows for a user on a specific holding_date."""
+    if not user_id:
+        user_id = get_current_user_id()
+    if not user_id or holding_date is None:
+        return []
+
+    if isinstance(holding_date, datetime.date):
+        holding_date_str = holding_date.isoformat()
+    else:
+        holding_date_str = str(holding_date)
+
+    supabase = _get_client()
+    try:
+        query = (
+            supabase.schema("public")
+            .table("daily_holdings")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("holding_date", holding_date_str)
+        )
+
+        if account_codes:
+            query = query.in_("account_code", account_codes)
+        if isins:
+            query = query.in_("isin", isins)
+
+        response = query.execute()
+        return response.data if response.data else []
+    except Exception as e:
+        _report_error("Error loading daily holdings", e)
+        return []
+
 def get_asset_price_start_dates(isins):
     if not isins:
         return {}
@@ -435,7 +469,7 @@ def get_missing_isins(isins: list) -> list:
         return [i for i in isins if i not in existing_isins]
     except: return []
 
-def get_all_assets_with_labels():
+def get_all_assets_with_labels(isins=None):
     supabase = _get_client()
     flattened_data = []
     try:
@@ -443,7 +477,10 @@ def get_all_assets_with_labels():
                    "ref_instrument_type(label), ref_asset_class(label), ref_region(label), "
                    "ref_sector(label), closed_on, created_at, created_by:users!fk_static_created_by(username), "
                    "updated_by:users!fk_static_updated_by(username), updated_at")
-        query = supabase.schema("shared").table("asset_static_data").select(columns).execute()
+        query = supabase.schema("shared").table("asset_static_data").select(columns)
+        if isins:
+            query = query.in_("isin", isins)
+        query = query.execute()
         if query.data:
             for row in query.data:
                 flattened_data.append({
