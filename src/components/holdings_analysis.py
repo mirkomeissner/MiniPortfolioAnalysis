@@ -159,6 +159,9 @@ def render_holdings_view():
     if "ISIN" in merged_df.columns:
         merged_df = merged_df.drop(columns=["ISIN"])
 
+    # Streamlit's dataframe renderer requires unique column names.
+    merged_df = merged_df.loc[:, ~merged_df.columns.duplicated()].copy()
+
     merged_df = merged_df.rename(
         columns={
             "user_id": "User ID",
