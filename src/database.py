@@ -546,12 +546,69 @@ def insert_user_holdings_reorganization(user_id=None):
     if not user_id:
         raise ValueError("Missing user_id for holdings reorganization insert")
 
-    supabase = get_admin_client()
+    supabase = _get_client()
     payload = {"user_id": user_id}
     try:
         return supabase.schema("public").table("user_holdings_reorganization").insert(payload).execute()
     except Exception as e:
         _report_error("Error inserting user holdings reorganization", e)
+        raise e
+
+
+def reorganize_incremental_holdings(user_id=None, account_codes=None, dry_run=False):
+    """Run hybrid holdings reorganization via SQL RPC and return summary counters."""
+    if not user_id:
+        user_id = get_current_user_id()
+    if not user_id:
+        raise ValueError("Missing user_id for holdings reorganization")
+
+    supabase = _get_client()
+    payload = {
+        "p_user_id": user_id,
+        "p_account_codes": account_codes,
+        "p_dry_run": dry_run,
+    }
+
+    try:
+        response = supabase.rpc("reorganize_incremental_holdings", payload).execute()
+        result = response.data
+
+        if result is None:
+            return {
+                "user_id": user_id,
+                "relevant_accounts_count": 0,
+                "transactions_scanned": 0,
+                "snapshots_generated": 0,
+                "rows_deleted": 0,
+                "rows_inserted": 0,
+                "rows_updated": 0,
+                "rows_unchanged": 0,
+                "reorg_timestamp_written": False,
+                "dry_run": dry_run,
+            }
+
+        if isinstance(result, list):
+            result = result[0] if result else {}
+
+        if not isinstance(result, dict):
+            raise ValueError(f"Unexpected reorganize_incremental_holdings response type: {type(result)}")
+
+        normalized = {
+            "user_id": result.get("user_id", user_id),
+            "relevant_accounts_count": int(result.get("relevant_accounts_count") or 0),
+            "transactions_scanned": int(result.get("transactions_scanned") or 0),
+            "snapshots_generated": int(result.get("snapshots_generated") or 0),
+            "rows_deleted": int(result.get("rows_deleted") or 0),
+            "rows_inserted": int(result.get("rows_inserted") or 0),
+            "rows_updated": int(result.get("rows_updated") or 0),
+            "rows_unchanged": int(result.get("rows_unchanged") or 0),
+            "reorg_timestamp_written": bool(result.get("reorg_timestamp_written", False)),
+            "reorg_timestamp": _parse_supabase_timestamp(result.get("reorg_timestamp")),
+            "dry_run": bool(result.get("dry_run", dry_run)),
+        }
+        return normalized
+    except Exception as e:
+        _report_error("Error running holdings reorganization", e)
         raise e
 
 def get_asset_ref_options():

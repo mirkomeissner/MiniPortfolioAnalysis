@@ -1,6 +1,6 @@
 import streamlit as st
 
-from src.database import get_user_holdings_reorganization_status, insert_user_holdings_reorganization
+from src.database import get_user_holdings_reorganization_status, reorganize_incremental_holdings
 
 
 def _format_status_timestamp(timestamp):
@@ -52,11 +52,21 @@ def render_holdings_view():
     with button_col:
         if st.button(ui_state["label"], disabled=ui_state["disabled"]):
             try:
-                insert_user_holdings_reorganization()
-                st.success("Holdings reorganization saved.")
+                summary = reorganize_incremental_holdings()
+                relevant_accounts_count = summary.get("relevant_accounts_count", 0)
+                if relevant_accounts_count == 0:
+                    st.info("No account requires holdings reorganization.")
+                else:
+                    st.success(
+                        "Holdings reorganization completed "
+                        f"(accounts={relevant_accounts_count}, "
+                        f"inserted={summary.get('rows_inserted', 0)}, "
+                        f"updated={summary.get('rows_updated', 0)}, "
+                        f"deleted={summary.get('rows_deleted', 0)})."
+                    )
                 st.rerun()
             except Exception as exc:
-                st.error(f"Could not save holdings reorganization: {exc}")
+                st.error(f"Could not reorganize holdings: {exc}")
 
     with info_col:
         if ui_state["info_text"]:
