@@ -141,13 +141,29 @@ def render_holdings_view():
     asset_df = pd.DataFrame(asset_rows)
 
     if not asset_df.empty:
-        asset_df = asset_df.rename(
+        asset_df = asset_df[
+            [
+                column
+                for column in [
+                    "ISIN",
+                    "Name",
+                    "Ticker",
+                    "Risk Currency",
+                    "Type",
+                    "Asset Class",
+                    "Region",
+                    "Sector",
+                    "Industry",
+                    "Country",
+                ]
+                if column in asset_df.columns
+            ]
+        ].rename(
             columns={
                 "Name": "Asset Name",
                 "Ticker": "Asset Ticker",
                 "Risk Currency": "Asset Risk Currency",
                 "Type": "Asset Type",
-                "Asset Class": "Asset Class",
                 "Region": "Asset Region",
                 "Sector": "Asset Sector",
                 "Industry": "Asset Industry",
@@ -194,11 +210,11 @@ def render_holdings_view():
         "Asset Ticker",
         "Asset Risk Currency",
         "Asset Type",
-        "Asset Closed On",
-        "Asset Created At",
-        "Asset Created By",
-        "Asset Updated At",
-        "Asset Updated By",
+        "Asset Class",
+        "Asset Region",
+        "Asset Sector",
+        "Asset Industry",
+        "Asset Country",
     ])
 
     existing_cols = [column for column in preferred_order if column in merged_df.columns]
