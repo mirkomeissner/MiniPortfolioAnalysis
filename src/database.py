@@ -546,7 +546,7 @@ def insert_user_holdings_reorganization(user_id=None):
     if not user_id:
         raise ValueError("Missing user_id for holdings reorganization insert")
 
-    supabase = get_admin_client()
+    supabase = _get_client()
     payload = {"user_id": user_id}
     try:
         return supabase.schema("public").table("user_holdings_reorganization").insert(payload).execute()

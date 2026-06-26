@@ -320,8 +320,14 @@ CREATE TABLE IF NOT EXISTS public.user_import_settings (
     CONSTRAINT fk_user_import_account FOREIGN KEY (user_id, account_code) REFERENCES public.accounts(user_id, account_code) ON DELETE CASCADE
 );
 
--- Daily snapshot of quantities per user, account, and asset
--- only increments the date if the holdings change
+-- =================================================================================
+-- INCREMENTAL_HOLDINGS (DELTA STORAGE MODEL)
+-- 1. Stores end-of-day asset quantities ONLY when an actual change/transaction occurs.
+-- 2. Drastically reduces database storage by avoiding daily redundant duplication.
+-- 3. Unchanged assets from previous dates are implicitly carried forward by views.
+-- 4. Full liquidations are explicitly recorded with a quantity of 0.00000000.
+-- 5. Optimized for high-performance indexing on (user, account, isin, date DESC).
+-- =================================================================================
 CREATE TABLE IF NOT EXISTS public.incremental_holdings (
     user_id UUID NOT NULL,
     account_code TEXT NOT NULL,
@@ -340,44 +346,62 @@ CREATE INDEX IF NOT EXISTS idx_holdings_lookup ON public.incremental_holdings (u
 
 -- view to create daily holdings by filling the gaps in incremental_holdings
 CREATE OR REPLACE VIEW public.daily_holdings WITH (security_invoker = true) AS
-WITH date_range AS (
-    -- 1. Wir ermitteln den Startpunkt und das Ende der Zeitreihe
+WITH RECURSIVE account_dates AS (
+    -- 1. Start- und Endpunkt für JEDEN ACCOUNT eines Users ermitteln
     SELECT 
+        user_id,
+        account_code,
         min(holding_date) as start_date, 
         CURRENT_DATE as end_date 
     FROM public.incremental_holdings
+    GROUP BY user_id, account_code
 ),
-all_days AS (
-    -- 2. Wir generieren jeden einzelnen Tag
-    SELECT generate_series(start_date, end_date, '1 day'::interval)::date AS day
-    FROM date_range
+account_calendar AS (
+    -- 2. Kalender pro Account generieren
+    SELECT user_id, account_code, start_date AS holding_date, end_date
+    FROM account_dates
+    UNION ALL
+    SELECT user_id, account_code, (holding_date + INTERVAL '1 day')::date, end_date
+    FROM account_calendar
+    WHERE holding_date < end_date
 ),
-distinct_keys AS (
-    -- 3. Wir brauchen alle Kombinationen aus User, Account und ISIN, die existieren
+distinct_assets AS (
+    -- 3. Jedes Asset ermitteln, das jemals in diesem Account existierte
     SELECT DISTINCT user_id, account_code, isin 
     FROM public.incremental_holdings
+),
+filled_assets AS (
+    -- 4. Kalender mit Assets verbinden und das jeweils letzte Delta JEDES ASSETS suchen
+    SELECT 
+        c.user_id,
+        c.account_code,
+        c.holding_date,
+        a.isin,
+        (
+            SELECT ih.quantity 
+            FROM public.incremental_holdings ih
+            WHERE ih.user_id = c.user_id
+              AND ih.account_code = c.account_code
+              AND ih.isin = a.isin
+              AND ih.holding_date <= c.holding_date
+            ORDER BY ih.holding_date DESC
+            LIMIT 1
+        ) AS quantity
+    FROM account_calendar c
+    JOIN distinct_assets a 
+      ON a.user_id = c.user_id 
+     AND a.account_code = c.account_code
 )
--- 4. Wir verbinden die Tage mit den Keys und suchen den letzten Stand
+-- 5. Nur Zeilen ausgeben, wo die Menge größer als 0 ist
+-- Blendet Assets vor ihrem ersten Kauf ODER nach einem Totalverkauf (Menge = 0) aus!
 SELECT 
-    k.user_id,
-    k.account_code,
-    d.day AS holding_date,
-    k.isin,
-    h.quantity
-FROM all_days d
-CROSS JOIN distinct_keys k -- Erzeugt für jeden Tag eine Zeile pro Asset
-LEFT JOIN LATERAL (
-    -- Dieser Teil sucht für jeden Tag den "aktuellsten" Eintrag in der echten Tabelle
-    SELECT ih.quantity
-    FROM public.incremental_holdings ih
-    WHERE ih.user_id = k.user_id
-      AND ih.account_code = k.account_code
-      AND ih.isin = k.isin
-      AND ih.holding_date <= d.day
-    ORDER BY ih.holding_date DESC
-    LIMIT 1
-) h ON TRUE
-WHERE h.quantity IS NOT NULL; -- Verhindert Zeilen für Assets vor ihrem ersten Kauf
+    user_id,
+    account_code,
+    holding_date,
+    isin,
+    quantity
+FROM filled_assets
+WHERE quantity IS NOT NULL AND quantity > 0;
 
 
 -- this table is used to track when a user reorganizes their holdings
@@ -422,11 +446,14 @@ LEFT JOIN last_reorg r
     ON a.user_id = r.user_id;
 
 
--- Hybrid holdings reorganization function:
--- - determines relevant accounts
--- - recomputes incremental snapshots from transactions
--- - applies delete/insert/update diff atomically
--- - writes reorganization timestamp only on success
+-- =================================================================================
+-- REORGANIZATION FUNCTION (DELTA MODEL)
+-- 1. Evaluates out-of-date accounts by comparing transaction and reorg timestamps.
+-- 2. Scans history and aggregates raw transaction quantities into daily deltas.
+-- 3. Computes cumulative positions using window functions ONLY on transaction dates.
+-- 4. Automatically handles liquidations by writing explicit zero-quantity records.
+-- 5. Atomically synchronizes changes into incremental_holdings via a structural diff.
+-- =================================================================================
 CREATE OR REPLACE FUNCTION public.reorganize_incremental_holdings(
     p_user_id UUID,
     p_account_codes TEXT[] DEFAULT NULL,
@@ -438,7 +465,6 @@ AS $$
 DECLARE
     v_relevant_accounts_count INT := 0;
     v_transactions_scanned INT := 0;
-    v_snapshots_generated INT := 0;
     v_rows_deleted INT := 0;
     v_rows_inserted INT := 0;
     v_rows_updated INT := 0;
@@ -449,6 +475,7 @@ BEGIN
         RAISE EXCEPTION 'p_user_id must not be null';
     END IF;
 
+    -- 1. Relevante Accounts bestimmen (Bleibt gleich)
     CREATE TEMP TABLE tmp_relevant_accounts ON COMMIT DROP AS
     SELECT DISTINCT v.user_id, v.account_code
     FROM public.v_user_account_reorganization v
@@ -460,20 +487,15 @@ BEGIN
     SELECT COUNT(*) INTO v_relevant_accounts_count FROM tmp_relevant_accounts;
 
     IF v_relevant_accounts_count = 0 THEN
-        RETURN jsonb_build_object(
-            'user_id', p_user_id,
-            'relevant_accounts_count', 0,
-            'transactions_scanned', 0,
-            'snapshots_generated', 0,
-            'rows_deleted', 0,
-            'rows_inserted', 0,
-            'rows_updated', 0,
-            'rows_unchanged', 0,
-            'reorg_timestamp_written', false,
-            'dry_run', p_dry_run
-        );
+        RETURN jsonb_build_object('user_id', p_user_id, 'relevant_accounts_count', 0, 'dry_run', p_dry_run);
     END IF;
 
+    -- Metrik: Gescannte Transaktionen zählen
+    SELECT COUNT(*)::INT INTO v_transactions_scanned
+    FROM public.transactions t
+    JOIN tmp_relevant_accounts ra ON ra.user_id = t.user_id AND ra.account_code = t.account_code;
+
+    -- 2. Tägliche Deltas aus Transaktionen aggregieren
     CREATE TEMP TABLE tmp_tx_daily_delta ON COMMIT DROP AS
     SELECT
         t.user_id,
@@ -482,31 +504,13 @@ BEGIN
         t.isin,
         SUM(t.quantity)::NUMERIC(20, 8) AS daily_quantity_delta
     FROM public.transactions t
-    JOIN tmp_relevant_accounts ra
-      ON ra.user_id = t.user_id
-     AND ra.account_code = t.account_code
-    WHERE t.user_id = p_user_id
-      AND t.isin IS NOT NULL
-      AND t.quantity IS NOT NULL
-      AND t.date IS NOT NULL
+    JOIN tmp_relevant_accounts ra ON ra.user_id = t.user_id AND ra.account_code = t.account_code
+    WHERE t.isin IS NOT NULL AND t.quantity IS NOT NULL AND t.date IS NOT NULL
     GROUP BY t.user_id, t.account_code, t.date, t.isin;
 
-    SELECT COALESCE(SUM(cn), 0)
-      INTO v_transactions_scanned
-    FROM (
-        SELECT COUNT(*)::INT AS cn
-        FROM public.transactions t
-        JOIN tmp_relevant_accounts ra
-          ON ra.user_id = t.user_id
-         AND ra.account_code = t.account_code
-        WHERE t.user_id = p_user_id
-          AND t.isin IS NOT NULL
-          AND t.quantity IS NOT NULL
-          AND t.date IS NOT NULL
-        GROUP BY t.account_code
-    ) c;
-
-    CREATE TEMP TABLE tmp_cumulative_positions ON COMMIT DROP AS
+    -- 3. Kumulierte Bestände berechnen (NUR für Tage, an denen Transaktionen stattfanden!)
+    -- Das ist der Gamechanger: Keine künstliche Matrix-Generierung mehr über alle ISINs/Tage.
+    CREATE TEMP TABLE tmp_recomputed_deltas ON COMMIT DROP AS
     SELECT
         d.user_id,
         d.account_code,
@@ -519,165 +523,55 @@ BEGIN
         )::NUMERIC(20, 8) AS quantity
     FROM tmp_tx_daily_delta d;
 
-    CREATE TEMP TABLE tmp_account_dates ON COMMIT DROP AS
-    SELECT DISTINCT user_id, account_code, holding_date
-    FROM tmp_tx_daily_delta;
-
-    CREATE TEMP TABLE tmp_account_isins ON COMMIT DROP AS
-    SELECT DISTINCT user_id, account_code, isin
-    FROM tmp_tx_daily_delta;
-
-    CREATE TEMP TABLE tmp_snapshot_raw ON COMMIT DROP AS
-    SELECT
-        ad.user_id,
-        ad.account_code,
-        ad.holding_date,
-        ai.isin,
-        COALESCE(cp.quantity, 0)::NUMERIC(20, 8) AS quantity
-    FROM tmp_account_dates ad
-    JOIN tmp_account_isins ai
-      ON ai.user_id = ad.user_id
-     AND ai.account_code = ad.account_code
-    LEFT JOIN LATERAL (
-        SELECT c.quantity
-        FROM tmp_cumulative_positions c
-        WHERE c.user_id = ad.user_id
-          AND c.account_code = ad.account_code
-          AND c.isin = ai.isin
-          AND c.holding_date <= ad.holding_date
-        ORDER BY c.holding_date DESC
-        LIMIT 1
-    ) cp ON TRUE;
-
-    CREATE TEMP TABLE tmp_date_state ON COMMIT DROP AS
-    SELECT
-        sr.user_id,
-        sr.account_code,
-        sr.holding_date,
-        md5(
-            COALESCE(
-                string_agg(
-                    sr.isin || ':' || sr.quantity::TEXT,
-                    '|' ORDER BY sr.isin
-                ) FILTER (WHERE sr.quantity <> 0),
-                '__EMPTY__'
-            )
-        ) AS snapshot_hash
-    FROM tmp_snapshot_raw sr
-    GROUP BY sr.user_id, sr.account_code, sr.holding_date;
-
-    CREATE TEMP TABLE tmp_changed_dates ON COMMIT DROP AS
-    SELECT user_id, account_code, holding_date
-    FROM (
-        SELECT
-            ds.*,
-            LAG(ds.snapshot_hash) OVER (
-                PARTITION BY ds.user_id, ds.account_code
-                ORDER BY ds.holding_date
-            ) AS prev_snapshot_hash
-        FROM tmp_date_state ds
-    ) x
-    WHERE x.prev_snapshot_hash IS NULL
-       OR x.snapshot_hash IS DISTINCT FROM x.prev_snapshot_hash;
-
-    CREATE TEMP TABLE tmp_recomputed_holdings ON COMMIT DROP AS
-    SELECT
-        sr.user_id,
-        sr.account_code,
-        sr.holding_date,
-        sr.isin,
-        sr.quantity
-    FROM tmp_snapshot_raw sr
-    JOIN tmp_changed_dates cd
-      ON cd.user_id = sr.user_id
-     AND cd.account_code = sr.account_code
-     AND cd.holding_date = sr.holding_date
-    WHERE sr.quantity <> 0;
-
-    SELECT COUNT(*) INTO v_snapshots_generated FROM tmp_recomputed_holdings;
-
+    -- 4. Aktuelle Bestände aus der Tabelle holen (für den Diff-Abgleich)
     CREATE TEMP TABLE tmp_current_holdings ON COMMIT DROP AS
-    SELECT
-        h.user_id,
-        h.account_code,
-        h.holding_date,
-        h.isin,
-        h.quantity
+    SELECT h.user_id, h.account_code, h.holding_date, h.isin, h.quantity
     FROM public.incremental_holdings h
-    JOIN tmp_relevant_accounts ra
-      ON ra.user_id = h.user_id
-     AND ra.account_code = h.account_code
-    WHERE h.user_id = p_user_id;
+    JOIN tmp_relevant_accounts ra ON ra.user_id = h.user_id AND ra.account_code = h.account_code;
 
+    -- 5. ATOMARER DIFF-ABGLEICH (Genauso elegant wie dein Original, aber auf Asset-Ebene)
     CREATE TEMP TABLE tmp_delete_set ON COMMIT DROP AS
     SELECT ch.user_id, ch.account_code, ch.holding_date, ch.isin
     FROM tmp_current_holdings ch
-    LEFT JOIN tmp_recomputed_holdings rh
-      ON rh.user_id = ch.user_id
-     AND rh.account_code = ch.account_code
-     AND rh.holding_date = ch.holding_date
-     AND rh.isin = ch.isin
-    WHERE rh.user_id IS NULL;
+    LEFT JOIN tmp_recomputed_deltas rd
+      ON rd.user_id = ch.user_id AND rd.account_code = ch.account_code AND rd.holding_date = ch.holding_date AND rd.isin = ch.isin
+    WHERE rd.user_id IS NULL;
 
     CREATE TEMP TABLE tmp_insert_set ON COMMIT DROP AS
-    SELECT rh.user_id, rh.account_code, rh.holding_date, rh.isin, rh.quantity
-    FROM tmp_recomputed_holdings rh
+    SELECT rd.user_id, rd.account_code, rd.holding_date, rd.isin, rd.quantity
+    FROM tmp_recomputed_deltas rd
     LEFT JOIN tmp_current_holdings ch
-      ON ch.user_id = rh.user_id
-     AND ch.account_code = rh.account_code
-     AND ch.holding_date = rh.holding_date
-     AND ch.isin = rh.isin
+      ON ch.user_id = rd.user_id AND ch.account_code = rd.account_code AND ch.holding_date = rd.holding_date AND ch.isin = rd.isin
     WHERE ch.user_id IS NULL;
 
     CREATE TEMP TABLE tmp_update_set ON COMMIT DROP AS
-    SELECT
-        rh.user_id,
-        rh.account_code,
-        rh.holding_date,
-        rh.isin,
-        rh.quantity AS new_quantity
-    FROM tmp_recomputed_holdings rh
+    SELECT rd.user_id, rd.account_code, rd.holding_date, rd.isin, rd.quantity AS new_quantity
+    FROM tmp_recomputed_deltas rd
     JOIN tmp_current_holdings ch
-      ON ch.user_id = rh.user_id
-     AND ch.account_code = rh.account_code
-     AND ch.holding_date = rh.holding_date
-     AND ch.isin = rh.isin
-    WHERE ch.quantity IS DISTINCT FROM rh.quantity;
+      ON ch.user_id = rd.user_id AND ch.account_code = rd.account_code AND ch.holding_date = rd.holding_date AND ch.isin = rd.isin
+    WHERE ch.quantity IS DISTINCT FROM rd.quantity;
 
+    -- Metriken zählen
     SELECT COUNT(*) INTO v_rows_deleted FROM tmp_delete_set;
     SELECT COUNT(*) INTO v_rows_inserted FROM tmp_insert_set;
     SELECT COUNT(*) INTO v_rows_updated FROM tmp_update_set;
+    SELECT COUNT(*) INTO v_rows_unchanged FROM tmp_recomputed_deltas rd 
+    JOIN tmp_current_holdings ch ON ch.user_id = rd.user_id AND ch.account_code = rd.account_code AND ch.holding_date = rd.holding_date AND ch.isin = rd.isin
+    WHERE ch.quantity IS NOT DISTINCT FROM rd.quantity;
 
-    SELECT COUNT(*)
-      INTO v_rows_unchanged
-    FROM tmp_recomputed_holdings rh
-    JOIN tmp_current_holdings ch
-      ON ch.user_id = rh.user_id
-     AND ch.account_code = rh.account_code
-     AND ch.holding_date = rh.holding_date
-     AND ch.isin = rh.isin
-    WHERE ch.quantity IS NOT DISTINCT FROM rh.quantity;
-
+    -- 6. Änderungen anwenden (falls kein Dry-Run)
     IF NOT p_dry_run THEN
         DELETE FROM public.incremental_holdings h
         USING tmp_delete_set d
-        WHERE h.user_id = d.user_id
-          AND h.account_code = d.account_code
-          AND h.holding_date = d.holding_date
-          AND h.isin = d.isin;
+        WHERE h.user_id = d.user_id AND h.account_code = d.account_code AND h.holding_date = d.holding_date AND h.isin = d.isin;
 
         INSERT INTO public.incremental_holdings (user_id, account_code, holding_date, isin, quantity)
-        SELECT user_id, account_code, holding_date, isin, quantity
-        FROM tmp_insert_set;
+        SELECT user_id, account_code, holding_date, isin, quantity FROM tmp_insert_set;
 
         UPDATE public.incremental_holdings h
-        SET quantity = u.new_quantity,
-            updated_at = NOW()
+        SET quantity = u.new_quantity, updated_at = NOW()
         FROM tmp_update_set u
-        WHERE h.user_id = u.user_id
-          AND h.account_code = u.account_code
-          AND h.holding_date = u.holding_date
-          AND h.isin = u.isin;
+        WHERE h.user_id = u.user_id AND h.account_code = u.account_code AND h.holding_date = u.holding_date AND h.isin = u.isin;
 
         INSERT INTO public.user_holdings_reorganization (user_id, reorg_timestamp)
         VALUES (p_user_id, NOW())
@@ -688,13 +582,11 @@ BEGIN
         'user_id', p_user_id,
         'relevant_accounts_count', v_relevant_accounts_count,
         'transactions_scanned', v_transactions_scanned,
-        'snapshots_generated', v_snapshots_generated,
         'rows_deleted', v_rows_deleted,
         'rows_inserted', v_rows_inserted,
         'rows_updated', v_rows_updated,
         'rows_unchanged', v_rows_unchanged,
         'reorg_timestamp_written', (v_reorg_timestamp IS NOT NULL),
-        'reorg_timestamp', v_reorg_timestamp,
         'dry_run', p_dry_run
     );
 END;
@@ -773,6 +665,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA shared TO authenticated;
 GRANT INSERT ON shared.asset_static_data TO authenticated;
 -- UPDATE auf shared bleibt dem Admin vorbehalten (service_role)
 
+-- Authenticated darf die reorganize_incremental_holdings Funktion ausführen
+GRANT EXECUTE ON FUNCTION public.reorganize_incremental_holdings(UUID, TEXT[], BOOLEAN) TO authenticated;
 
 
 -- ==========================================================
@@ -783,5 +677,3 @@ GRANT USAGE ON SCHEMA public, shared TO service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public, shared TO service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public, shared TO service_role;
 GRANT ALL ON ALL FUNCTIONS IN SCHEMA public, shared TO service_role;
-GRANT EXECUTE ON FUNCTION public.reorganize_incremental_holdings(UUID, TEXT[], BOOLEAN) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.reorganize_incremental_holdings(UUID, TEXT[], BOOLEAN) TO service_role;
