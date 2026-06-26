@@ -539,6 +539,45 @@ def get_user_holdings_reorganization_status(user_id=None):
         return None
 
 
+def get_user_holdings_min_date(user_id=None):
+    """Return the earliest available holding_date for one user as a date object."""
+    if not user_id:
+        user_id = get_current_user_id()
+    if not user_id:
+        return None
+
+    supabase = _get_client()
+    try:
+        response = (
+            supabase.schema("public")
+            .table("incremental_holdings")
+            .select("holding_date")
+            .eq("user_id", user_id)
+            .order("holding_date", desc=False)
+            .limit(1)
+            .execute()
+        )
+
+        rows = response.data or []
+        if not rows:
+            return None
+
+        value = rows[0].get("holding_date")
+        if value is None:
+            return None
+        if isinstance(value, datetime.date):
+            return value
+        if isinstance(value, str):
+            try:
+                return dt_class.fromisoformat(value).date()
+            except ValueError:
+                return None
+        return None
+    except Exception as e:
+        _report_error("Error loading user holdings min date", e)
+        return None
+
+
 def insert_user_holdings_reorganization(user_id=None):
     """Insert a reorganization marker row for a user."""
     if not user_id:
@@ -722,6 +761,7 @@ def delete_account(user_id, account_code):
     return supabase.schema("public").table("accounts").delete().eq("user_id", user_id).eq("account_code", account_code).execute()
 
 def delete_all_transactions(user_id):
-    """Deletes all transactions for the given user_id"""
+    """Deletes all transactions and holdings for the given user_id."""
     supabase = _get_client()
-    return supabase.schema("public").table("transactions").delete().eq("user_id", user_id).execute()
+    supabase.schema("public").table("transactions").delete().eq("user_id", user_id).execute()
+    return supabase.schema("public").table("incremental_holdings").delete().eq("user_id", user_id).execute()

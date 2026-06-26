@@ -1,73 +1,40 @@
+import datetime
 import streamlit as st
 
-from src.database import get_user_holdings_reorganization_status, reorganize_incremental_holdings
-
-
-def _format_status_timestamp(timestamp):
-    if timestamp is None:
-        return "n/a"
-    return timestamp.strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _get_holdings_reorganization_ui_state(status):
-    last_transaction_modification = status["last_transaction_modification"] if status else None
-    last_reorganization = status["last_reorganization"] if status else None
-
-    if last_transaction_modification is None:
-        return {
-            "visible": False,
-            "label": None,
-            "disabled": False,
-            "info_text": None,
-        }
-
-    if last_reorganization is None:
-        return {
-            "visible": True,
-            "label": "Reorganization of Holdings",
-            "disabled": False,
-            "info_text": "",
-        }
-
-    holdings_are_up_to_date = last_reorganization > last_transaction_modification
-    return {
-        "visible": True,
-        "label": "holdings are up to date" if holdings_are_up_to_date else "Reorganization of Holdings",
-        "disabled": holdings_are_up_to_date,
-        "info_text": (
-            f"Last modification of transactions was at {_format_status_timestamp(last_transaction_modification)} "
-            f"and last reorganization was at {_format_status_timestamp(last_reorganization)}"
-        ),
-    }
+from src.database import get_user_holdings_min_date
 
 
 def render_holdings_view():
-    status = get_user_holdings_reorganization_status()
-    ui_state = _get_holdings_reorganization_ui_state(status)
+    """Render holdings screen controls."""
+    st.title("Holdings")
 
-    if not ui_state["visible"]:
+    first_date = get_user_holdings_min_date()
+    last_date = datetime.date.today() - datetime.timedelta(days=1)
+
+    if first_date is None:
+        st.info("No holdings are available yet.")
         return
 
-    button_col, info_col = st.columns([1, 3])
-    with button_col:
-        if st.button(ui_state["label"], disabled=ui_state["disabled"]):
-            try:
-                summary = reorganize_incremental_holdings()
-                relevant_accounts_count = summary.get("relevant_accounts_count", 0)
-                if relevant_accounts_count == 0:
-                    st.info("No account requires holdings reorganization.")
-                else:
-                    st.success(
-                        "Holdings reorganization completed "
-                        f"(accounts={relevant_accounts_count}, "
-                        f"inserted={summary.get('rows_inserted', 0)}, "
-                        f"updated={summary.get('rows_updated', 0)}, "
-                        f"deleted={summary.get('rows_deleted', 0)})."
-                    )
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Could not reorganize holdings: {exc}")
+    if first_date > last_date:
+        st.info(
+            "No selectable holdings date is available yet. "
+            "The earliest holdings date is after yesterday."
+        )
+        return
 
-    with info_col:
-        if ui_state["info_text"]:
-            st.write(ui_state["info_text"])
+    default_date = st.session_state.get("holdings_selected_date")
+    if not isinstance(default_date, datetime.date) or default_date < first_date or default_date > last_date:
+        default_date = last_date
+
+    selected_date = st.date_input(
+        "Holdings Date",
+        value=default_date,
+        min_value=first_date,
+        max_value=last_date,
+        key="holdings_selected_date",
+    )
+
+    st.caption(
+        f"Select a date between {first_date.isoformat()} and {last_date.isoformat()}."
+    )
+    st.write(f"Selected holdings date: {selected_date.isoformat()}")

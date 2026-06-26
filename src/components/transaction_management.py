@@ -27,7 +27,9 @@ from src.database import (
     update_asset_start_date,
     update_asset_start_dates_bulk,
     save_asset_static_data,
-    delete_all_transactions
+    delete_all_transactions,
+    get_user_holdings_reorganization_status,
+    reorganize_incremental_holdings,
 )
 
 def transaction_table_view():
@@ -42,6 +44,76 @@ def transaction_table_view():
         render_import_preview_screen()
     else:
         render_list_view()
+
+
+def _format_status_timestamp(timestamp):
+    if timestamp is None:
+        return "n/a"
+    return timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _get_holdings_reorganization_ui_state(status):
+    last_transaction_modification = status["last_transaction_modification"] if status else None
+    last_reorganization = status["last_reorganization"] if status else None
+
+    if last_transaction_modification is None:
+        return {
+            "visible": False,
+            "label": None,
+            "disabled": False,
+            "info_text": None,
+        }
+
+    if last_reorganization is None:
+        return {
+            "visible": True,
+            "label": "Reorganization of Holdings",
+            "disabled": False,
+            "info_text": "",
+        }
+
+    holdings_are_up_to_date = last_reorganization > last_transaction_modification
+    return {
+        "visible": True,
+        "label": "holdings are up to date" if holdings_are_up_to_date else "Reorganization of Holdings",
+        "disabled": holdings_are_up_to_date,
+        "info_text": (
+            f"Last modification of transactions was at {_format_status_timestamp(last_transaction_modification)} "
+            f"and last reorganization was at {_format_status_timestamp(last_reorganization)}"
+        ),
+    }
+
+
+def _render_holdings_reorganization_controls():
+    status = get_user_holdings_reorganization_status()
+    ui_state = _get_holdings_reorganization_ui_state(status)
+
+    if not ui_state["visible"]:
+        return
+
+    button_col, info_col = st.columns([1, 3])
+    with button_col:
+        if st.button(ui_state["label"], disabled=ui_state["disabled"]):
+            try:
+                summary = reorganize_incremental_holdings()
+                relevant_accounts_count = summary.get("relevant_accounts_count", 0)
+                if relevant_accounts_count == 0:
+                    st.info("No account requires holdings reorganization.")
+                else:
+                    st.success(
+                        "Holdings reorganization completed "
+                        f"(accounts={relevant_accounts_count}, "
+                        f"inserted={summary.get('rows_inserted', 0)}, "
+                        f"updated={summary.get('rows_updated', 0)}, "
+                        f"deleted={summary.get('rows_deleted', 0)})."
+                    )
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Could not reorganize holdings: {exc}")
+
+    with info_col:
+        if ui_state["info_text"]:
+            st.write(ui_state["info_text"])
 
 def render_import_upload_screen():
     st.subheader("Import Transactions via CSV")
@@ -506,7 +578,7 @@ def render_import_preview_screen():
 @st.dialog("Delete All Transactions - Confirm")
 def confirm_delete_all_first():
     """First confirmation dialog for deleting all transactions"""
-    st.warning("⚠️ This action will **permanently delete ALL your transactions**.")
+    st.warning("⚠️ This action will permanently delete **all transactions and all positions (holdings)** across **all your accounts**.")
     st.write("This cannot be undone.")
     col1, col2 = st.columns(2)
     with col1:
@@ -522,7 +594,7 @@ def confirm_delete_all_first():
 @st.dialog("Delete All Transactions - Final Confirmation")
 def confirm_delete_all_final():
     """Second confirmation dialog for deleting all transactions"""
-    st.error("🚨 FINAL WARNING: All transactions will be permanently deleted!")
+    st.error("🚨 FINAL WARNING: All transactions and all positions (holdings) in all your accounts will be permanently deleted!")
     st.write("Please confirm one more time.")
     col1, col2 = st.columns(2)
     with col1:
@@ -571,12 +643,15 @@ def render_list_view():
             delete_all_transactions(st.session_state["user_id"])
             st.session_state["delete_all_confirmed_first"] = False
             st.session_state["delete_all_confirmed_final"] = False
-            st.success("✅ All transactions have been deleted successfully!")
+            st.success("✅ All transactions and positions (holdings) have been deleted successfully across all your accounts!")
             st.rerun()
         except Exception as e:
             st.error(f"Error deleting transactions: {e}")
             st.session_state["delete_all_confirmed_first"] = False
             st.session_state["delete_all_confirmed_final"] = False
+
+            # Holdings reorganization controls are shown below action buttons and above the table.
+            _render_holdings_reorganization_controls()
 
     # --- 2. DATA RETRIEVAL ---
     raw_data = get_all_transactions()
