@@ -650,8 +650,8 @@ def render_list_view():
             st.session_state["delete_all_confirmed_first"] = False
             st.session_state["delete_all_confirmed_final"] = False
 
-            # Holdings reorganization controls are shown below action buttons and above the table.
-            _render_holdings_reorganization_controls()
+    # Holdings reorganization controls are shown below action buttons and above the table.
+    _render_holdings_reorganization_controls()
 
     # --- 2. DATA RETRIEVAL ---
     raw_data = get_all_transactions()
