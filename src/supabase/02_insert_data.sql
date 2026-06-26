@@ -1,36 +1,43 @@
 
 
-INSERT INTO shared.ref_asset_class (code, label)
+INSERT INTO shared.ref_asset_class (code, label, color_hex, display_order)
 VALUES 
-  ('LIQ', 'Liquidity'),
-  ('BON', 'Bonds & Bond Funds'),
-  ('EQU', 'Equities & Equity Funds'),
-  ('ALT', 'Alternative Investments')
-ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
+    ('LIQ', 'Liquidity',               '#2CA58D', 10),
+    ('BON', 'Bonds & Bond Funds',      '#4C78A8', 20),
+    ('EQU', 'Equities & Equity Funds', '#F58518', 30),
+    ('ALT', 'Alternative Investments', '#B279A2', 40)
+ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label, color_hex = EXCLUDED.color_hex, display_order = EXCLUDED.display_order;
 
 
-INSERT INTO shared.ref_region (code, label)
+INSERT INTO shared.ref_region (code, label, color_hex, display_order)
 VALUES 
-  ('GLO',  'Global / World'),
-  ('DEV',  'Developed Markets'),
-  ('USA',  'United States'),
-  ('NAM',  'North America (Ex-USA)'),
-  ('EUR',  'Europe'),
-  ('UK',   'United Kingdom'),
-  ('APAC', 'Asia Pacific'),
-  ('EM',   'Emerging Markets'),
-  ('MEAF', 'Middle East & Africa'),
-  ('LATM', 'Latin America')
-ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
+    ('GLO',  'Global / World',         '#577590', 10),
+    ('DEV',  'Developed Markets',      '#277DA1', 20),
+    ('USA',  'United States',          '#1D3557', 30),
+    ('NAM',  'North America (Ex-USA)', '#4D96FF', 40),
+    ('EUR',  'Europe',                 '#4361EE', 50),
+    ('UK',   'United Kingdom',         '#7209B7', 60),
+    ('APAC', 'Asia Pacific',           '#43AA8B', 70),
+    ('EM',   'Emerging Markets',       '#F8961E', 80),
+    ('MEAF', 'Middle East & Africa',   '#C77D1F', 90),
+    ('LATM', 'Latin America',          '#F94144', 100)
+ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label, color_hex = EXCLUDED.color_hex, display_order = EXCLUDED.display_order;
 
 
-INSERT INTO shared.ref_sector (code, label)
+INSERT INTO shared.ref_sector (code, label, color_hex, display_order)
 VALUES 
-  ('10', 'Energy'), ('15', 'Materials'), ('20', 'Industrials'),
-  ('25', 'Consumer Discretionary'), ('30', 'Consumer Staples'),
-  ('35', 'Health Care'), ('40', 'Financials'), ('45', 'Information Technology'),
-  ('50', 'Communication Services'), ('55', 'Utilities'), ('60', 'Real Estate')
-ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
+    ('10', 'Energy',                 '#F94144', 10), 
+    ('15', 'Materials',              '#F3722C', 15), 
+    ('20', 'Industrials',            '#F8961E', 20),
+    ('25', 'Consumer Discretionary', '#F9C74F', 25), 
+    ('30', 'Consumer Staples',       '#90BE6D', 30),
+    ('35', 'Health Care',            '#43AA8B', 35), 
+    ('40', 'Financials',             '#577590', 40), 
+    ('45', 'Information Technology', '#277DA1', 45),
+    ('50', 'Communication Services', '#9D4EDD', 50), 
+    ('55', 'Utilities',              '#4D908E', 55), 
+    ('60', 'Real Estate',            '#B56576', 60)
+ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label, color_hex = EXCLUDED.color_hex, display_order = EXCLUDED.display_order;
 
 
 INSERT INTO shared.ref_price_source (code, label)
@@ -43,14 +50,14 @@ VALUES
 ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
 
 
-INSERT INTO shared.ref_instrument_type (code, label)
+INSERT INTO shared.ref_instrument_type (code, label, color_hex, display_order)
 VALUES 
-  ('STO', 'Stock'),
-  ('BON', 'Bond'),
-  ('FUN', 'Fund'),
-  ('ETF', 'ETF'),
-  ('CER', 'Certificate')
-ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label;
+    ('STO', 'Stock',       '#277DA1', 10),
+    ('BON', 'Bond',        '#577590', 20),
+    ('FUN', 'Fund',        '#90BE6D', 30),
+    ('ETF', 'ETF',         '#43AA8B', 40),
+    ('CER', 'Certificate', '#F94144', 50)
+ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label, color_hex = EXCLUDED.color_hex, display_order = EXCLUDED.display_order;
 
 
 INSERT INTO shared.ref_transaction_type (code, label)
@@ -493,56 +500,56 @@ END $$;
 
 
 -- RESTORE BACKUP DATA
-
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 
-        FROM information_schema.tables 
-        WHERE table_schema = 'backup' 
-          AND table_name = 'asset_static_data'
-    ) THEN
-        EXECUTE '
-            INSERT INTO shared.asset_static_data (
-                isin,
-                name,
-                risk_currency,
-                instrument_type_code,
-                asset_class_code,
-                region_code,
-                sector_code,
-                industry,
-                country,
-                closed_on,
-                price_source_code,
-                price_currency,
-                price_start_date,
-                ticker,
-                created_at,
-                created_by,
-                updated_at,
-                updated_by
-            )
-            SELECT 
-                isin,
-                name,
-                risk_currency,
-                instrument_type_code,
-                asset_class_code,
-                region_code,
-                sector_code,
-                industry,
-                country,
-                closed_on,
-                price_source_code,
-                price_currency,
-                price_start_date,
-                ticker,
-                created_at,
-                created_by,
-                updated_at,
-                updated_by
-            FROM backup.asset_static_data
-        ';
-    END IF;
-END $$;
+-- 
+-- DO $$
+-- BEGIN
+--     IF EXISTS (
+--         SELECT 1 
+--         FROM information_schema.tables 
+--         WHERE table_schema = 'backup' 
+--           AND table_name = 'asset_static_data'
+--     ) THEN
+--         EXECUTE '
+--             INSERT INTO shared.asset_static_data (
+--                 isin,
+--                 name,
+--                 risk_currency,
+--                 instrument_type_code,
+--                 asset_class_code,
+--                 region_code,
+--                 sector_code,
+--                 industry,
+--                 country,
+--                 closed_on,
+--                 price_source_code,
+--                 price_currency,
+--                 price_start_date,
+--                 ticker,
+--                 created_at,
+--                 created_by,
+--                 updated_at,
+--                 updated_by
+--             )
+--             SELECT 
+--                 isin,
+--                 name,
+--                 risk_currency,
+--                 instrument_type_code,
+--                 asset_class_code,
+--                 region_code,
+--                 sector_code,
+--                 industry,
+--                 country,
+--                 closed_on,
+--                 price_source_code,
+--                 price_currency,
+--                 price_start_date,
+--                 ticker,
+--                 created_at,
+--                 created_by,
+--                 updated_at,
+--                 updated_by
+--             FROM backup.asset_static_data
+--         ';
+--     END IF;
+-- END $$;

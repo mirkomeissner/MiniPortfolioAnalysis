@@ -76,13 +76,25 @@ CREATE TRIGGER on_auth_user_updated
 
 -- --- SHARED SCHEMA TABLES (Global / Non-user specific) ---
 
-CREATE TABLE IF NOT EXISTS shared.ref_asset_class (code TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS shared.ref_region (code TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS shared.ref_sector (code TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS shared.ref_asset_class (code TEXT PRIMARY KEY, label TEXT NOT NULL, color_hex TEXT, display_order INTEGER, created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS shared.ref_region (code TEXT PRIMARY KEY, label TEXT NOT NULL, color_hex TEXT, display_order INTEGER, created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS shared.ref_sector (code TEXT PRIMARY KEY, label TEXT NOT NULL, color_hex TEXT, display_order INTEGER, created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS shared.ref_price_source (code TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
-CREATE TABLE IF NOT EXISTS shared.ref_instrument_type (code TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS shared.ref_instrument_type (code TEXT PRIMARY KEY, label TEXT NOT NULL, color_hex TEXT, display_order INTEGER, created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS shared.ref_transaction_type (code TEXT PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS shared.ref_currencies (code CHAR(3) PRIMARY KEY, label TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
+
+ALTER TABLE shared.ref_asset_class ADD COLUMN IF NOT EXISTS color_hex TEXT;
+ALTER TABLE shared.ref_asset_class ADD COLUMN IF NOT EXISTS display_order INTEGER;
+
+ALTER TABLE shared.ref_region ADD COLUMN IF NOT EXISTS color_hex TEXT;
+ALTER TABLE shared.ref_region ADD COLUMN IF NOT EXISTS display_order INTEGER;
+
+ALTER TABLE shared.ref_sector ADD COLUMN IF NOT EXISTS color_hex TEXT;
+ALTER TABLE shared.ref_sector ADD COLUMN IF NOT EXISTS display_order INTEGER;
+
+ALTER TABLE shared.ref_instrument_type ADD COLUMN IF NOT EXISTS color_hex TEXT;
+ALTER TABLE shared.ref_instrument_type ADD COLUMN IF NOT EXISTS display_order INTEGER;
 
 CREATE OR REPLACE VIEW public.ref_transaction_type WITH (security_invoker = true) AS SELECT code, label FROM shared.ref_transaction_type;
 
