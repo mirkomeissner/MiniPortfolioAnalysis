@@ -391,17 +391,44 @@ filled_assets AS (
     JOIN distinct_assets a 
       ON a.user_id = c.user_id 
      AND a.account_code = c.account_code
+),
+filtered_assets AS (
+    -- 5. Vorfiltern der gültigen Bestände (> 0), bevor wir die teuren Preis-Joins machen
+    SELECT 
+        user_id,
+        account_code,
+        holding_date,
+        isin,
+        quantity
+    FROM filled_assets
+    WHERE quantity IS NOT NULL AND quantity > 0
 )
--- 5. Nur Zeilen ausgeben, wo die Menge größer als 0 ist
--- Blendet Assets vor ihrem ersten Kauf ODER nach einem Totalverkauf (Menge = 0) aus!
+-- 6. Verknüpfung mit den Preisen und Stammdaten für die finale Bewertung
 SELECT 
-    user_id,
-    account_code,
-    holding_date,
-    isin,
-    quantity
-FROM filled_assets
-WHERE quantity IS NOT NULL AND quantity > 0;
+    fa.user_id,
+    fa.account_code,
+    fa.holding_date,
+    fa.isin,
+    fa.quantity,
+    asd.price_currency,
+    ap.price_close AS price,
+    (fa.quantity * ap.price_close)::NUMERIC(20, 4) AS valuation_in_price_currency,
+    COALESCE(er.exchange_rate, 1.0) AS exchange_rate_to_eur,
+    CASE 
+        WHEN asd.price_currency = 'EUR' THEN (fa.quantity * ap.price_close)
+        ELSE (fa.quantity * ap.price_close) / COALESCE(er.exchange_rate, 1.0)
+    END::NUMERIC(20, 4) AS valuation_in_eur
+
+FROM filtered_assets fa
+-- Join mit den Stammdaten für die Währung
+JOIN shared.asset_static_data asd 
+  ON asd.isin = fa.isin
+JOIN shared.asset_prices ap 
+  ON ap.isin = fa.isin 
+ AND ap.price_date = fa.holding_date
+LEFT JOIN shared.exchange_rates er
+  ON er.currency = asd.price_currency
+ AND er.rate_date = fa.holding_date;
 
 
 -- this table is used to track when a user reorganizes their holdings
@@ -591,6 +618,17 @@ BEGIN
     );
 END;
 $$;
+
+
+
+
+
+
+
+
+
+
+
 
 
 
