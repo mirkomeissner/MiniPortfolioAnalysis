@@ -156,25 +156,25 @@ def test_reorganize_incremental_holdings_returns_default_when_rpc_data_is_none()
     assert result["reorg_timestamp_written"] is False
 
 
-def test_render_holdings_view_shows_success_summary_when_reorganization_runs():
-    from src.components.holdings_analysis import render_holdings_view
+def test_render_holdings_reorganization_controls_shows_success_summary_when_reorganization_runs():
+    from src.components.transaction_management import _render_holdings_reorganization_controls
 
     status = {
         "last_transaction_modification": datetime(2026, 6, 26, 9, 0, tzinfo=timezone.utc),
         "last_reorganization": datetime(2026, 6, 26, 8, 0, tzinfo=timezone.utc),
     }
 
-    with patch("src.components.holdings_analysis.get_user_holdings_reorganization_status", return_value=status), patch(
-        "src.components.holdings_analysis.reorganize_incremental_holdings",
+    with patch("src.components.transaction_management.get_user_holdings_reorganization_status", return_value=status), patch(
+        "src.components.transaction_management.reorganize_incremental_holdings",
         return_value={"relevant_accounts_count": 1, "rows_inserted": 2, "rows_updated": 3, "rows_deleted": 4},
-    ), patch("src.components.holdings_analysis.st.columns", return_value=(nullcontext(), nullcontext())), patch(
-        "src.components.holdings_analysis.st.button", return_value=True
-    ), patch("src.components.holdings_analysis.st.success") as success_mock, patch(
-        "src.components.holdings_analysis.st.info"
-    ) as info_mock, patch("src.components.holdings_analysis.st.rerun") as rerun_mock, patch(
-        "src.components.holdings_analysis.st.write"
+    ), patch("src.components.transaction_management.st.columns", return_value=(nullcontext(), nullcontext())), patch(
+        "src.components.transaction_management.st.button", return_value=True
+    ), patch("src.components.transaction_management.st.success") as success_mock, patch(
+        "src.components.transaction_management.st.info"
+    ) as info_mock, patch("src.components.transaction_management.st.rerun") as rerun_mock, patch(
+        "src.components.transaction_management.st.write"
     ):
-        render_holdings_view()
+        _render_holdings_reorganization_controls()
 
     info_mock.assert_not_called()
     success_mock.assert_called_once()
@@ -186,48 +186,48 @@ def test_render_holdings_view_shows_success_summary_when_reorganization_runs():
     rerun_mock.assert_called_once()
 
 
-def test_render_holdings_view_shows_info_when_no_account_requires_reorganization():
-    from src.components.holdings_analysis import render_holdings_view
+def test_render_holdings_reorganization_controls_shows_info_when_no_account_requires_reorganization():
+    from src.components.transaction_management import _render_holdings_reorganization_controls
 
     status = {
         "last_transaction_modification": datetime(2026, 6, 26, 9, 0, tzinfo=timezone.utc),
         "last_reorganization": datetime(2026, 6, 26, 8, 0, tzinfo=timezone.utc),
     }
 
-    with patch("src.components.holdings_analysis.get_user_holdings_reorganization_status", return_value=status), patch(
-        "src.components.holdings_analysis.reorganize_incremental_holdings",
+    with patch("src.components.transaction_management.get_user_holdings_reorganization_status", return_value=status), patch(
+        "src.components.transaction_management.reorganize_incremental_holdings",
         return_value={"relevant_accounts_count": 0},
-    ), patch("src.components.holdings_analysis.st.columns", return_value=(nullcontext(), nullcontext())), patch(
-        "src.components.holdings_analysis.st.button", return_value=True
-    ), patch("src.components.holdings_analysis.st.success") as success_mock, patch(
-        "src.components.holdings_analysis.st.info"
-    ) as info_mock, patch("src.components.holdings_analysis.st.rerun") as rerun_mock, patch(
-        "src.components.holdings_analysis.st.write"
+    ), patch("src.components.transaction_management.st.columns", return_value=(nullcontext(), nullcontext())), patch(
+        "src.components.transaction_management.st.button", return_value=True
+    ), patch("src.components.transaction_management.st.success") as success_mock, patch(
+        "src.components.transaction_management.st.info"
+    ) as info_mock, patch("src.components.transaction_management.st.rerun") as rerun_mock, patch(
+        "src.components.transaction_management.st.write"
     ):
-        render_holdings_view()
+        _render_holdings_reorganization_controls()
 
     success_mock.assert_not_called()
     info_mock.assert_called_once_with("No account requires holdings reorganization.")
     rerun_mock.assert_called_once()
 
 
-def test_render_holdings_view_shows_error_when_reorganization_fails():
-    from src.components.holdings_analysis import render_holdings_view
+def test_render_holdings_reorganization_controls_shows_error_when_reorganization_fails():
+    from src.components.transaction_management import _render_holdings_reorganization_controls
 
     status = {
         "last_transaction_modification": datetime(2026, 6, 26, 9, 0, tzinfo=timezone.utc),
         "last_reorganization": datetime(2026, 6, 26, 8, 0, tzinfo=timezone.utc),
     }
 
-    with patch("src.components.holdings_analysis.get_user_holdings_reorganization_status", return_value=status), patch(
-        "src.components.holdings_analysis.reorganize_incremental_holdings",
+    with patch("src.components.transaction_management.get_user_holdings_reorganization_status", return_value=status), patch(
+        "src.components.transaction_management.reorganize_incremental_holdings",
         side_effect=RuntimeError("boom"),
-    ), patch("src.components.holdings_analysis.st.columns", return_value=(nullcontext(), nullcontext())), patch(
-        "src.components.holdings_analysis.st.button", return_value=True
-    ), patch("src.components.holdings_analysis.st.error") as error_mock, patch(
-        "src.components.holdings_analysis.st.rerun"
-    ) as rerun_mock, patch("src.components.holdings_analysis.st.write"):
-        render_holdings_view()
+    ), patch("src.components.transaction_management.st.columns", return_value=(nullcontext(), nullcontext())), patch(
+        "src.components.transaction_management.st.button", return_value=True
+    ), patch("src.components.transaction_management.st.error") as error_mock, patch(
+        "src.components.transaction_management.st.rerun"
+    ) as rerun_mock, patch("src.components.transaction_management.st.write"):
+        _render_holdings_reorganization_controls()
 
     error_mock.assert_called_once()
     assert "Could not reorganize holdings" in error_mock.call_args[0][0]
@@ -235,7 +235,7 @@ def test_render_holdings_view_shows_error_when_reorganization_fails():
 
 
 def test_holdings_ui_state_hides_button_when_transaction_timestamp_is_missing():
-    from src.components.holdings_analysis import _get_holdings_reorganization_ui_state
+    from src.components.transaction_management import _get_holdings_reorganization_ui_state
 
     ui_state = _get_holdings_reorganization_ui_state(
         {
@@ -249,7 +249,7 @@ def test_holdings_ui_state_hides_button_when_transaction_timestamp_is_missing():
 
 
 def test_holdings_ui_state_shows_button_with_empty_info_when_reorganization_is_missing():
-    from src.components.holdings_analysis import _get_holdings_reorganization_ui_state
+    from src.components.transaction_management import _get_holdings_reorganization_ui_state
 
     ui_state = _get_holdings_reorganization_ui_state(
         {
