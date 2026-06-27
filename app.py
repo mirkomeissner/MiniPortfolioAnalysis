@@ -11,13 +11,19 @@ if check_password():
 
     st.sidebar.title(f"User: {st.session_state['user_name']}")  
 
-    # 1. Menüoptionen definieren
-    menu_options = ["Home", "User Settings", "Accounts Settings", "Asset Data", "Price Data", "Transactions", "Holdings"]
+    # 1. Basis-Menüoptionen für ALLE User definieren
+    menu_options = ["Home", "User Settings", "Accounts Settings", "Transactions", "Holdings"]
     
-    # 2. Admin Console hinzufügen
+    # 2. Admin-Menüpunkte nur für Admins hinzufügen
     if st.session_state.get("is_admin"):
-        menu_options.append("Admin Console")
+        # Fügt die Admin-Punkte hinzu (Reihenfolge kannst du hier beliebig anpassen)
+        menu_options.extend([
+            "🔒 Admin: Asset Data", 
+            "🔒 Admin: Price Data", 
+            "🔒 Admin: Console"
+        ])
     
+    # 3. Sidebar-Radio rendern
     menu = st.sidebar.radio("Navigation", menu_options)
 
     if st.sidebar.button("Logout"):  
@@ -36,23 +42,26 @@ if check_password():
         st.title("Welcome") 
         st.write(f"Hello **{st.session_state['user_name']}**, please use the sidebar to navigate.") 
 
-    elif menu == "Admin Console" and st.session_state.get("is_admin"):
-        admin_approval_page()
- 
-    elif menu == "Asset Data": 
-        asset_table_view()  
-
-    elif menu == "Price Data": 
-        price_management_view()  
- 
-    elif menu == "Transactions": 
-        transaction_table_view()
-    
     elif menu == "User Settings":
         user_settings_ui()
 
     elif menu == "Accounts Settings":
         accounts_settings_view()
 
+    elif menu == "Transactions": 
+        transaction_table_view()
+    
     elif menu == "Holdings":
         render_holdings_view()
+
+    # Admin-geschützte Routen (zusätzliche Sicherheitsprüfung via 'and')
+    elif menu == "🔒 Admin: Asset Data" and st.session_state.get("is_admin"): 
+        asset_table_view()  
+
+    elif menu == "🔒 Admin: Price Data" and st.session_state.get("is_admin"): 
+        price_management_view()  
+
+    elif menu == "🔒 Admin: Console" and st.session_state.get("is_admin"):
+        admin_approval_page()
+
+

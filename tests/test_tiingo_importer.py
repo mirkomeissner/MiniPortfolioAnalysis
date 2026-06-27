@@ -155,4 +155,10 @@ def test_process_all_tiingo_assets_uses_tgo_provider_code():
 
         process_all_tiingo_assets(dry_run=True)
 
-    mock_process_provider_batch.assert_called_once_with("TGO", tiingo_price_importer.import_tiingo_history_for_ticker, True)
+    mock_process_provider_batch.assert_called_once_with(
+        "TGO",
+        tiingo_price_importer.import_tiingo_history_for_ticker,
+        True,
+        run_date=None,
+        lag_days=1,
+    )

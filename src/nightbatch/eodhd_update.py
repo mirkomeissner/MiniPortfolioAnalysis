@@ -34,6 +34,8 @@ def import_eodhd_history_for_ticker(
     dry_run: bool = False,
     request_start_date: str = None,
     asset_start_date: str = None,
+    run_date: str = None,
+    lag_days: int = 1,
 ):
     """
     Downloads and imports EODHD EOD price history for a single asset.
@@ -43,6 +45,7 @@ def import_eodhd_history_for_ticker(
     """
     request_start = parse_iso_date(request_start_date)
     asset_start = parse_iso_date(asset_start_date) or parse_iso_date(price_start_date)
+    effective_run_date = parse_iso_date(run_date)
 
     # Use shared validation helper
     validation_error = validate_provider_request(
@@ -109,6 +112,8 @@ def import_eodhd_history_for_ticker(
         isin=isin,
         asset_start_date=asset_start,
         request_start_date=request_start,
+        run_date=effective_run_date,
+        lag_days=lag_days,
         canonical_rows=canonical_records,
         key_fields=["isin", "price_date"],
         compare_fields=["price_close", "price_date_original", "dividend_cash", "split_factor"],
@@ -134,7 +139,14 @@ def import_eodhd_history_for_ticker(
 
 def process_all_eodhd_assets(dry_run: bool = False):
     """Process all EODHD assets using the generic batch processor."""
-    return process_provider_batch("EODHD", import_eodhd_history_for_ticker, dry_run)
+    run_date = os.getenv("RUN_DATE")
+    return process_provider_batch(
+        "EODHD",
+        import_eodhd_history_for_ticker,
+        dry_run,
+        run_date=run_date,
+        lag_days=1,
+    )
 
 
 if __name__ == "__main__":
