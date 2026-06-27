@@ -46,43 +46,6 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Debug Runtime Context (EODHD)
-        env:
-          EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
-        shell: bash
-        run: |
-          echo "[DEBUG][EODHD] github.event_name=${{ github.event_name }}"
-          echo "[DEBUG][EODHD] github.ref=${{ github.ref }}"
-          echo "[DEBUG][EODHD] github.ref_name=${{ github.ref_name }}"
-          echo "[DEBUG][EODHD] input.environment=${{ github.event_name == 'workflow_call' && inputs.environment || 'n/a' }}"
-          echo "[DEBUG][EODHD] input.app_env=${{ github.event_name == 'workflow_call' && inputs.app_env || 'n/a' }}"
-          echo "[DEBUG][EODHD] APP_ENV(shell)=$APP_ENV"
-          if [ -n "$EODHD_API_KEY" ]; then
-            echo "[DEBUG][EODHD] EODHD_API_KEY present=yes"
-          else
-            echo "[DEBUG][EODHD] EODHD_API_KEY present=no"
-          fi
-
-          python - <<'PY'
-          import os
-          from datetime import date
-          from src.utils import my_eodhd
-
-          app_env = os.getenv("APP_ENV")
-          print(f"[DEBUG][EODHD] APP_ENV(python)={app_env}")
-          print(f"[DEBUG][EODHD] my_eodhd.is_dev={my_eodhd.is_dev}")
-
-          if my_eodhd.is_dev:
-              sample = my_eodhd.fetch_history(
-                  ticker="DEBUG.XETRA",
-                  api_key="debug",
-                  request_start_date=date(2026, 1, 1),
-              )
-              print(f"[DEBUG][EODHD] sample_mock_rows={len(sample)}")
-          else:
-              print("[DEBUG][EODHD] sample_mock_rows=skipped (live mode)")
-          PY
-
       - name: Run EODHD Importer
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

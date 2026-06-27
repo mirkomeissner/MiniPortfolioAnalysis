@@ -527,8 +527,9 @@ def validate_provider_request(
     if request_start is None:
         return {"error": "missing_request_start"}
     
+    app_env = os.getenv("APP_ENV", "main").lower()
     api_key = os.getenv(api_key_env_var)
-    if not api_key:
+    if app_env != "dev" and not api_key:
         # Extract provider name from env var (e.g., "TIINGO_API_KEY" -> "tiingo")
         provider_name = api_key_env_var.split("_")[0].lower()
         return {"error": f"missing_{provider_name}_api_key"}
