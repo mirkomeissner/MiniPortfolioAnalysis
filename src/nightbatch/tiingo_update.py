@@ -1,11 +1,11 @@
 import os
-import requests
 import pandas as pd
 from datetime import date, datetime
 
 import src.database as database
 database.initialize_runtime_from_env(strict=False)
 from src.utils import (
+    my_tiingo,
     normalize_float,
     normalize_date,
     reconcile_asset_price_data,
@@ -17,18 +17,13 @@ from src.utils import (
 )
 
 
-TIINGO_URL_TEMPLATE = "https://api.tiingo.com/tiingo/daily/{ticker}/prices"
-
-
 def _fetch_tiingo_history(ticker: str, api_key: str, request_start_date: date, timeout: int = 15):
-    params = {
-        "startDate": request_start_date.isoformat(),
-        "token": api_key,
-    }
-    response = requests.get(TIINGO_URL_TEMPLATE.format(ticker=ticker), params=params, timeout=timeout)
-    response.raise_for_status()
-    payload = response.json()
-    return payload if isinstance(payload, list) else []
+    return my_tiingo.fetch_history(
+        ticker_symbol=ticker,
+        api_key=api_key,
+        request_start_date=request_start_date,
+        timeout=timeout,
+    )
 
 
 def import_tiingo_history_for_ticker(

@@ -1,11 +1,11 @@
 import os
-import requests
 import pandas as pd
 from datetime import date, datetime
 
 import src.database as database
 database.initialize_runtime_from_env(strict=False)
 from src.utils import (
+    my_eodhd,
     normalize_float,
     normalize_date,
     reconcile_asset_price_data,
@@ -17,19 +17,13 @@ from src.utils import (
 )
 
 
-EODHD_URL_TEMPLATE = "https://eodhd.com/api/eod/{ticker}"
-
-
 def _fetch_eodhd_history(ticker: str, api_key: str, request_start_date: date, timeout: int = 15):
-    params = {
-        "api_token": api_key,
-        "fmt": "json",
-        "from": request_start_date.isoformat(),
-    }
-    response = requests.get(EODHD_URL_TEMPLATE.format(ticker=ticker), params=params, timeout=timeout)
-    response.raise_for_status()
-    payload = response.json()
-    return payload if isinstance(payload, list) else []
+    return my_eodhd.fetch_history(
+        ticker=ticker,
+        api_key=api_key,
+        request_start_date=request_start_date,
+        timeout=timeout,
+    )
 
 
 def import_eodhd_history_for_ticker(

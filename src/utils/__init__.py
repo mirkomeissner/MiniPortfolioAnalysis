@@ -18,6 +18,8 @@ from .ui_components import (
 )
 from .yf_wrapper import my_yf
 from .tiingo_wrapper import my_tiingo
+from .eodhd_wrapper import my_eodhd
+from .ishares_wrapper import my_ishares
 from .email_service import send_duplicate_info_mail
 from .data_import_helpers import (
     normalize_float,
@@ -51,6 +53,8 @@ __all__ = [
     'yfinance_search_component',
     'my_yf',
     'my_tiingo',
+    'my_eodhd',
+    'my_ishares',
     'send_duplicate_info_mail',
     'normalize_float',
     'normalize_date',

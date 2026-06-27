@@ -1,14 +1,13 @@
 import io
 import os
 import sys
-import time
-import requests
 import pandas as pd
 from datetime import date, datetime
 
 import src.database as database
 database.initialize_runtime_from_env(strict=False)
 from src.utils import (
+    my_ishares,
     normalize_float,
     normalize_date,
     reconcile_asset_price_data,
@@ -19,24 +18,13 @@ from src.utils import (
 )
 
 
-ISHARE_URL_TEMPLATE = (
-    "https://www.ishares.com/de/privatanleger/de/produkte/{ticker}/fund/1535604580385.ajax"
-    "?fileType=xls&dataType=fund"
-)
-
-
-def _download_excel(ticker: str, retries: int = 3, timeout: int = 15) -> bytes:
-    url = ISHARE_URL_TEMPLATE.format(ticker=ticker)
-    last_exc = None
-    for attempt in range(1, retries + 1):
-        try:
-            resp = requests.get(url, timeout=timeout)
-            resp.raise_for_status()
-            return resp.content
-        except Exception as e:
-            last_exc = e
-            time.sleep(1 * attempt)
-    raise last_exc
+def _download_excel(ticker: str, currency: str, retries: int = 3, timeout: int = 15) -> bytes:
+    return my_ishares.fetch_excel_bytes(
+        ticker=ticker,
+        currency=currency,
+        retries=retries,
+        timeout=timeout,
+    )
 
 
 
@@ -68,7 +56,8 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
     # 1) download or use provided bytes
     if excel_bytes is None:
         try:
-            excel_bytes = _download_excel(ticker)
+            excel_bytes = _download_excel(ticker, price_currency)
+            
         except Exception as e:
             print(f"Failed to download Excel for {ticker}: {e}")
             return {"error": str(e)}

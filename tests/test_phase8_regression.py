@@ -30,16 +30,12 @@ class TestEODHDDryRun:
 
         with patch("src.utils.data_import_helpers.database") as mock_helper_db, \
              patch("src.utils.data_import_helpers.calculate_gap_fill_end_date", return_value=date(2023, 1, 2)), \
-             patch("src.nightbatch.eodhd_update.requests.get") as mock_get:
-            
-            # Setup mock response with valid EODHD data
-            mock_response = MagicMock()
-            mock_response.json.return_value = [
+             patch("src.nightbatch.eodhd_update._fetch_eodhd_history") as mock_fetch:
+
+            mock_fetch.return_value = [
                 {"date": "2023-01-01", "close": 100.0},
                 {"date": "2023-01-02", "close": 101.0},
             ]
-            mock_response.raise_for_status.return_value = None
-            mock_get.return_value = mock_response
             
             mock_helper_db.get_asset_prices_for_isin.return_value = []
             
@@ -95,12 +91,7 @@ class TestEODHDDryRun:
         from src.nightbatch.eodhd_update import import_eodhd_history_for_ticker
         
         with patch.dict(os.environ, {"EODHD_API_KEY": "test_key"}), \
-             patch("src.nightbatch.eodhd_update.requests.get") as mock_get:
-            
-            mock_response = MagicMock()
-            mock_response.json.return_value = []  # Empty response
-            mock_response.raise_for_status.return_value = None
-            mock_get.return_value = mock_response
+               patch("src.nightbatch.eodhd_update._fetch_eodhd_history", return_value=[]):
             
             result = import_eodhd_history_for_ticker(
                 isin="IE000TEST",
@@ -124,16 +115,12 @@ class TestTIINGODryRun:
 
         with patch("src.utils.data_import_helpers.database") as mock_helper_db, \
              patch("src.utils.data_import_helpers.calculate_gap_fill_end_date", return_value=date(2023, 1, 2)), \
-             patch("src.nightbatch.tiingo_update.requests.get") as mock_get:
-            
-            # Setup mock response with valid TIINGO data (includes divCash, splitFactor)
-            mock_response = MagicMock()
-            mock_response.json.return_value = [
+             patch("src.nightbatch.tiingo_update._fetch_tiingo_history") as mock_fetch:
+
+            mock_fetch.return_value = [
                 {"date": "2023-01-01", "close": 100.0, "divCash": 0.5, "splitFactor": 1.0},
                 {"date": "2023-01-02", "close": 101.0, "divCash": 0.0, "splitFactor": 1.0},
             ]
-            mock_response.raise_for_status.return_value = None
-            mock_get.return_value = mock_response
             
             mock_helper_db.get_asset_prices_for_isin.return_value = []
             
@@ -157,14 +144,11 @@ class TestTIINGODryRun:
         with patch.dict(os.environ, {"TIINGO_API_KEY": "test_key"}), \
                          patch("src.utils.data_import_helpers.database") as mock_helper_db, \
                          patch("src.utils.data_import_helpers.calculate_gap_fill_end_date", return_value=date(2023, 1, 2)), \
-             patch("src.nightbatch.tiingo_update.requests.get") as mock_get:
-            
-            mock_response = MagicMock()
-            mock_response.json.return_value = [
+             patch("src.nightbatch.tiingo_update._fetch_tiingo_history") as mock_fetch:
+
+            mock_fetch.return_value = [
                 {"date": "2023-01-01", "close": 100.0, "divCash": 1.5, "splitFactor": 2.0},
             ]
-            mock_response.raise_for_status.return_value = None
-            mock_get.return_value = mock_response
             
             mock_helper_db.get_asset_prices_for_isin.return_value = []
             
