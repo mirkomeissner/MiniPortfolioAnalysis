@@ -11,6 +11,9 @@ on:
       app_env:
         required: true
         type: string
+      run_date:
+        required: false
+        type: string
     secrets:
       SUPABASE_URL:
         required: true
@@ -54,6 +57,12 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         shell: bash
         run: |
+          run_date="${{ github.event_name == 'workflow_call' && inputs.run_date || '' }}"
+          if [ -z "$run_date" ]; then
+            run_date="$(date -u +%F)"
+          fi
+          export RUN_DATE="$run_date"
+
           summary_dir="${{ runner.temp }}/nightbatch-ishares-summary"
           mkdir -p "$summary_dir"
           log_file="$summary_dir/script_output.log"

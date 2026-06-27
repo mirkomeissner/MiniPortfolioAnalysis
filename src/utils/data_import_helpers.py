@@ -602,6 +602,8 @@ def process_provider_batch(
     dry_run: bool = False,
     lookback_days: int = 7,
     refresh_days: int = 35,
+    run_date: Optional[Any] = None,
+    lag_days: int = 1,
 ) -> Dict[str, Any]:
     """
     Generic orchestrator for processing all assets from a provider.
@@ -613,12 +615,15 @@ def process_provider_batch(
         dry_run: If True, skip database writes
         lookback_days: Lookback days for new assets
         refresh_days: Refresh days for incremental updates
+        run_date: Global batch run date used for gap fill cutoff
+        lag_days: Number of lag days subtracted from run_date for gap fill cutoff
     
     Returns:
         Summary dict with aggregated results
     """
     assets = database.get_assets_by_price_source(provider_code)
     bounds_map = database.get_asset_price_bounds()
+    effective_run_date = parse_iso_date(run_date)
     
     plans = plan_asset_price_requests(
         assets=assets,
@@ -661,6 +666,8 @@ def process_provider_batch(
             dry_run=dry_run,
             request_start_date=request_start.isoformat() if request_start else None,
             asset_start_date=asset_start.isoformat() if asset_start else None,
+            run_date=effective_run_date.isoformat() if effective_run_date else None,
+            lag_days=lag_days,
         )
         
         _accumulate_provider_result(summary, result, isin, ticker, request_start, provider_code)

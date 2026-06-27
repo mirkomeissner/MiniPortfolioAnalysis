@@ -6,22 +6,37 @@ on:
   workflow_dispatch:
 
 jobs:
+  set-run-date:
+    runs-on: ubuntu-latest
+    outputs:
+      run_date: ${{ steps.compute-run-date.outputs.run_date }}
+    steps:
+      - name: Compute Global Run Date
+        id: compute-run-date
+        shell: bash
+        run: echo "run_date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
   job-fx-update:
+    needs: set-run-date
     uses: ./.github/workflows/run_fx_update.yml
     with:
       environment: ${{ github.ref_name == 'dev' && 'test' || 'production' }}
       app_env: ${{ github.ref_name == 'dev' && 'dev' || 'main' }}
+      run_date: ${{ needs.set-run-date.outputs.run_date }}
     secrets:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
   job-eodhd-import:
-    needs: job-fx-update
+    needs:
+      - set-run-date
+      - job-fx-update
     uses: ./.github/workflows/run_eodhd_importer.yml
     with:
       environment: ${{ github.ref_name == 'dev' && 'test' || 'production' }}
       app_env: ${{ github.ref_name == 'dev' && 'dev' || 'main' }}
+      run_date: ${{ needs.set-run-date.outputs.run_date }}
     secrets:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -29,11 +44,14 @@ jobs:
       EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
 
   job-tiingo-import:
-    needs: job-eodhd-import
+    needs:
+      - set-run-date
+      - job-eodhd-import
     uses: ./.github/workflows/run_tiingo_importer.yml
     with:
       environment: ${{ github.ref_name == 'dev' && 'test' || 'production' }}
       app_env: ${{ github.ref_name == 'dev' && 'dev' || 'main' }}
+      run_date: ${{ needs.set-run-date.outputs.run_date }}
     secrets:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
@@ -41,11 +59,14 @@ jobs:
       TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
 
   job-ishares-import:
-    needs: job-tiingo-import
+    needs:
+      - set-run-date
+      - job-tiingo-import
     uses: ./.github/workflows/run_ishares_importer.yml
     with:
       environment: ${{ github.ref_name == 'dev' && 'test' || 'production' }}
       app_env: ${{ github.ref_name == 'dev' && 'dev' || 'main' }}
+      run_date: ${{ needs.set-run-date.outputs.run_date }}
     secrets:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

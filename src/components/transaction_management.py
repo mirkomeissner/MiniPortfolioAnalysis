@@ -782,8 +782,8 @@ def render_transaction_form():
         type_selection = col1.selectbox("Transaction Type", st.session_state.get('opt_trans_types', []))
         trans_date = col2.date_input("Transaction Date", value=datetime.now())
         
-        quantity = col1.number_input("Quantity", step=0.0001, format="%.4f", min_value=0.0)
-        s_amount = col2.number_input("Settlement Amount", step=0.01, format="%.2f", min_value=0.0)
+        quantity = col1.number_input("Quantity", step=0.0001, format="%.4f")
+        s_amount = col2.number_input("Settlement Amount", step=0.01, format="%.2f")
         
         st.divider()
         submit = st.form_submit_button("Save Transaction", type="primary", use_container_width=True)

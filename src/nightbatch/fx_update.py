@@ -51,7 +51,14 @@ def headless_load_missing_fx_rates(dry_run: bool = False):
         print("No non-EUR asset currencies found in the database.")
         return
 
-    today = datetime.date.today()
+    run_date_env = os.getenv("RUN_DATE")
+    if run_date_env:
+        try:
+            today = datetime.date.fromisoformat(run_date_env)
+        except ValueError:
+            today = datetime.date.today()
+    else:
+        today = datetime.date.today()
     limit_date = today - datetime.timedelta(days=1)
     fx_mapping = {"GBX": "GBP"}
 
