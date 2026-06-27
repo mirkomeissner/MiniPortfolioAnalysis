@@ -46,6 +46,43 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: Debug Runtime Context (TIINGO)
+        env:
+          TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
+        shell: bash
+        run: |
+          echo "[DEBUG][TIINGO] github.event_name=${{ github.event_name }}"
+          echo "[DEBUG][TIINGO] github.ref=${{ github.ref }}"
+          echo "[DEBUG][TIINGO] github.ref_name=${{ github.ref_name }}"
+          echo "[DEBUG][TIINGO] input.environment=${{ github.event_name == 'workflow_call' && inputs.environment || 'n/a' }}"
+          echo "[DEBUG][TIINGO] input.app_env=${{ github.event_name == 'workflow_call' && inputs.app_env || 'n/a' }}"
+          echo "[DEBUG][TIINGO] APP_ENV(shell)=$APP_ENV"
+          if [ -n "$TIINGO_API_KEY" ]; then
+            echo "[DEBUG][TIINGO] TIINGO_API_KEY present=yes"
+          else
+            echo "[DEBUG][TIINGO] TIINGO_API_KEY present=no"
+          fi
+
+          python - <<'PY'
+          import os
+          from datetime import date
+          from src.utils import my_tiingo
+
+          app_env = os.getenv("APP_ENV")
+          print(f"[DEBUG][TIINGO] APP_ENV(python)={app_env}")
+          print(f"[DEBUG][TIINGO] my_tiingo.is_dev={my_tiingo.is_dev}")
+
+          if my_tiingo.is_dev:
+              sample = my_tiingo.fetch_history(
+                  ticker_symbol="debugticker",
+                  api_key="debug",
+                  request_start_date=date(2026, 1, 1),
+              )
+              print(f"[DEBUG][TIINGO] sample_mock_rows={len(sample)}")
+          else:
+              print("[DEBUG][TIINGO] sample_mock_rows=skipped (live mode)")
+          PY
+
       - name: Run TIINGO Importer
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
