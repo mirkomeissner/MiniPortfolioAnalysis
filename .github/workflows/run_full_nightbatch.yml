@@ -110,7 +110,7 @@ jobs:
 
       - name: Send Nightbatch Summary Email
         env:
-          ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
+          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
           RESEND_KEY: ${{ secrets.RESEND_KEY }}
           NIGHTBATCH_ARTIFACTS_DIR: nightbatch-artifacts
           FX_JOB_RESULT: ${{ needs.job-fx-update.result }}
