@@ -13,32 +13,23 @@ if ROOT not in sys.path:
 from src.nightbatch import eodhd_update as eodhd_price_importer
 
 
-def test_import_eodhd_dry_run_trims_and_deduplicates_normalized_rows():
+def test_import_eodhd_dry_run_gap_fills_weekend_and_deduplicates_normalized_rows():
     mock_rows = [
-        {"date": "2026-06-01", "close": 100.0},
-        {"date": "2026-06-02", "close": 101.0},
-    ]
-
-    gap_rows = [
-        {"date": date(2026, 5, 31), "value": 99.5, "origin": date(2026, 5, 31)},
-        {"date": date(2026, 6, 1), "value": 100.0, "origin": date(2026, 6, 1)},
-        {"date": date(2026, 6, 2), "value": 101.0, "origin": date(2026, 6, 2)},
+        {"date": "2026-06-19", "close": 100.0},
     ]
 
     with patch.dict(os.environ, {"EODHD_API_KEY": "token"}, clear=False), \
          patch("src.nightbatch.eodhd_update._fetch_eodhd_history", return_value=mock_rows), \
-         patch("src.nightbatch.eodhd_update.fetch_and_fill_price_gaps", return_value=gap_rows), \
-         patch("src.nightbatch.eodhd_update.database") as mock_db, \
-         patch("src.nightbatch.eodhd_update.date") as mock_date:
-        mock_date.today.return_value = date(2026, 6, 3)
-        mock_date.side_effect = date
-        mock_db.get_asset_prices_for_isin.return_value = [
+         patch("src.utils.data_import_helpers.database") as mock_helper_db, \
+         patch("src.utils.data_import_helpers.calculate_gap_fill_end_date", return_value=date(2026, 6, 20)):
+        mock_helper_db.get_asset_prices_for_isin.return_value = [
             {
                 "isin": "IE000TEST01",
-                "price_date": date(2026, 6, 1),
+                "price_date": date(2026, 6, 19),
                 "price_close": "100.0",
-                "price_date_original": pd.Timestamp("2026-06-01"),
+                "price_date_original": pd.Timestamp("2026-06-19"),
                 "dividend_cash": "0",
+                "split_factor": "1.0",
             }
         ]
 
@@ -46,14 +37,17 @@ def test_import_eodhd_dry_run_trims_and_deduplicates_normalized_rows():
             isin="IE000TEST01",
             ticker="AAPL.US",
             price_currency="USD",
-            price_start_date="2026-06-01",
-            request_start_date="2026-05-25",
-            asset_start_date="2026-06-01",
+            price_start_date="2026-06-19",
+            request_start_date="2026-06-19",
+            asset_start_date="2026-06-19",
             dry_run=True,
         )
 
-    # 2026-05-31 is trimmed (before asset_start), 2026-06-01 unchanged, 2026-06-02 new
+    # 2026-06-19 is unchanged, 2026-06-20 is synthesized via shared gap fill.
     assert res["parsed"] == 2
+    assert res["number_fetched"] == 1
+    assert res["after_gap_fill"] == 2
+    assert res["number_trimmed"] == 2
     assert res["to_upsert"] == 1
     assert res["unchanged"] == 1
     assert res["new"] == 1

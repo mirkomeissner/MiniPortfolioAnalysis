@@ -9,10 +9,16 @@ Tests for:
 """
 
 import os
+import sys
 import pytest
 import pandas as pd
 from unittest.mock import patch, MagicMock
 from datetime import date, datetime, timedelta
+
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 
 class TestEODHDDryRun:
@@ -21,8 +27,9 @@ class TestEODHDDryRun:
     def test_eodhd_dry_run_no_database_writes(self):
         """Verify dry-run does NOT write to database"""
         from src.nightbatch.eodhd_update import import_eodhd_history_for_ticker
-        
-        with patch("src.nightbatch.eodhd_update.database") as mock_db, \
+
+        with patch("src.utils.data_import_helpers.database") as mock_helper_db, \
+             patch("src.utils.data_import_helpers.calculate_gap_fill_end_date", return_value=date(2023, 1, 2)), \
              patch("src.nightbatch.eodhd_update.requests.get") as mock_get:
             
             # Setup mock response with valid EODHD data
@@ -34,7 +41,7 @@ class TestEODHDDryRun:
             mock_response.raise_for_status.return_value = None
             mock_get.return_value = mock_response
             
-            mock_db.get_asset_prices_for_isin.return_value = []
+            mock_helper_db.get_asset_prices_for_isin.return_value = []
             
             result = import_eodhd_history_for_ticker(
                 isin="IE000TEST",
@@ -47,7 +54,7 @@ class TestEODHDDryRun:
             
             assert isinstance(result, dict)
             # Verify save_asset_prices_bulk was NOT called
-            mock_db.save_asset_prices_bulk.assert_not_called()
+            mock_helper_db.save_asset_prices_bulk.assert_not_called()
     
     def test_eodhd_missing_api_key(self):
         """Verify EODHD missing API key returns error"""
@@ -114,8 +121,9 @@ class TestTIINGODryRun:
     def test_tiingo_dry_run_no_database_writes(self):
         """Verify TIINGO dry-run does NOT write to database"""
         from src.nightbatch.tiingo_update import import_tiingo_history_for_ticker
-        
-        with patch("src.nightbatch.tiingo_update.database") as mock_db, \
+
+        with patch("src.utils.data_import_helpers.database") as mock_helper_db, \
+             patch("src.utils.data_import_helpers.calculate_gap_fill_end_date", return_value=date(2023, 1, 2)), \
              patch("src.nightbatch.tiingo_update.requests.get") as mock_get:
             
             # Setup mock response with valid TIINGO data (includes divCash, splitFactor)
@@ -127,7 +135,7 @@ class TestTIINGODryRun:
             mock_response.raise_for_status.return_value = None
             mock_get.return_value = mock_response
             
-            mock_db.get_asset_prices_for_isin.return_value = []
+            mock_helper_db.get_asset_prices_for_isin.return_value = []
             
             result = import_tiingo_history_for_ticker(
                 isin="IE000TEST",
@@ -140,14 +148,15 @@ class TestTIINGODryRun:
             
             assert isinstance(result, dict)
             # Verify save was NOT called
-            mock_db.save_asset_prices_bulk.assert_not_called()
+            mock_helper_db.save_asset_prices_bulk.assert_not_called()
     
     def test_tiingo_preserves_dividend_and_split(self):
         """Verify TIINGO correctly preserves divCash and splitFactor"""
         from src.nightbatch.tiingo_update import import_tiingo_history_for_ticker
         
         with patch.dict(os.environ, {"TIINGO_API_KEY": "test_key"}), \
-             patch("src.nightbatch.tiingo_update.database") as mock_db, \
+                         patch("src.utils.data_import_helpers.database") as mock_helper_db, \
+                         patch("src.utils.data_import_helpers.calculate_gap_fill_end_date", return_value=date(2023, 1, 2)), \
              patch("src.nightbatch.tiingo_update.requests.get") as mock_get:
             
             mock_response = MagicMock()
@@ -157,7 +166,7 @@ class TestTIINGODryRun:
             mock_response.raise_for_status.return_value = None
             mock_get.return_value = mock_response
             
-            mock_db.get_asset_prices_for_isin.return_value = []
+            mock_helper_db.get_asset_prices_for_isin.return_value = []
             
             result = import_tiingo_history_for_ticker(
                 isin="IE000TEST",
@@ -197,8 +206,9 @@ class TestiSharesDryRun:
         """Verify iShares dry-run returns correct summary without DB writes"""
         from src.nightbatch.ishares_update import import_ishares_history_for_ticker
         
-        with patch("src.nightbatch.ishares_update.database") as mock_db:
-            mock_db.get_asset_prices_for_isin.return_value = []
+        with patch("src.utils.data_import_helpers.database") as mock_helper_db, \
+             patch("src.utils.data_import_helpers.calculate_gap_fill_end_date", return_value=date(2023, 1, 2)):
+            mock_helper_db.get_asset_prices_for_isin.return_value = []
             
             result = import_ishares_history_for_ticker(
                 isin="IE000TEST",
@@ -286,6 +296,32 @@ class TestNightbatchOrchestration:
 
 class TestConsolidatedHelpers:
     """Tests for the new consolidated helper functions"""
+
+    def test_gap_fill_asset_price_rows_fills_calendar_days_with_defaults(self):
+        """Verify canonical gap fill preserves origin dates and resets event fields."""
+        from src.utils.data_import_helpers import gap_fill_asset_price_rows
+
+        rows, summary = gap_fill_asset_price_rows(
+            canonical_rows=[
+                {
+                    "isin": "IE000TEST",
+                    "price_date": "2026-06-19",
+                    "price_close": 100.0,
+                    "price_date_original": "2026-06-19",
+                    "dividend_cash": 0.5,
+                    "split_factor": 2.0,
+                }
+            ],
+            request_start_date=date(2026, 6, 19),
+            run_date=date(2026, 6, 21),
+        )
+
+        assert summary["after_gap_fill"] == 2
+        assert rows[1]["price_date"] == "2026-06-20"
+        assert rows[1]["price_date_original"] == "2026-06-19"
+        assert rows[1]["price_close"] == 100.0
+        assert rows[1]["dividend_cash"] == 0.0
+        assert rows[1]["split_factor"] == 1.0
     
     def test_parse_iso_date_handles_various_formats(self):
         """Verify parse_iso_date consolidation handles all formats"""
@@ -372,6 +408,57 @@ class TestProviderProcessBatch:
             assert "processed" in result
             assert "parsed" in result
             assert "upserted" in result
+
+    def test_process_provider_batch_counts_distinct_plans(self):
+        """Verify detected_isins reflects distinct planned requests, not raw asset rows."""
+        from src.utils.data_import_helpers import process_provider_batch
+
+        with patch("src.utils.data_import_helpers.database") as mock_db, \
+             patch("src.utils.data_import_helpers.plan_asset_price_requests") as mock_plan:
+            mock_db.get_assets_by_price_source.return_value = [
+                {"isin": "IE000A"},
+                {"isin": "IE000A"},
+                {"isin": "IE000B"},
+            ]
+            mock_db.get_asset_price_bounds.return_value = {}
+            mock_plan.return_value = [
+                {"isin": "IE000A", "ticker": "AAA", "asset_start_date": "2023-01-01", "request_start_date": "2023-01-01", "price_currency": "USD"},
+                {"isin": "IE000B", "ticker": "BBB", "asset_start_date": "2023-01-01", "request_start_date": "2023-01-01", "price_currency": "USD"},
+            ]
+
+            result = process_provider_batch("TEST", lambda **kwargs: {"parsed": 1}, dry_run=True)
+
+        assert result["detected_isins"] == 2
+
+    def test_process_provider_batch_tracks_skipped_results(self, capsys):
+        """Verify skipped provider results are counted separately and logged consistently."""
+        from src.utils.data_import_helpers import process_provider_batch
+
+        call_count = [0]
+
+        def fake_import_with_skip(**kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return {"skipped": True, "reason": "currency_mismatch"}
+            return {"parsed": 3, "number_fetched": 3, "number_trimmed": 3, "inserted": 1}
+
+        with patch("src.utils.data_import_helpers.database") as mock_db, \
+             patch("src.utils.data_import_helpers.plan_asset_price_requests") as mock_plan:
+            mock_db.get_assets_by_price_source.return_value = []
+            mock_db.get_asset_price_bounds.return_value = {}
+            mock_plan.return_value = [
+                {"isin": "IE000A", "ticker": "AAA", "asset_start_date": "2023-01-01", "request_start_date": "2023-01-01", "price_currency": "USD"},
+                {"isin": "IE000B", "ticker": "BBB", "asset_start_date": "2023-01-01", "request_start_date": "2023-01-01", "price_currency": "USD"},
+            ]
+
+            result = process_provider_batch("TEST", fake_import_with_skip, dry_run=True)
+
+        captured = capsys.readouterr()
+        assert result["processed"] == 2
+        assert result["skipped"] == 1
+        assert result["parsed"] == 3
+        assert "skipped=True reason=currency_mismatch" in captured.out
+        assert "number_fetched=3 number_trimmed=3 inserted=1 changed=0" in captured.out
 
 
 class TestErrorRecovery:

@@ -13,35 +13,23 @@ if ROOT not in sys.path:
 from src.nightbatch import tiingo_update as tiingo_price_importer
 
 
-def test_import_tiingo_dry_run_uses_dividend_and_split_fields_and_deduplicates():
+def test_import_tiingo_dry_run_gap_fills_weekend_and_deduplicates():
     mock_rows = [
-        {"date": "2026-06-01T00:00:00.000Z", "close": 100.0, "divCash": 0.0, "splitFactor": 1.0},
-        {"date": "2026-06-02T00:00:00.000Z", "close": 101.0, "divCash": 0.5, "splitFactor": 1.0},
-        {"date": "2026-06-03T00:00:00.000Z", "close": 50.5, "divCash": 0.0, "splitFactor": 2.0},
-    ]
-
-    gap_rows = [
-        {"date": date(2026, 5, 31), "value": 99.0, "origin": date(2026, 5, 31)},
-        {"date": date(2026, 6, 1), "value": 100.0, "origin": date(2026, 6, 1)},
-        {"date": date(2026, 6, 2), "value": 101.0, "origin": date(2026, 6, 2)},
-        {"date": date(2026, 6, 3), "value": 50.5, "origin": date(2026, 6, 3)},
+        {"date": "2026-06-19T00:00:00.000Z", "close": 100.0, "divCash": 0.5, "splitFactor": 2.0},
     ]
 
     with patch.dict(os.environ, {"TIINGO_API_KEY": "token"}, clear=False), \
          patch("src.nightbatch.tiingo_update._fetch_tiingo_history", return_value=mock_rows), \
-         patch("src.nightbatch.tiingo_update.fetch_and_fill_price_gaps", return_value=gap_rows), \
-         patch("src.nightbatch.tiingo_update.database") as mock_db, \
-         patch("src.nightbatch.tiingo_update.date") as mock_date:
-        mock_date.today.return_value = date(2026, 6, 4)
-        mock_date.side_effect = date
-        mock_db.get_asset_prices_for_isin.return_value = [
+         patch("src.utils.data_import_helpers.database") as mock_helper_db, \
+         patch("src.utils.data_import_helpers.calculate_gap_fill_end_date", return_value=date(2026, 6, 20)):
+        mock_helper_db.get_asset_prices_for_isin.return_value = [
             {
                 "isin": "IE000TEST01",
-                "price_date": date(2026, 6, 1),
+                "price_date": date(2026, 6, 19),
                 "price_close": "100.0",
-                "price_date_original": pd.Timestamp("2026-06-01"),
-                "dividend_cash": "0",
-                "split_factor": "1",
+                "price_date_original": pd.Timestamp("2026-06-19"),
+                "dividend_cash": "0.5",
+                "split_factor": "2.0",
             }
         ]
 
@@ -49,17 +37,19 @@ def test_import_tiingo_dry_run_uses_dividend_and_split_fields_and_deduplicates()
             isin="IE000TEST01",
             ticker="aapl",
             price_currency="USD",
-            price_start_date="2026-06-01",
-            request_start_date="2026-05-25",
-            asset_start_date="2026-06-01",
+            price_start_date="2026-06-19",
+            request_start_date="2026-06-19",
+            asset_start_date="2026-06-19",
             dry_run=True,
         )
 
-    # 2026-05-31 trimmed; 2026-06-01 unchanged; 2026-06-02 and 2026-06-03 new
-    assert res["parsed"] == 3
-    assert res["to_upsert"] == 2
+    assert res["parsed"] == 2
+    assert res["number_fetched"] == 1
+    assert res["after_gap_fill"] == 2
+    assert res["number_trimmed"] == 2
+    assert res["to_upsert"] == 1
     assert res["unchanged"] == 1
-    assert res["new"] == 2
+    assert res["new"] == 1
     assert res["changed"] == 0
 
 
