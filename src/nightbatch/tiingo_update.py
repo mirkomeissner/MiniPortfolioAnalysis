@@ -1,18 +1,13 @@
 import os
-import requests
 import pandas as pd
 from datetime import date, datetime
 
 import src.database as database
 database.initialize_runtime_from_env(strict=False)
 from src.utils import (
-    fetch_and_fill_price_gaps,
+    my_tiingo,
     normalize_float,
     normalize_date,
-    calculate_request_start_date,
-    calculate_gap_fill_end_date,
-    compare_and_deduplicate,
-    plan_asset_price_requests,
     reconcile_asset_price_data,
     parse_iso_date,
     empty_provider_result,
@@ -22,18 +17,13 @@ from src.utils import (
 )
 
 
-TIINGO_URL_TEMPLATE = "https://api.tiingo.com/tiingo/daily/{ticker}/prices"
-
-
 def _fetch_tiingo_history(ticker: str, api_key: str, request_start_date: date, timeout: int = 15):
-    params = {
-        "startDate": request_start_date.isoformat(),
-        "token": api_key,
-    }
-    response = requests.get(TIINGO_URL_TEMPLATE.format(ticker=ticker), params=params, timeout=timeout)
-    response.raise_for_status()
-    payload = response.json()
-    return payload if isinstance(payload, list) else []
+    return my_tiingo.fetch_history(
+        ticker_symbol=ticker,
+        api_key=api_key,
+        request_start_date=request_start_date,
+        timeout=timeout,
+    )
 
 
 def import_tiingo_history_for_ticker(
@@ -72,7 +62,7 @@ def import_tiingo_history_for_ticker(
 
     provider_df = pd.DataFrame(rows)
     if provider_df.empty:
-        return {"parsed": 0}
+        return empty_provider_result(raw_fetched=raw_fetched)
 
     required_fields = ["date", "close", "divCash", "splitFactor"]
     missing_fields = [f for f in required_fields if f not in provider_df.columns]
@@ -90,12 +80,9 @@ def import_tiingo_history_for_ticker(
     if provider_df.empty:
         return empty_provider_result(raw_fetched=raw_fetched)
 
-    # Build canonical records from provider data (TIINGO-specific div/split mapping)
-    # Store provider data keyed by date for lookup after gap-fill
+    # Build canonical records from provider data
     canonical_records = []
-    div_map = {}
-    split_map = {}
-    
+
     for idx, row in provider_df.iterrows():
         row_date = row["price_date"]
         canonical_records.append({
@@ -106,25 +93,17 @@ def import_tiingo_history_for_ticker(
             "dividend_cash": normalize_float(row["dividend_cash"], decimals=10) or 0.0,
             "split_factor": normalize_float(row["split_factor"], decimals=10) or 1.0,
         })
-        div_map[row_date] = normalize_float(row["dividend_cash"], decimals=10) or 0.0
-        split_map[row_date] = normalize_float(row["split_factor"], decimals=10) or 1.0
 
     parsed = len(canonical_records)
     if parsed == 0:
         return empty_provider_result(raw_fetched=raw_fetched)
 
-    # Get existing rows for deduplication
-    min_loaded = min(r["price_date"] for r in canonical_records)
-    max_loaded = max(r["price_date"] for r in canonical_records)
-    existing_rows = database.get_asset_prices_for_isin(isin, start_date=min_loaded, end_date=max_loaded)
-
-    # Use shared reconciliation helper for trim and dedup
+    # Use shared reconciliation helper for gap-fill, trim, DB lookup, and dedup
     upsert_records, recon_summary = reconcile_asset_price_data(
         isin=isin,
         asset_start_date=asset_start,
         request_start_date=request_start,
         canonical_rows=canonical_records,
-        existing_rows=existing_rows,
         key_fields=["isin", "price_date"],
         compare_fields=["price_close", "price_date_original", "dividend_cash", "split_factor"],
         normalizers={

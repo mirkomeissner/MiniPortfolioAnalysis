@@ -52,8 +52,51 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
+        shell: bash
         run: |
-          python - <<'PY'
+          summary_dir="${{ runner.temp }}/nightbatch-tiingo-summary"
+          mkdir -p "$summary_dir"
+          log_file="$summary_dir/script_output.log"
+          metadata_file="$summary_dir/metadata.json"
+          start_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          start_epoch="$(date +%s)"
+
+          set +e
+          python - <<'PY' 2>&1 | tee "$log_file"
           from src.nightbatch.tiingo_update import process_all_tiingo_assets
           process_all_tiingo_assets(dry_run=False)
           PY
+          command_status=${PIPESTATUS[0]}
+          set -e
+
+          finish_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          finish_epoch="$(date +%s)"
+          duration_seconds="$((finish_epoch - start_epoch))"
+          status="success"
+          if [ "$command_status" -ne 0 ]; then
+            status="failure"
+          fi
+
+          cat > "$metadata_file" <<EOF
+          {
+            "workflow_key": "tiingo",
+            "workflow_name": "TIINGO Import",
+            "status": "$status",
+            "start_time": "$start_time",
+            "finish_time": "$finish_time",
+            "duration_seconds": $duration_seconds,
+            "log_file": "script_output.log"
+          }
+          EOF
+
+          if [ "$command_status" -ne 0 ]; then
+            exit "$command_status"
+          fi
+
+      - name: Upload TIINGO Summary Artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightbatch-tiingo-summary
+          path: ${{ runner.temp }}/nightbatch-tiingo-summary
+          if-no-files-found: error

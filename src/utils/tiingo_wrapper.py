@@ -1,50 +1,60 @@
 import os
+from datetime import date
+
 import requests
 
-class MockTiingo:
-    """Simuliert die Tiingo-API-Antworten für die Entwicklung."""
-    def __init__(self, ticker_symbol):
-        self.ticker_symbol = ticker_symbol
-        
-    def get_latest_price(self):
-        # Liefert Mock-Daten zurück
-        return {
-            "price": 124.50,
-            "currency": "USD" if not self.ticker_symbol.endswith(".DE") else "EUR"
-        }
+from .mock_data_utils import generate_tiingo_rows, is_unknown_ticker, raise_provider_not_found
+
+
+TIINGO_URL_TEMPLATE = "https://api.tiingo.com/tiingo/daily/{ticker}/prices"
+
 
 class MyTiingoProxy:
-    """
-    Proxy für die Tiingo-API. 
-    Entscheidet anhand von APP_ENV, ob Live- oder Mock-Daten geliefert werden.
-    """
+    """Proxy for Tiingo that switches between live and deterministic mock data."""
+
     @property
     def is_dev(self) -> bool:
         return os.getenv("APP_ENV", "main").lower() == "dev"
 
-    def get_latest_price(self, ticker_symbol):
+    def fetch_history(self, ticker_symbol: str, api_key: str, request_start_date: date, timeout: int = 15):
         if self.is_dev:
-            mock = MockTiingo(ticker_symbol)
-            return mock.get_latest_price()
-        
-        # --- LIVE API CALL ---
-        # Ersetze dies durch deinen echten API-Token / Endpunkt bei Bedarf
-        api_token = os.getenv("TIINGO_API_KEY", "YOUR_DEFAULT_TOKEN")
-        url = f"https://api.tiingo.com/tiingo/daily/{ticker_symbol}/prices"
-        headers = {'Content-Type': 'application/json', 'Authorization': f'Token {api_token}'}
-        
+            if is_unknown_ticker(ticker_symbol):
+                raise_provider_not_found("tiingo", ticker_symbol)
+            return generate_tiingo_rows(
+                ticker=ticker_symbol,
+                start=request_start_date,
+                end=date.today(),
+            )
+
+        params = {
+            "startDate": request_start_date.isoformat(),
+            "token": api_key,
+        }
+        response = requests.get(TIINGO_URL_TEMPLATE.format(ticker=ticker_symbol), params=params, timeout=timeout)
+        response.raise_for_status()
+        payload = response.json()
+        return payload if isinstance(payload, list) else []
+
+    def get_latest_price(self, ticker_symbol):
+        if self.is_dev and is_unknown_ticker(ticker_symbol):
+            raise_provider_not_found("tiingo", ticker_symbol)
+
         try:
-            response = requests.get(url, headers=headers, timeout=5)
-            if response.status_code == 200 and response.json():
-                data = response.json()[0]
-                # Tiingo liefert standardmäßig Schlusskurse; Währung ist meist USD (außer bei speziellen Feeds)
+            rows = self.fetch_history(
+                ticker_symbol=ticker_symbol,
+                api_key=os.getenv("TIINGO_API_KEY"),
+                request_start_date=date.today(),
+                timeout=5,
+            )
+            if rows:
+                data = rows[-1]
                 return {
                     "price": data.get("close"),
-                    "currency": "USD" # Kann je nach Tiingo-Asset angepasst werden
+                    "currency": "USD" if not str(ticker_symbol).upper().endswith(".DE") else "EUR",
                 }
             return {"price": None, "currency": None}
         except Exception:
             return {"price": None, "currency": None}
 
-# Singleton Instanz
+
 my_tiingo = MyTiingoProxy()

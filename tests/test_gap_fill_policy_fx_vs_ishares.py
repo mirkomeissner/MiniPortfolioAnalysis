@@ -79,11 +79,10 @@ def test_ishares_gap_fill_should_extend_to_yesterday_on_weekend():
     }
 
     with patch("src.nightbatch.ishares_update.pd.read_excel", return_value=sheets), \
-         patch("src.nightbatch.ishares_update.database") as mock_db, \
-         patch("src.nightbatch.ishares_update.date") as mock_date:
-        mock_date.today.return_value = datetime.date(2026, 6, 21)
-        mock_db.get_asset_prices_for_isin.return_value = []
-        mock_db.save_asset_prices_bulk = Mock()
+         patch("src.utils.data_import_helpers.database") as mock_helper_db, \
+         patch("src.utils.data_import_helpers.calculate_gap_fill_end_date", return_value=datetime.date(2026, 6, 20)):
+        mock_helper_db.get_asset_prices_for_isin.return_value = []
+        mock_helper_db.save_asset_prices_bulk = Mock()
 
         res = ishares_importer.import_ishares_history_for_ticker(
             isin="IE000TEST01",

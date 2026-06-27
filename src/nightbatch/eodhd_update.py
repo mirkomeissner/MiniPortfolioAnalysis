@@ -1,18 +1,13 @@
 import os
-import requests
 import pandas as pd
 from datetime import date, datetime
 
 import src.database as database
 database.initialize_runtime_from_env(strict=False)
 from src.utils import (
-    fetch_and_fill_price_gaps,
+    my_eodhd,
     normalize_float,
     normalize_date,
-    calculate_request_start_date,
-    calculate_gap_fill_end_date,
-    compare_and_deduplicate,
-    plan_asset_price_requests,
     reconcile_asset_price_data,
     parse_iso_date,
     empty_provider_result,
@@ -22,19 +17,13 @@ from src.utils import (
 )
 
 
-EODHD_URL_TEMPLATE = "https://eodhd.com/api/eod/{ticker}"
-
-
 def _fetch_eodhd_history(ticker: str, api_key: str, request_start_date: date, timeout: int = 15):
-    params = {
-        "api_token": api_key,
-        "fmt": "json",
-        "from": request_start_date.isoformat(),
-    }
-    response = requests.get(EODHD_URL_TEMPLATE.format(ticker=ticker), params=params, timeout=timeout)
-    response.raise_for_status()
-    payload = response.json()
-    return payload if isinstance(payload, list) else []
+    return my_eodhd.fetch_history(
+        ticker=ticker,
+        api_key=api_key,
+        request_start_date=request_start_date,
+        timeout=timeout,
+    )
 
 
 def import_eodhd_history_for_ticker(
@@ -78,7 +67,7 @@ def import_eodhd_history_for_ticker(
 
     provider_df = pd.DataFrame(rows)
     if provider_df.empty:
-        return {"parsed": 0}
+        return empty_provider_result(raw_fetched=raw_fetched)
 
     date_col = "date" if "date" in provider_df.columns else "Date" if "Date" in provider_df.columns else None
     close_col = None
@@ -115,32 +104,22 @@ def import_eodhd_history_for_ticker(
     if parsed == 0:
         return empty_provider_result(raw_fetched=raw_fetched)
 
-    # Get existing rows for deduplication
-    min_loaded = min(r["price_date"] for r in canonical_records)
-    max_loaded = max(r["price_date"] for r in canonical_records)
-    existing_rows = database.get_asset_prices_for_isin(isin, start_date=min_loaded, end_date=max_loaded)
-
-    # Use shared reconciliation helper for gap-fill, trim, and dedup
+    # Use shared reconciliation helper for gap-fill, trim, DB lookup, and dedup
     upsert_records, recon_summary = reconcile_asset_price_data(
         isin=isin,
         asset_start_date=asset_start,
         request_start_date=request_start,
         canonical_rows=canonical_records,
-        existing_rows=existing_rows,
         key_fields=["isin", "price_date"],
-        compare_fields=["price_close", "price_date_original", "dividend_cash"],
+        compare_fields=["price_close", "price_date_original", "dividend_cash", "split_factor"],
         normalizers={
             "price_date": normalize_date,
             "price_date_original": normalize_date,
             "price_close": lambda v: normalize_float(v, decimals=10),
             "dividend_cash": lambda v: normalize_float(v, decimals=10),
+            "split_factor": lambda v: normalize_float(v, decimals=10),
         },
     )
-
-    after_dedup = recon_summary["after_dedup"]
-    inserted_count = recon_summary["inserted"]
-    changed_count = recon_summary["changed"]
-    unchanged_count = recon_summary["unchanged"]
 
     # Use shared persistence helper (handles dry-run, DB upsert, error handling)
     return persist_price_records(

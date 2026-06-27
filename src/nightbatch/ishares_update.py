@@ -1,48 +1,30 @@
 import io
 import os
 import sys
-import time
-import requests
 import pandas as pd
 from datetime import date, datetime
 
 import src.database as database
 database.initialize_runtime_from_env(strict=False)
 from src.utils import (
-    fetch_and_fill_price_gaps,
+    my_ishares,
     normalize_float,
     normalize_date,
-    calculate_request_start_date,
-    calculate_gap_fill_end_date,
-    compare_and_deduplicate,
-    plan_asset_price_requests,
     reconcile_asset_price_data,
     parse_iso_date,
     empty_provider_result,
-    validate_provider_request,
     persist_price_records,
     process_provider_batch,
 )
 
 
-ISHARE_URL_TEMPLATE = (
-    "https://www.ishares.com/de/privatanleger/de/produkte/{ticker}/fund/1535604580385.ajax"
-    "?fileType=xls&dataType=fund"
-)
-
-
-def _download_excel(ticker: str, retries: int = 3, timeout: int = 15) -> bytes:
-    url = ISHARE_URL_TEMPLATE.format(ticker=ticker)
-    last_exc = None
-    for attempt in range(1, retries + 1):
-        try:
-            resp = requests.get(url, timeout=timeout)
-            resp.raise_for_status()
-            return resp.content
-        except Exception as e:
-            last_exc = e
-            time.sleep(1 * attempt)
-    raise last_exc
+def _download_excel(ticker: str, currency: str, retries: int = 3, timeout: int = 15) -> bytes:
+    return my_ishares.fetch_excel_bytes(
+        ticker=ticker,
+        currency=currency,
+        retries=retries,
+        timeout=timeout,
+    )
 
 
 
@@ -74,12 +56,12 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
     # 1) download or use provided bytes
     if excel_bytes is None:
         try:
-            excel_bytes = _download_excel(ticker)
+            excel_bytes = _download_excel(ticker, price_currency)
+            
         except Exception as e:
             print(f"Failed to download Excel for {ticker}: {e}")
             return {"error": str(e)}
 
-    print(f"[ISIN {isin}] Using ticker '{ticker}' for downloading Excel.")
     # 2) read required sheets
     try:
         # First, handle Microsoft SpreadsheetML XML format (some iShares downloads use it)
@@ -168,7 +150,6 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
                     data_rows = rows[1:]
                     # Debug: ensure header length matches data width
                     max_len = max((len(r) for r in data_rows), default=0)
-                    print(f"Parsing sheet '{name}' header columns: {len(header)} data max cols: {max_len}")
                     # pad header or rows as needed
                     if len(header) < max_len:
                         header = header + [f"col_{i}" for i in range(len(header), max_len)]
@@ -179,12 +160,6 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
                     df = _pd.DataFrame()
                 sheets[name or 'Sheet'] = df
             xls = sheets
-            # Report sheet line counts for diagnostics
-            for name, df_sheet in xls.items():
-                try:
-                    print(f"[ISIN {isin}] Detected sheet '{name}' with {len(df_sheet.index)} lines")
-                except Exception:
-                    print(f"[ISIN {isin}] Detected sheet '{name}' (unable to determine line count)")
         else:
             # Detect file header to pick an engine: ZIP (xlsx) vs OLE (xls)
             header = excel_bytes[:4]
@@ -196,12 +171,6 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
 
             if engine:
                 xls = pd.read_excel(io.BytesIO(excel_bytes), sheet_name=["Historisch", "Ausschüttungen"], engine=engine)
-                # Report sheet line counts for diagnostics
-                for name, df_sheet in xls.items():
-                    try:
-                        print(f"[ISIN {isin}] Detected sheet '{name}' with {len(df_sheet.index)} lines")
-                    except Exception:
-                        print(f"[ISIN {isin}] Detected sheet '{name}' (unable to determine line count)")
             else:
                 # Fallback: try xlrd then openpyxl
                 try:
@@ -230,8 +199,6 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
 
     hist_df = hist[[per_col, nav_col, curr_col]].rename(columns={per_col: "per", nav_col: "NAV", curr_col: "Währung"})
     hist_df = hist_df.dropna(subset=["per"]).copy()
-    print(f"[ISIN {isin}] NAV sheet initial lines: {len(hist_df.index)}")
-
     # Robust date parsing for German/English month names like '17.Juni2026' or '17.Apr.2026'
     import re
     month_map = {
@@ -326,6 +293,7 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
     prices = hist_df[["per", "NAV"]].dropna(subset=["NAV"]).copy()
     prices = prices.rename(columns={"per": "price_date", "NAV": "price_close"})
     prices["dividend_cash"] = 0.0
+    raw_fetched = len(prices.index)
 
     # Map dividends onto price dates
     if not dis_df.empty:
@@ -335,105 +303,51 @@ def import_ishares_history_for_ticker(isin: str, ticker: str, price_currency: st
         prices["dividend_cash"] = prices["dividend_cash_d"].fillna(prices["dividend_cash"]).fillna(0.0)
         prices = prices.drop(columns=[c for c in prices.columns if c.endswith("_d")])
 
-    # 7) Fill gaps using existing fetch_and_fill_price_gaps
     if prices.empty:
         print(f"No NAV rows for {ticker}")
-        return {"parsed": 0}
+        return empty_provider_result(raw_fetched=raw_fetched)
 
-    min_date = min(prices["price_date"])  # date objects
-    max_date = max(prices["price_date"])  # date objects
-    fill_end_date = calculate_gap_fill_end_date(
-        source_max_date=max_date,
-        run_date=date.today(),
-        lag_days=1,
-    )
-
-    # Prepare DataFrame shaped like yfinance output expected by fetch_and_fill_price_gaps
-    tmp_df = pd.DataFrame({"Close": prices.set_index("price_date")["price_close"]})
-
-    gap_data = fetch_and_fill_price_gaps(ticker, min_date, fill_end_date, tmp_df)
-    print(f"[ISIN {isin}] NAV lines after gap-filling: {len(gap_data)}")
-
-    # build full history DataFrame from gap_data
+    # Build canonical records and delegate gap-fill/reconciliation to shared helpers.
     records = []
-    div_map = {r["price_date"]: r["dividend_cash"] for _, r in prices.iterrows()}
-    for entry in gap_data:
-        d = entry["date"]
-        val = entry["value"]
+    for _, row in prices.iterrows():
+        price_date = row["price_date"]
         records.append({
             "isin": isin,
-            "price_date": d.isoformat(),
-            "price_close": normalize_float(val, decimals=10),
-            "dividend_cash": float(div_map.get(d, 0.0)),
-            "price_date_original": entry.get("origin", d).isoformat(),
-            "split_factor": 1.0
+            "price_date": price_date.isoformat(),
+            "price_close": normalize_float(row["price_close"], decimals=10),
+            "dividend_cash": normalize_float(row.get("dividend_cash"), decimals=10) or 0.0,
+            "price_date_original": price_date.isoformat(),
+            "split_factor": 1.0,
         })
 
-    # 8) trim to asset_start_date (preferred) or price_start_date fallback
-    if asset_start is not None:
-        records = [r for r in records if parse_iso_date(r["price_date"]) and parse_iso_date(r["price_date"]) >= asset_start]
-
     parsed = len(records)
-    print(f"[ISIN {isin}] NAV lines after trimming/processing: {parsed}")
-
     if parsed == 0:
-        return {"parsed": 0}
+        return empty_provider_result(raw_fetched=raw_fetched)
 
-    min_loaded = min(r["price_date"] for r in records)
-    max_loaded = max(r["price_date"] for r in records)
-    existing_rows = database.get_asset_prices_for_isin(
-        isin,
-        start_date=min_loaded,
-        end_date=max_loaded,
-    )
-
-    upsert_records, compare_summary = compare_and_deduplicate(
-        loaded_records=records,
-        existing_records=existing_rows,
+    upsert_records, recon_summary = reconcile_asset_price_data(
+        isin=isin,
+        asset_start_date=asset_start,
+        request_start_date=request_start,
+        canonical_rows=records,
         key_fields=["isin", "price_date"],
-        compare_fields=["price_close", "price_date_original", "dividend_cash"],
+        compare_fields=["price_close", "price_date_original", "dividend_cash", "split_factor"],
         normalizers={
             "price_date": normalize_date,
             "price_date_original": normalize_date,
             "price_close": lambda v: normalize_float(v, decimals=10),
             "dividend_cash": lambda v: normalize_float(v, decimals=10),
+            "split_factor": lambda v: normalize_float(v, decimals=10),
         },
     )
 
-    print(
-        f"[ISIN {isin}] Compare summary: loaded={compare_summary['loaded']} "
-        f"new={compare_summary['new']} changed={compare_summary['changed']} "
-        f"unchanged={compare_summary['unchanged']}"
+    return persist_price_records(
+        isin=isin,
+        records=upsert_records,
+        dry_run=dry_run,
+        recon_summary=recon_summary,
+        parsed=parsed,
+        raw_fetched=raw_fetched,
     )
-
-    if dry_run:
-        return {
-            "parsed": parsed,
-            "to_upsert": len(upsert_records),
-            "unchanged": compare_summary["unchanged"],
-            "new": compare_summary["new"],
-            "changed": compare_summary["changed"],
-        }
-
-    # 9) Persist via database helper (bulk upsert)
-    try:
-        if upsert_records:
-            now_iso = datetime.utcnow().isoformat()
-            for r in upsert_records:
-                r["updated_at"] = now_iso
-            database.save_asset_prices_bulk(upsert_records)
-            return {
-                "parsed": parsed,
-                "upserted": len(upsert_records),
-                "unchanged": compare_summary["unchanged"],
-                "new": compare_summary["new"],
-                "changed": compare_summary["changed"],
-            }
-        else:
-            return {"parsed": parsed, "upserted": 0, "unchanged": compare_summary["unchanged"]}
-    except Exception as e:
-        print(f"DB upsert error for {isin}: {e}")
-        return {"error": str(e)}
 
 
 def process_all_ishares_assets(dry_run: bool = False):

@@ -33,16 +33,16 @@ def test_import_ishares_dry_run_skips_db_write_and_returns_compare_stats():
     sheets = _sample_sheets_for_dry_run()
 
     with patch("src.nightbatch.ishares_update.pd.read_excel", return_value=sheets), \
-         patch("src.nightbatch.ishares_update.database") as mock_db, \
-         patch("src.nightbatch.ishares_update.date") as mock_date:
-        mock_date.today.return_value = pd.to_datetime("2023-06-18").date()
-        mock_db.get_asset_prices_for_isin.return_value = [
+         patch("src.utils.data_import_helpers.database") as mock_helper_db, \
+         patch("src.utils.data_import_helpers.calculate_gap_fill_end_date", return_value=pd.to_datetime("2023-06-17").date()):
+        mock_helper_db.get_asset_prices_for_isin.return_value = [
             {
                 "isin": "IE000OHHIBC6",
                 "price_date": "2023-06-16",
                 "price_close": "101.0",
                 "price_date_original": "2023-06-16",
                 "dividend_cash": "0.0",
+                "split_factor": "1.0",
             },
             {
                 "isin": "IE000OHHIBC6",
@@ -50,9 +50,10 @@ def test_import_ishares_dry_run_skips_db_write_and_returns_compare_stats():
                 "price_close": "101.5",
                 "price_date_original": "2023-06-17",
                 "dividend_cash": "1.0",
+                "split_factor": "1.0",
             },
         ]
-        mock_db.save_asset_prices_bulk = Mock()
+        mock_helper_db.save_asset_prices_bulk = Mock()
 
         res = ishares_importer.import_ishares_history_for_ticker(
             isin="IE000OHHIBC6",
@@ -66,11 +67,13 @@ def test_import_ishares_dry_run_skips_db_write_and_returns_compare_stats():
         )
 
     assert res["parsed"] == 2
+    assert res["number_fetched"] == 2
+    assert res["number_trimmed"] == 2
     assert res["to_upsert"] == 1
     assert res["unchanged"] == 1
     assert res["changed"] == 1
     assert res["new"] == 0
-    assert not mock_db.save_asset_prices_bulk.called
+    assert not mock_helper_db.save_asset_prices_bulk.called
 
 
 def test_process_all_ishares_assets_dry_run_uses_distinct_min_start_date_and_bounds():

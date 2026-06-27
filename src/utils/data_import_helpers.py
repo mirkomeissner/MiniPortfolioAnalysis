@@ -5,6 +5,19 @@ import pandas as pd
 import src.database as database
 
 
+CANONICAL_ASSET_COMPARE_FIELDS = [
+    "price_close",
+    "price_date_original",
+    "dividend_cash",
+    "split_factor",
+]
+
+CANONICAL_ASSET_FILLED_DEFAULTS = {
+    "dividend_cash": 0.0,
+    "split_factor": 1.0,
+}
+
+
 def normalize_float(value: Any, decimals: int = 10) -> Optional[float]:
     if value is None:
         return None
@@ -153,6 +166,85 @@ def compare_and_deduplicate(
     }
 
 
+def gap_fill_asset_price_rows(
+    canonical_rows: List[Dict[str, Any]],
+    request_start_date: Optional[date],
+    run_date: Optional[date] = None,
+    lag_days: int = 1,
+    filled_defaults: Optional[Dict[str, Any]] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    Forward-fill canonical asset price rows across calendar days.
+
+    Filled rows inherit the last known close and original source date while
+    provider-specific event fields fall back to the supplied defaults.
+    """
+    if not canonical_rows:
+        return [], {
+            "after_gap_fill": 0,
+            "fill_start_date": request_start_date.isoformat() if request_start_date else None,
+            "fill_end_date": None,
+        }
+
+    filled_defaults = filled_defaults or CANONICAL_ASSET_FILLED_DEFAULTS
+
+    normalized_rows: Dict[date, Dict[str, Any]] = {}
+    for row in canonical_rows:
+        row_date = _parse_date(row.get("price_date"))
+        if row_date is None:
+            continue
+
+        normalized_row = dict(row)
+        normalized_row["price_date"] = row_date.isoformat()
+        price_date_original = _parse_date(normalized_row.get("price_date_original"))
+        normalized_row["price_date_original"] = (
+            price_date_original.isoformat() if price_date_original else row_date.isoformat()
+        )
+        normalized_rows[row_date] = normalized_row
+
+    if not normalized_rows:
+        return [], {
+            "after_gap_fill": 0,
+            "fill_start_date": request_start_date.isoformat() if request_start_date else None,
+            "fill_end_date": None,
+        }
+
+    source_dates = sorted(normalized_rows.keys())
+    start_date = request_start_date or source_dates[0]
+    source_max_date = source_dates[-1]
+    fill_end_date = calculate_gap_fill_end_date(
+        source_max_date=source_max_date,
+        run_date=run_date,
+        lag_days=lag_days,
+    )
+
+    filled_rows: List[Dict[str, Any]] = []
+    last_row: Optional[Dict[str, Any]] = None
+
+    for current_day in pd.date_range(start=start_date, end=fill_end_date, freq="D").date:
+        current_row = normalized_rows.get(current_day)
+        if current_row is not None:
+            last_row = dict(current_row)
+            filled_rows.append(dict(current_row))
+            continue
+
+        if last_row is None:
+            continue
+
+        gap_row = dict(last_row)
+        gap_row["price_date"] = current_day.isoformat()
+        gap_row["price_date_original"] = last_row.get("price_date_original") or last_row.get("price_date")
+        for field, default_value in filled_defaults.items():
+            gap_row[field] = default_value
+        filled_rows.append(gap_row)
+
+    return filled_rows, {
+        "after_gap_fill": len(filled_rows),
+        "fill_start_date": start_date.isoformat(),
+        "fill_end_date": fill_end_date.isoformat() if fill_end_date else None,
+    }
+
+
 def plan_asset_price_requests(
     assets: Iterable[Dict[str, Any]],
     bounds_map: Dict[str, Dict[str, Optional[date]]],
@@ -237,35 +329,38 @@ def reconcile_asset_price_data(
     asset_start_date: date,
     request_start_date: date,
     canonical_rows: List[Dict[str, Any]],
-    existing_rows: Iterable[Dict[str, Any]],
+    existing_rows: Optional[Iterable[Dict[str, Any]]] = None,
     key_fields: List[str] = None,
     compare_fields: List[str] = None,
     normalizers: Dict[str, Callable[[Any], Any]] = None,
+    run_date: Optional[date] = None,
+    lag_days: int = 1,
+    filled_defaults: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     Shared reconciliation logic for asset price data across all providers.
     
     Performs:
-    1. Trim rows with price_date < asset_start_date
-    2. Compare/deduplicate against existing rows
-    
-    Note: Gap-fill should be performed by the provider before calling this function,
-    as gap-fill logic may vary by provider.
+    1. Gap-fill rows across calendar days up to the shared fill boundary
+    2. Trim rows with price_date < asset_start_date
+    3. Compare/deduplicate against existing rows
     
     Args:
         isin: Asset ISIN identifier
         asset_start_date: Earliest date this asset has prices (trim boundary)
         request_start_date: Start date for the current request (for reference)
         canonical_rows: Processed rows from provider in canonical schema
-        existing_rows: Current rows from database
+        existing_rows: Current rows from database. When omitted, rows are fetched
+            from database.get_asset_prices_for_isin() using the post-trim date range.
         key_fields: Fields to use for identifying duplicates (default: ["isin", "price_date"])
         compare_fields: Fields to compare for change detection
         normalizers: Functions to normalize values for comparison
     
     Returns:
         Tuple of (upsert_records, summary_dict) where summary includes:
-        - number_fetched: rows after initial parse
-        - number_trimmed: rows after asset_start trim
+        - number_fetched: rows after provider parse/request_start filtering
+        - after_gap_fill: rows after calendar gap fill
+        - number_trimmed: rows remaining after asset_start trim
         - inserted: new rows
         - changed: changed rows
         - unchanged: unchanged rows
@@ -274,33 +369,55 @@ def reconcile_asset_price_data(
     if key_fields is None:
         key_fields = ["isin", "price_date"]
     if compare_fields is None:
-        compare_fields = ["price_close", "price_date_original", "dividend_cash"]
+        compare_fields = CANONICAL_ASSET_COMPARE_FIELDS
     if normalizers is None:
         normalizers = {}
     
     number_fetched = len(canonical_rows)
+
+    gap_filled_rows, gap_fill_summary = gap_fill_asset_price_rows(
+        canonical_rows=canonical_rows,
+        request_start_date=request_start_date,
+        run_date=run_date,
+        lag_days=lag_days,
+        filled_defaults=filled_defaults,
+    )
+    after_gap_fill = len(gap_filled_rows)
     
     # Trim rows below asset_start_date
     trimmed_rows = [
-        r for r in canonical_rows
+        r for r in gap_filled_rows
         if _parse_date(r.get("price_date")) and _parse_date(r.get("price_date")) >= asset_start_date
     ]
-    number_trimmed = len(canonical_rows) - len(trimmed_rows)
+    number_trimmed = len(trimmed_rows)
+    trimmed_away = after_gap_fill - number_trimmed
     
     if not trimmed_rows:
         return [], {
             "number_fetched": number_fetched,
+            "after_gap_fill": after_gap_fill,
             "number_trimmed": number_trimmed,
+            "trimmed_away": trimmed_away,
             "inserted": 0,
             "changed": 0,
             "unchanged": 0,
             "after_dedup": 0,
+            **gap_fill_summary,
         }
+
+    if existing_rows is None:
+        min_loaded = min(r["price_date"] for r in trimmed_rows)
+        max_loaded = max(r["price_date"] for r in trimmed_rows)
+        existing_rows = database.get_asset_prices_for_isin(
+            isin,
+            start_date=min_loaded,
+            end_date=max_loaded,
+        )
     
     # Compare and deduplicate
     upsert_records, compare_summary = compare_and_deduplicate(
         loaded_records=trimmed_rows,
-        existing_records=existing_rows,
+        existing_records=existing_rows or [],
         key_fields=key_fields,
         compare_fields=compare_fields,
         normalizers=normalizers,
@@ -313,11 +430,14 @@ def reconcile_asset_price_data(
     
     return upsert_records, {
         "number_fetched": number_fetched,
+        "after_gap_fill": after_gap_fill,
         "number_trimmed": number_trimmed,
+        "trimmed_away": trimmed_away,
         "inserted": inserted,
         "changed": changed,
         "unchanged": unchanged,
         "after_dedup": after_dedup,
+        **gap_fill_summary,
     }
 
 
@@ -366,11 +486,15 @@ def empty_provider_result(raw_fetched: int = 0, parsed: int = 0) -> Dict[str, An
     return {
         "parsed": parsed,
         "raw_fetched": raw_fetched,
+        "number_fetched": parsed,
         "after_gap_fill": 0,
+        "number_trimmed": parsed,
         "after_dedup": 0,
         "new": 0,
         "changed": 0,
+        "unchanged": 0,
         "inserted": 0,
+        "to_upsert": 0,
         "upserted": 0,
     }
 
@@ -403,8 +527,9 @@ def validate_provider_request(
     if request_start is None:
         return {"error": "missing_request_start"}
     
+    app_env = os.getenv("APP_ENV", "main").lower()
     api_key = os.getenv(api_key_env_var)
-    if not api_key:
+    if app_env != "dev" and not api_key:
         # Extract provider name from env var (e.g., "TIINGO_API_KEY" -> "tiingo")
         provider_name = api_key_env_var.split("_")[0].lower()
         return {"error": f"missing_{provider_name}_api_key"}
@@ -437,15 +562,19 @@ def persist_price_records(
     """
     recon_summary = recon_summary or {}
     after_dedup = recon_summary.get("after_dedup", len(records))
+    number_trimmed = recon_summary.get("number_trimmed", parsed)
+    number_fetched = recon_summary.get("number_fetched", parsed)
     
     result_base = {
-        "parsed": parsed,
+        "parsed": number_trimmed,
+        "number_fetched": number_fetched,
+        "number_trimmed": number_trimmed,
         "to_upsert": len(records),
         "unchanged": recon_summary.get("unchanged", 0),
         "new": recon_summary.get("inserted", 0),
         "changed": recon_summary.get("changed", 0),
         "raw_fetched": raw_fetched,
-        "after_gap_fill": recon_summary.get("number_trimmed", 0),
+        "after_gap_fill": recon_summary.get("after_gap_fill", number_trimmed),
         "after_dedup": after_dedup,
         "inserted": recon_summary.get("inserted", 0),
     }
@@ -499,12 +628,14 @@ def process_provider_batch(
     )
     
     summary = {
-        "detected_isins": len(assets),
+        "detected_isins": len(plans),
         "processed": 0,
         "skipped": 0,
         "errors": [],
         "raw_fetched": 0,
+        "number_fetched": 0,
         "after_gap_fill": 0,
+        "number_trimmed": 0,
         "parsed": 0,
         "to_upsert": 0,
         "upserted": 0,
@@ -513,7 +644,7 @@ def process_provider_batch(
         "unchanged": 0,
     }
     
-    print(f"{provider_code}: detected {len(assets)} relevant ISINs.")
+    print(f"{provider_code}: detected {len(plans)} relevant ISINs.")
     
     for plan in plans:
         isin = plan.get("isin")
@@ -532,7 +663,7 @@ def process_provider_batch(
             asset_start_date=asset_start.isoformat() if asset_start else None,
         )
         
-        _accumulate_provider_result(summary, result, isin, request_start, provider_code)
+        _accumulate_provider_result(summary, result, isin, ticker, request_start, provider_code)
     
     return summary
 
@@ -541,6 +672,7 @@ def _accumulate_provider_result(
     summary: Dict[str, Any],
     result: Dict[str, Any],
     isin: str,
+    ticker: Optional[str],
     request_start: Optional[date],
     provider_code: str,
 ) -> None:
@@ -555,9 +687,21 @@ def _accumulate_provider_result(
         provider_code: Provider code for logging
     """
     summary["processed"] += 1
+
+    if result.get("skipped"):
+        summary["skipped"] += 1
+        log_str = (
+            f"[{provider_code}][{ticker or 'N/A'}][{isin}] request_start={request_start.isoformat() if request_start else 'N/A'} "
+            f"skipped=True reason={result.get('reason', 'unspecified')}"
+        )
+        print(log_str)
+        return
+
     summary["raw_fetched"] += int(result.get("raw_fetched", 0) or 0)
+    summary["number_fetched"] += int(result.get("number_fetched", result.get("parsed", 0)) or 0)
     summary["after_gap_fill"] += int(result.get("after_gap_fill", 0) or 0)
-    summary["parsed"] += int(result.get("parsed", 0) or 0)
+    summary["number_trimmed"] += int(result.get("number_trimmed", result.get("parsed", 0)) or 0)
+    summary["parsed"] += int(result.get("parsed", result.get("number_trimmed", 0)) or 0)
     summary["to_upsert"] += int(result.get("to_upsert", 0) or 0)
     summary["upserted"] += int(result.get("upserted", 0) or 0)
     summary["inserted"] += int(result.get("inserted", result.get("new", 0)) or 0)
@@ -565,10 +709,9 @@ def _accumulate_provider_result(
     summary["unchanged"] += int(result.get("unchanged", 0) or 0)
     
     log_str = (
-        f"[{provider_code}][{isin}] request_start={request_start.isoformat() if request_start else 'N/A'} "
-        f"raw_fetched={int(result.get('raw_fetched', 0) or 0)} "
-        f"after_gap_fill={int(result.get('after_gap_fill', 0) or 0)} "
-        f"after_dedup={int(result.get('after_dedup', result.get('to_upsert', result.get('upserted', 0))) or 0)} "
+        f"[{provider_code}][{ticker or 'N/A'}][{isin}] request_start={request_start.isoformat() if request_start else 'N/A'} "
+        f"number_fetched={int(result.get('number_fetched', result.get('parsed', 0)) or 0)} "
+        f"number_trimmed={int(result.get('number_trimmed', result.get('parsed', 0)) or 0)} "
         f"inserted={int(result.get('inserted', result.get('new', 0)) or 0)} "
         f"changed={int(result.get('changed', 0) or 0)}"
     )
