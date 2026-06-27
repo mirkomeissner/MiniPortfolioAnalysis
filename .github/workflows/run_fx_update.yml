@@ -52,4 +52,48 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python src/nightbatch/fx_update.py
+        shell: bash
+        run: |
+          summary_dir="${{ runner.temp }}/nightbatch-fx-summary"
+          mkdir -p "$summary_dir"
+          log_file="$summary_dir/script_output.log"
+          metadata_file="$summary_dir/metadata.json"
+          start_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          start_epoch="$(date +%s)"
+
+          set +e
+          python src/nightbatch/fx_update.py 2>&1 | tee "$log_file"
+          command_status=${PIPESTATUS[0]}
+          set -e
+
+          finish_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          finish_epoch="$(date +%s)"
+          duration_seconds="$((finish_epoch - start_epoch))"
+          status="success"
+          if [ "$command_status" -ne 0 ]; then
+            status="failure"
+          fi
+
+          cat > "$metadata_file" <<EOF
+          {
+            "workflow_key": "fx",
+            "workflow_name": "FX Update",
+            "status": "$status",
+            "start_time": "$start_time",
+            "finish_time": "$finish_time",
+            "duration_seconds": $duration_seconds,
+            "log_file": "script_output.log"
+          }
+          EOF
+
+          if [ "$command_status" -ne 0 ]; then
+            exit "$command_status"
+          fi
+
+      - name: Upload FX Summary Artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightbatch-fx-summary
+          path: ${{ runner.temp }}/nightbatch-fx-summary
+          if-no-files-found: error

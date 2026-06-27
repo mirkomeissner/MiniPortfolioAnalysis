@@ -50,3 +50,71 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+
+  send-summary-email:
+    if: ${{ always() }}
+    needs:
+      - job-fx-update
+      - job-eodhd-import
+      - job-tiingo-import
+      - job-ishares-import
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'dev' && 'test' || 'production' }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Download FX Summary Artifact
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: nightbatch-fx-summary
+          path: nightbatch-artifacts/nightbatch-fx-summary
+
+      - name: Download EODHD Summary Artifact
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: nightbatch-eodhd-summary
+          path: nightbatch-artifacts/nightbatch-eodhd-summary
+
+      - name: Download TIINGO Summary Artifact
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: nightbatch-tiingo-summary
+          path: nightbatch-artifacts/nightbatch-tiingo-summary
+
+      - name: Download iShares Summary Artifact
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: nightbatch-ishares-summary
+          path: nightbatch-artifacts/nightbatch-ishares-summary
+
+      - name: Send Nightbatch Summary Email
+        env:
+          ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS }}
+          RESEND_KEY: ${{ secrets.RESEND_KEY }}
+          NIGHTBATCH_ARTIFACTS_DIR: nightbatch-artifacts
+          FX_JOB_RESULT: ${{ needs.job-fx-update.result }}
+          EODHD_JOB_RESULT: ${{ needs.job-eodhd-import.result }}
+          TIINGO_JOB_RESULT: ${{ needs.job-tiingo-import.result }}
+          ISHARES_JOB_RESULT: ${{ needs.job-ishares-import.result }}
+        run: python src/nightbatch/summary_email.py
