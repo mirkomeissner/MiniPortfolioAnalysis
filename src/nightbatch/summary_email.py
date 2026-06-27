@@ -1,8 +1,15 @@
 import html
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+
+# Ensure project root is on sys.path when executed as a script.
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from src.utils.email_service import send_nightbatch_summary_mail
 
