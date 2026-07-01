@@ -33,12 +33,9 @@ from src.utils.backend_api_client import (
     fetch_holdings_summary,
     fetch_reference_data_bundle,
     fetch_transactions_df,
-    get_existing_ids_for_bulk_via_backend,
-    get_next_transaction_count_via_backend,
     save_import_settings_via_backend,
     get_missing_isins_via_backend,
     reorganize_holdings_via_backend,
-    save_transactions_bulk_via_backend,
     search_exchange_tickers_via_backend,
     update_user_approval_via_backend,
     update_account_via_backend,
@@ -303,22 +300,6 @@ def test_create_transaction_via_backend_raises_on_request_error():
             create_transaction_via_backend(payload)
 
 
-def test_save_transactions_bulk_via_backend_uses_api_when_configured():
-    transaction_list = [{"id": "AAA_20260630_000", "user_id": "user-1"}]
-    with patch.dict(os.environ, {"BACKEND_API_URL": "http://backend.test"}, clear=False), patch(
-        "src.utils.backend_api_client._request_json",
-        return_value={"saved_count": 1},
-    ) as request_mock:
-        result = save_transactions_bulk_via_backend(transaction_list)
-
-    request_mock.assert_called_once_with(
-        "POST",
-        "/transactions/bulk",
-        json={"transactions": transaction_list},
-    )
-    assert result == {"saved_count": 1}
-
-
 def test_get_import_settings_via_backend_raises_on_request_error():
     with patch.dict(os.environ, {"BACKEND_API_URL": "http://backend.test"}, clear=False), patch(
         "src.utils.backend_api_client._fetch_json",
@@ -353,29 +334,6 @@ def test_delete_all_transactions_via_backend_raises_on_request_error():
             delete_all_transactions_via_backend("user-1")
 
 
-def test_get_existing_ids_for_bulk_via_backend_uses_api_when_configured():
-    with patch.dict(os.environ, {"BACKEND_API_URL": "http://backend.test"}, clear=False), patch(
-        "src.utils.backend_api_client._request_json",
-        return_value={"ids": ["AAA_20260630_000"]},
-    ) as request_mock:
-        result = get_existing_ids_for_bulk_via_backend(
-            "user-1",
-            ["AAA"],
-            ["2026-06-30"],
-        )
-
-    request_mock.assert_called_once_with(
-        "POST",
-        "/transactions/bulk-existing-ids",
-        json={
-            "user_id": "user-1",
-            "isins": ["AAA"],
-            "dates": ["2026-06-30"],
-        },
-    )
-    assert result == ["AAA_20260630_000"]
-
-
 def test_get_missing_isins_via_backend_raises_on_request_error():
     with patch.dict(os.environ, {"BACKEND_API_URL": "http://backend.test"}, clear=False), patch(
         "src.utils.backend_api_client._request_json",
@@ -383,15 +341,6 @@ def test_get_missing_isins_via_backend_raises_on_request_error():
     ):
         with pytest.raises(requests.RequestException):
             get_missing_isins_via_backend(["AAA", "BBB"])
-
-
-def test_get_next_transaction_count_via_backend_raises_on_request_error():
-    with patch.dict(os.environ, {"BACKEND_API_URL": "http://backend.test"}, clear=False), patch(
-        "src.utils.backend_api_client._fetch_json",
-        side_effect=requests.RequestException("boom"),
-    ):
-        with pytest.raises(requests.RequestException):
-            get_next_transaction_count_via_backend("user-1", "AAA", "2026-06-30")
 
 
 def test_update_account_via_backend_raises_on_request_error():

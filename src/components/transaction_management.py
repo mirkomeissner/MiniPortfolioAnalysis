@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import io
-import uuid
 import streamlit.components.v1 as components
 from datetime import datetime
 from src.utils import (
@@ -14,15 +12,13 @@ from src.utils import (
     fetch_transactions_df,
     get_asset_price_start_date_via_backend,
     get_asset_price_start_dates_via_backend,
-    get_existing_ids_for_bulk_via_backend,
     get_holdings_reorganization_status_via_backend,
+    import_transactions_bulk_via_backend,
     get_import_settings_via_backend,
     get_missing_isins_via_backend,
-    get_next_transaction_count_via_backend,
     get_option_index,
     reorganize_holdings_via_backend,
     save_import_settings_via_backend,
-    save_transactions_bulk_via_backend,
     update_asset_start_dates_bulk_via_backend,
 )
 
@@ -421,18 +417,8 @@ def render_import_preview_screen():
         success_count = 0
         progress_bar = st.progress(0)
         payload_batch = []
-        unique_dates = [pd.to_datetime(d).date().isoformat() for d in final_sel[map_date].unique()]
 
         with st.status("Analyzing existing records and preparing batch...", expanded=True) as status:
-            existing_ids = get_existing_ids_for_bulk_via_backend(user_id, unique_isins, unique_dates)
-            local_counters = {}
-            for eid in existing_ids:
-                try:
-                    parts = eid.split("_")
-                    if len(parts) >= 3:
-                        key = (parts[0], f"{parts[1][:4]}-{parts[1][4:6]}-{parts[1][6:]}")
-                        local_counters[key] = max(local_counters.get(key, 0), int(parts[2]) + 1)
-                except: continue
 
             for i, (idx, row) in enumerate(final_sel.iterrows()):
                 try:
@@ -498,15 +484,8 @@ def render_import_preview_screen():
                             elif map_fx != "<Not in CSV>" and pd.notna(row[map_fx]):
                                 settle_fx = float(row[map_fx])
 
-                    # ID Generation Logic
-                    key = (isin_val, db_date)
-                    current_idx = local_counters.get(key, 0)
-                    generated_id = f"{isin_val}_{db_date.replace('-','')}_{current_idx:03d}"
-                    local_counters[key] = current_idx + 1
-
                     payload_batch.append({
                         "user_id": user_id,
-                        "id": generated_id,
                         "account_code": acc_code,
                         "isin": isin_val,
                         "date": db_date,
@@ -525,8 +504,12 @@ def render_import_preview_screen():
             # 3. EXECUTE BULK INSERT
             if payload_batch:
                 try:
-                    save_transactions_bulk_via_backend(payload_batch)
-                    success_count = len(payload_batch)
+                    result = import_transactions_bulk_via_backend(
+                        user_id=user_id,
+                        rows=payload_batch,
+                        duplicate_strategy="allow",
+                    )
+                    success_count = (result or {}).get("saved_count", 0)
                 except Exception as e:
                     st.error(f"Database Error: {e}")
 
@@ -753,18 +736,9 @@ def render_transaction_form():
             clean_isin = extract_code(asset_selection) if asset_selection else ""
             db_date_str = trans_date.isoformat()
             
-            # Generate the unique transaction ID
-            current_count = get_next_transaction_count_via_backend(
-                st.session_state["user_id"], 
-                clean_isin, 
-                db_date_str
-            )
-            generated_id = f"{clean_isin}_{trans_date.strftime('%Y%m%d')}_{current_count:03d}"
-
             # Construct the database payload
             new_payload = {
                 "user_id": st.session_state["user_id"],
-                "id": generated_id,
                 "account_code": extract_code(account_selection),
                 "isin": clean_isin,
                 "date": db_date_str,

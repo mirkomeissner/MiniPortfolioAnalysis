@@ -52,7 +52,6 @@ def test_list_transactions_requires_user_id():
 def test_create_transaction_calls_service_with_payload():
     payload = {
         "user_id": "user-1",
-        "id": "AAA_20260630_000",
         "account_code": "ACC1",
         "isin": "AAA",
         "date": "2026-06-30",
@@ -63,51 +62,19 @@ def test_create_transaction_calls_service_with_payload():
         "settle_fxrate": 1.1,
         "amount_eur": 90.9,
     }
+    service_result = {
+        **payload,
+        "id": "AAA_20260630_000",
+    }
     with patch(
         "backend.app.api.routers.transactions.create_transaction",
-        return_value=payload,
+        return_value=service_result,
     ) as service_mock:
         response = client.post("/transactions", json=payload)
 
     assert response.status_code == 200
-    assert response.json() == payload
+    assert response.json() == service_result
     service_mock.assert_called_once_with(payload)
-
-
-def test_create_transactions_bulk_calls_service_with_transaction_list():
-    payload = {
-        "transactions": [
-            {
-                "user_id": "user-1",
-                "id": "AAA_20260630_000",
-                "account_code": "ACC1",
-                "isin": "AAA",
-                "date": "2026-06-30",
-                "transaction_type_code": "BUY",
-            },
-            {
-                "user_id": "user-1",
-                "id": "AAA_20260630_001",
-                "account_code": "ACC1",
-                "isin": "AAA",
-                "date": "2026-06-30",
-                "transaction_type_code": "BUY",
-            },
-        ]
-    }
-    with patch(
-        "backend.app.api.routers.transactions.create_transactions_bulk",
-        return_value={"saved_count": 2},
-    ) as service_mock:
-        response = client.post("/transactions/bulk", json=payload)
-
-    assert response.status_code == 200
-    assert response.json() == {"saved_count": 2}
-    service_mock.assert_called_once()
-    called_transactions = service_mock.call_args.args[0]
-    assert len(called_transactions) == 2
-    assert called_transactions[0]["id"] == "AAA_20260630_000"
-    assert called_transactions[1]["id"] == "AAA_20260630_001"
 
 
 def test_get_import_settings_calls_service_with_query_params():
@@ -158,27 +125,6 @@ def test_delete_transactions_calls_service_with_user_id():
     service_mock.assert_called_once_with(user_id="user-1")
 
 
-def test_bulk_existing_ids_calls_service_with_payload():
-    payload = {
-        "user_id": "user-1",
-        "isins": ["AAA", "BBB"],
-        "dates": ["2026-06-30", "2026-06-29"],
-    }
-    with patch(
-        "backend.app.api.routers.transactions.get_existing_ids_for_bulk_import",
-        return_value=["AAA_20260630_000"],
-    ) as service_mock:
-        response = client.post("/transactions/bulk-existing-ids", json=payload)
-
-    assert response.status_code == 200
-    assert response.json() == {"ids": ["AAA_20260630_000"]}
-    service_mock.assert_called_once_with(
-        user_id="user-1",
-        isins=["AAA", "BBB"],
-        dates=["2026-06-30", "2026-06-29"],
-    )
-
-
 def test_missing_isins_calls_service_with_payload():
     payload = {"isins": ["AAA", "BBB"]}
     with patch(
@@ -192,20 +138,85 @@ def test_missing_isins_calls_service_with_payload():
     service_mock.assert_called_once_with(["AAA", "BBB"])
 
 
-def test_next_transaction_count_calls_service_with_query_params():
+def test_import_preview_calls_service_with_payload():
+    payload = {
+        "user_id": "user-1",
+        "account_code": "ACC1",
+        "csv_content": "isin,date,type,quantity,settle_amount,settle_currency\nAAA,2026-06-30,BUY,2,100,USD",
+        "mapping_config": {
+            "map_isin": "isin",
+            "map_date": "date",
+            "map_type": "type",
+            "map_quantity": "quantity",
+            "map_settle_amount": "settle_amount",
+            "map_settle_currency": "settle_currency",
+        },
+    }
+    service_result = {
+        "rows": [
+            {
+                "user_id": "user-1",
+                "account_code": "ACC1",
+                "isin": "AAA",
+                "date": "2026-06-30",
+                "transaction_type_code": "BUY",
+                "quantity": 2.0,
+                "settle_amount": 100.0,
+                "settle_currency": "USD",
+                "settle_fxrate": 1.0,
+                "amount_eur": 100.0,
+            }
+        ],
+        "missing_isins": [],
+        "existing_ids": [],
+        "duplicate_overlap_count": 0,
+    }
     with patch(
-        "backend.app.api.routers.transactions.get_next_transaction_count_for_import",
-        return_value=4,
+        "backend.app.api.routers.transactions.build_transaction_import_preview",
+        return_value=service_result,
     ) as service_mock:
-        response = client.get(
-            "/transactions/next-count",
-            params={"user_id": "user-1", "isin": "AAA", "date": "2026-06-30"},
-        )
+        response = client.post("/transactions/import-preview", json=payload)
 
     assert response.status_code == 200
-    assert response.json() == {"count": 4}
+    assert response.json() == service_result
     service_mock.assert_called_once_with(
         user_id="user-1",
-        isin="AAA",
-        date_str="2026-06-30",
+        account_code="ACC1",
+        csv_content=payload["csv_content"],
+        mapping_config=payload["mapping_config"],
+    )
+
+
+def test_import_bulk_calls_service_with_payload():
+    payload = {
+        "user_id": "user-1",
+        "rows": [
+            {
+                "user_id": "user-1",
+                "account_code": "ACC1",
+                "isin": "AAA",
+                "date": "2026-06-30",
+                "transaction_type_code": "BUY",
+                "quantity": 2.0,
+                "settle_amount": 100.0,
+                "settle_currency": "USD",
+                "settle_fxrate": 1.0,
+                "amount_eur": 100.0,
+            }
+        ],
+        "duplicate_strategy": "skip",
+    }
+
+    with patch(
+        "backend.app.api.routers.transactions.import_transactions_from_preview",
+        return_value={"saved_count": 1, "skipped_overlap_count": 0},
+    ) as service_mock:
+        response = client.post("/transactions/import-bulk", json=payload)
+
+    assert response.status_code == 200
+    assert response.json() == {"saved_count": 1, "skipped_overlap_count": 0}
+    service_mock.assert_called_once_with(
+        user_id="user-1",
+        rows=payload["rows"],
+        duplicate_strategy="skip",
     )

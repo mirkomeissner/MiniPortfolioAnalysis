@@ -517,11 +517,6 @@ def create_transaction_via_backend(transaction_data: dict):
     return _request_json("POST", "/transactions", json=transaction_data)
 
 
-def save_transactions_bulk_via_backend(transaction_list: list[dict]):
-    payload = {"transactions": transaction_list}
-    return _request_json("POST", "/transactions/bulk", json=payload)
-
-
 def get_import_settings_via_backend(user_id: str, account_code: str):
     params = {"user_id": user_id, "account_code": account_code}
     result = _fetch_json("/transactions/import-settings", params=params)
@@ -542,30 +537,19 @@ def delete_all_transactions_via_backend(user_id: str):
     return _request_json("DELETE", "/transactions", params=params)
 
 
-def get_existing_ids_for_bulk_via_backend(user_id: str, isins: list[str], dates: list[str]):
-    payload = {
-        "user_id": user_id,
-        "isins": isins,
-        "dates": dates,
-    }
-    result = _request_json("POST", "/transactions/bulk-existing-ids", json=payload)
-    return result.get("ids", []) if result else []
-
-
 def get_missing_isins_via_backend(isins: list[str]):
     payload = {"isins": isins}
     result = _request_json("POST", "/transactions/missing-isins", json=payload)
     return result.get("missing_isins", []) if result else []
 
 
-def get_next_transaction_count_via_backend(user_id: str, isin: str, date_str: str):
-    params = {
+def import_transactions_bulk_via_backend(user_id: str, rows: list[dict], duplicate_strategy: str = "allow"):
+    payload = {
         "user_id": user_id,
-        "isin": isin,
-        "date": date_str,
+        "rows": rows,
+        "duplicate_strategy": duplicate_strategy,
     }
-    result = _fetch_json("/transactions/next-count", params=params)
-    return result.get("count", 1) if result else 1
+    return _request_json("POST", "/transactions/import-bulk", json=payload)
 
 
 def fetch_holdings_summary(user_id: str, selected_date, pie_dimension: str) -> dict:

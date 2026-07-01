@@ -1,0 +1,21 @@
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+  },
+  server: {
+    proxy: {
+      '/auth': 'http://127.0.0.1:8000',
+      '/accounts': 'http://127.0.0.1:8000',
+      '/assets': 'http://127.0.0.1:8000',
+      '/holdings': 'http://127.0.0.1:8000',
+      '/references': 'http://127.0.0.1:8000',
+      '/transactions': 'http://127.0.0.1:8000',
+    },
+  },
+})

@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Literal
 
 
 class TransactionRecord(BaseModel):
@@ -31,12 +32,17 @@ class TransactionCreateRequest(BaseModel):
     amount_eur: float | None = None
 
 
-class TransactionBulkCreateRequest(BaseModel):
-    transactions: list[TransactionCreateRequest]
-
-
-class TransactionBulkCreateResponse(BaseModel):
-    saved_count: int
+class TransactionCreateInputRequest(BaseModel):
+    user_id: str
+    account_code: str
+    isin: str
+    date: str
+    transaction_type_code: str
+    quantity: float | None = None
+    settle_amount: float | None = None
+    settle_currency: str | None = None
+    settle_fxrate: float | None = None
+    amount_eur: float | None = None
 
 
 class TransactionImportSettingsRequest(BaseModel):
@@ -60,16 +66,6 @@ class TransactionDeleteAllResponse(BaseModel):
     deleted: bool
 
 
-class TransactionBulkExistingIdsRequest(BaseModel):
-    user_id: str
-    isins: list[str]
-    dates: list[str]
-
-
-class TransactionBulkExistingIdsResponse(BaseModel):
-    ids: list[str]
-
-
 class MissingIsinsRequest(BaseModel):
     isins: list[str]
 
@@ -78,5 +74,39 @@ class MissingIsinsResponse(BaseModel):
     missing_isins: list[str]
 
 
-class NextTransactionCountResponse(BaseModel):
-    count: int
+class TransactionImportPreviewRequest(BaseModel):
+    user_id: str
+    account_code: str
+    csv_content: str
+    mapping_config: dict
+
+
+class TransactionImportPreviewRow(BaseModel):
+    user_id: str
+    account_code: str
+    isin: str
+    date: str
+    transaction_type_code: str
+    quantity: float
+    settle_amount: float
+    settle_currency: str
+    settle_fxrate: float
+    amount_eur: float
+
+
+class TransactionImportPreviewResponse(BaseModel):
+    rows: list[TransactionImportPreviewRow]
+    missing_isins: list[str]
+    existing_ids: list[str]
+    duplicate_overlap_count: int
+
+
+class TransactionImportBulkRequest(BaseModel):
+    user_id: str
+    rows: list[TransactionImportPreviewRow]
+    duplicate_strategy: Literal["allow", "skip"] = "allow"
+
+
+class TransactionImportBulkResponse(BaseModel):
+    saved_count: int
+    skipped_overlap_count: int
