@@ -1,5 +1,6 @@
 import os
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
 from threading import RLock
@@ -15,6 +16,7 @@ class SupabaseConfig:
 
 _config: Optional[SupabaseConfig] = None
 _context_provider: Optional[Callable[[], Dict[str, Optional[str]]]] = None
+_request_context: ContextVar[Optional[Dict[str, Optional[str]]]] = ContextVar("request_context", default=None)
 
 
 def _validate_config(url: Optional[str], service_key: Optional[str], anon_key: Optional[str]) -> SupabaseConfig:
@@ -65,10 +67,17 @@ def set_context_provider(provider: Optional[Callable[[], Dict[str, Optional[str]
 
 
 def set_context(access_token: Optional[str] = None, user_id: Optional[str] = None) -> None:
-    set_context_provider(lambda: {"access_token": access_token, "user_id": user_id})
+    _request_context.set({"access_token": access_token, "user_id": user_id})
+
+
+def clear_context() -> None:
+    _request_context.set(None)
 
 
 def _get_context() -> Dict[str, Optional[str]]:
+    request_context = _request_context.get()
+    if request_context is not None:
+        return request_context
     if _context_provider is None:
         return {"access_token": None, "user_id": None}
     try:

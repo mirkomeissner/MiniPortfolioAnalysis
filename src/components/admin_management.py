@@ -1,12 +1,12 @@
 import streamlit as st
-from src.database import db_get_all_users, db_update_user_approval
+from src.utils import fetch_admin_users_via_backend, update_user_approval_via_backend
 
 def admin_approval_page():
     st.title("🛡️ Admin Console")
     st.subheader("User Management & Approvals")
 
     # Daten über die zentrale Datenbank-Funktion holen
-    all_users = db_get_all_users()
+    all_users = fetch_admin_users_via_backend()
 
     if not all_users:
         st.info("Keine registrierten User gefunden.")
@@ -25,7 +25,7 @@ def admin_approval_page():
                     col1, col2 = st.columns([3, 1])
                     col1.write(f"Registriert am: {user['created_at']}")
                     if col2.button("Freischalten", key=f"approve_{user['id']}"):
-                        db_update_user_approval(user['id'], True)
+                        update_user_approval_via_backend(user['id'], True)
                         st.success(f"User {user['username']} freigeschaltet!")
                         st.rerun()
 
@@ -41,7 +41,7 @@ def admin_approval_page():
                 
                 if not is_admin:
                     if col2.button("Sperren", key=f"block_{user['id']}", type="secondary"):
-                        db_update_user_approval(user['id'], False)
+                        update_user_approval_via_backend(user['id'], False)
                         st.warning(f"User {user['username']} gesperrt.")
                         st.rerun()
                 else:

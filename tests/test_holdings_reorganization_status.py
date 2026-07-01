@@ -164,8 +164,8 @@ def test_render_holdings_reorganization_controls_shows_success_summary_when_reor
         "last_reorganization": datetime(2026, 6, 26, 8, 0, tzinfo=timezone.utc),
     }
 
-    with patch("src.components.transaction_management.get_user_holdings_reorganization_status", return_value=status), patch(
-        "src.components.transaction_management.reorganize_incremental_holdings",
+    with patch("src.components.transaction_management.get_holdings_reorganization_status_via_backend", return_value=status), patch(
+        "src.components.transaction_management.reorganize_holdings_via_backend",
         return_value={"relevant_accounts_count": 1, "rows_inserted": 2, "rows_updated": 3, "rows_deleted": 4},
     ), patch("src.components.transaction_management.st.columns", return_value=(nullcontext(), nullcontext())), patch(
         "src.components.transaction_management.st.button", return_value=True
@@ -194,8 +194,8 @@ def test_render_holdings_reorganization_controls_shows_info_when_no_account_requ
         "last_reorganization": datetime(2026, 6, 26, 8, 0, tzinfo=timezone.utc),
     }
 
-    with patch("src.components.transaction_management.get_user_holdings_reorganization_status", return_value=status), patch(
-        "src.components.transaction_management.reorganize_incremental_holdings",
+    with patch("src.components.transaction_management.get_holdings_reorganization_status_via_backend", return_value=status), patch(
+        "src.components.transaction_management.reorganize_holdings_via_backend",
         return_value={"relevant_accounts_count": 0},
     ), patch("src.components.transaction_management.st.columns", return_value=(nullcontext(), nullcontext())), patch(
         "src.components.transaction_management.st.button", return_value=True
@@ -219,8 +219,8 @@ def test_render_holdings_reorganization_controls_shows_error_when_reorganization
         "last_reorganization": datetime(2026, 6, 26, 8, 0, tzinfo=timezone.utc),
     }
 
-    with patch("src.components.transaction_management.get_user_holdings_reorganization_status", return_value=status), patch(
-        "src.components.transaction_management.reorganize_incremental_holdings",
+    with patch("src.components.transaction_management.get_holdings_reorganization_status_via_backend", return_value=status), patch(
+        "src.components.transaction_management.reorganize_holdings_via_backend",
         side_effect=RuntimeError("boom"),
     ), patch("src.components.transaction_management.st.columns", return_value=(nullcontext(), nullcontext())), patch(
         "src.components.transaction_management.st.button", return_value=True

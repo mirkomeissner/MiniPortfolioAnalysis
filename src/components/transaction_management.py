@@ -5,31 +5,25 @@ import uuid
 import streamlit.components.v1 as components
 from datetime import datetime
 from src.utils import (
-    extract_code, 
-    apply_advanced_filters, 
-    ensure_reference_data, 
-    get_option_index
-)
-from src.database import (
-    get_all_transactions, 
-    get_ref_options, 
-    get_asset_ref_options, 
-    get_account_ref_options,
-    save_transaction,
-    save_transactions_bulk,
-    get_next_transaction_count,
-    get_existing_ids_for_bulk,
-    get_import_settings,
-    save_import_settings,
-    get_missing_isins,
-    get_asset_price_start_date,
-    get_asset_price_start_dates,
-    update_asset_start_date,
-    update_asset_start_dates_bulk,
-    save_asset_static_data,
-    delete_all_transactions,
-    get_user_holdings_reorganization_status,
-    reorganize_incremental_holdings,
+    apply_advanced_filters,
+    create_assets_bulk_via_backend,
+    create_transaction_via_backend,
+    delete_all_transactions_via_backend,
+    ensure_reference_data,
+    extract_code,
+    fetch_transactions_df,
+    get_asset_price_start_date_via_backend,
+    get_asset_price_start_dates_via_backend,
+    get_existing_ids_for_bulk_via_backend,
+    get_holdings_reorganization_status_via_backend,
+    get_import_settings_via_backend,
+    get_missing_isins_via_backend,
+    get_next_transaction_count_via_backend,
+    get_option_index,
+    reorganize_holdings_via_backend,
+    save_import_settings_via_backend,
+    save_transactions_bulk_via_backend,
+    update_asset_start_dates_bulk_via_backend,
 )
 
 def transaction_table_view():
@@ -85,7 +79,8 @@ def _get_holdings_reorganization_ui_state(status):
 
 
 def _render_holdings_reorganization_controls():
-    status = get_user_holdings_reorganization_status()
+    user_id = st.session_state.get("user_id")
+    status = get_holdings_reorganization_status_via_backend(user_id)
     ui_state = _get_holdings_reorganization_ui_state(status)
 
     if not ui_state["visible"]:
@@ -95,7 +90,7 @@ def _render_holdings_reorganization_controls():
     with button_col:
         if st.button(ui_state["label"], disabled=ui_state["disabled"]):
             try:
-                summary = reorganize_incremental_holdings()
+                summary = reorganize_holdings_via_backend(user_id=user_id)
                 relevant_accounts_count = summary.get("relevant_accounts_count", 0)
                 if relevant_accounts_count == 0:
                     st.info("No account requires holdings reorganization.")
@@ -221,7 +216,7 @@ def render_import_preview_screen():
         acc_code = extract_code(selected_account_full)
     
     # --- INFO DISPLAY FOR LOADED SETTINGS ---
-    raw_config = get_import_settings(user_id, acc_code)
+    raw_config = get_import_settings_via_backend(user_id, acc_code)
     if raw_config:
         st.info(f"💡 Import settings loaded for account **{acc_code}**.")
         saved_config = raw_config
@@ -388,7 +383,7 @@ def render_import_preview_screen():
         
         # 1. ASSET PROVISIONING (Optimized JIT)
         unique_isins = [str(i).strip() for i in final_sel[map_isin].unique().tolist() if str(i).strip()]
-        missing_isins = get_missing_isins(unique_isins)
+        missing_isins = get_missing_isins_via_backend(unique_isins)
         
         if missing_isins:
             with st.status(f"Provisioning {len(missing_isins)} new assets...") as status:
@@ -417,7 +412,7 @@ def render_import_preview_screen():
                     asset_payloads.append(payload)
 
                 try:
-                    save_asset_static_data(asset_payloads)
+                    create_assets_bulk_via_backend(asset_payloads)
                 except Exception as e:
                     if "duplicate" not in str(e).lower(): st.error(f"Asset provisioning error: {e}")
                 status.update(label="Asset provisioning complete!", state="complete")
@@ -429,7 +424,7 @@ def render_import_preview_screen():
         unique_dates = [pd.to_datetime(d).date().isoformat() for d in final_sel[map_date].unique()]
 
         with st.status("Analyzing existing records and preparing batch...", expanded=True) as status:
-            existing_ids = get_existing_ids_for_bulk(user_id, unique_isins, unique_dates)
+            existing_ids = get_existing_ids_for_bulk_via_backend(user_id, unique_isins, unique_dates)
             local_counters = {}
             for eid in existing_ids:
                 try:
@@ -530,13 +525,13 @@ def render_import_preview_screen():
             # 3. EXECUTE BULK INSERT
             if payload_batch:
                 try:
-                    save_transactions_bulk(payload_batch)
+                    save_transactions_bulk_via_backend(payload_batch)
                     success_count = len(payload_batch)
                 except Exception as e:
                     st.error(f"Database Error: {e}")
 
                 # 3a. Update price_start_date for imported ISINs in one bulk DB request
-                price_start_map = get_asset_price_start_dates(unique_isins)
+                price_start_map = get_asset_price_start_dates_via_backend(unique_isins)
                 bulk_price_start_updates = []
                 for isin_val in unique_isins:
                     try:
@@ -554,10 +549,10 @@ def render_import_preview_screen():
                         continue
 
                 if bulk_price_start_updates:
-                    update_asset_start_dates_bulk(bulk_price_start_updates)
+                    update_asset_start_dates_bulk_via_backend(bulk_price_start_updates)
 
         # 4. FINALIZE & SAVE SETTINGS
-        save_import_settings(user_id, acc_code, {
+        save_import_settings_via_backend(user_id, acc_code, {
             "type_column": type_column, "type_mapping": type_mapping,
             "map_isin": map_isin, "map_date": map_date, "map_qty": map_qty,
             "map_settle_amt": map_s_amt, "map_settle_curr": map_s_cur, 
@@ -640,7 +635,7 @@ def render_list_view():
     
     if st.session_state.get("delete_all_confirmed_final"):
         try:
-            delete_all_transactions(st.session_state["user_id"])
+            delete_all_transactions_via_backend(st.session_state["user_id"])
             st.session_state["delete_all_confirmed_first"] = False
             st.session_state["delete_all_confirmed_final"] = False
             st.success("✅ All transactions and positions (holdings) have been deleted successfully across all your accounts!")
@@ -654,58 +649,15 @@ def render_list_view():
     _render_holdings_reorganization_controls()
 
     # --- 2. DATA RETRIEVAL ---
-    raw_data = get_all_transactions()
-    if not raw_data:
-        st.info("No records found in transactions.")
+    user_id = st.session_state.get("user_id")
+    if not user_id:
+        st.error("No valid User-ID found. Please log in again.")
         return
 
-    # Convert Supabase response to DataFrame
-    processed_data = []
-    for row in raw_data:
-        processed_row = row.copy()
-        
-        # Account Label extrahieren
-        acc_info = row.get("accounts")
-        # Falls eine Beschreibung da ist, nimm diese, sonst den Code
-        processed_row["account_label"] = acc_info.get("description") if acc_info and acc_info.get("description") else row.get("account_code")
-
-        # Labels aus den Joins extrahieren
-        processed_row["type_label"] = row.get("ref_transaction_type", {}).get("label") if row.get("ref_transaction_type") else row.get("transaction_type_code")
-        processed_row["asset_name"] = row.get("asset_static_data", {}).get("name") if row.get("asset_static_data") else row.get("isin")
-        processed_data.append(processed_row)
-
-    # --- 3. DATA PREPARATION (RENAME & REORDER) ---
-    df = pd.DataFrame(processed_data)
-
-    # Dictionary für die Anzeige-Namen (Mapping von DB-Feld auf User-Label)
-    column_mapping = {
-        "date": "Trade Date",
-        "account_label": "Account",
-        "isin": "ISIN",
-        "asset_name": "Name",
-        "type_label": "Type",
-        "quantity": "Quantity",
-        "settle_amount": "Settle Amount",
-        "settle_currency": "Settle Curr",
-        "settle_fxrate": "FX Rate",
-        "amount_eur": "Amount (EUR)",
-        "created_at": "Created At",
-        "updated_at": "Updated At",
-        "id": "Internal ID"
-    }
-
-    # 1. Spalten umbenennen
-    df = df.rename(columns=column_mapping)
-
-    # 2. In die gewünschte Reihenfolge bringen (nur Spalten, die auch existieren)
-    preferred_order = list(column_mapping.values())
-    existing_cols = [c for c in preferred_order if c in df.columns]
-    df = df[existing_cols]
-
-    # 3. Sortierung (muss jetzt den neuen Namen "Created At" nutzen)
-    if "Created At" in df.columns:
-        df["Created At"] = pd.to_datetime(df["Created At"])
-        df = df.sort_values(by="Created At", ascending=False)
+    df = fetch_transactions_df(user_id)
+    if df.empty:
+        st.info("No records found in transactions.")
+        return
 
     # --- 4. ADVANCED FILTERING ---
     # Jetzt sieht der Query Builder automatisch "Trade Date", "Account", etc.
@@ -802,7 +754,7 @@ def render_transaction_form():
             db_date_str = trans_date.isoformat()
             
             # Generate the unique transaction ID
-            current_count = get_next_transaction_count(
+            current_count = get_next_transaction_count_via_backend(
                 st.session_state["user_id"], 
                 clean_isin, 
                 db_date_str
@@ -826,12 +778,12 @@ def render_transaction_form():
             
             try:
                 # Save to database and cleanup
-                save_transaction(new_payload)
+                create_transaction_via_backend(new_payload)
 
                 # Update asset price start date if transaction is earlier than current stored start date
-                current_start = get_asset_price_start_date(clean_isin)
+                current_start = get_asset_price_start_date_via_backend(clean_isin)
                 if current_start is None or db_date_str < current_start:
-                    update_asset_start_dates_bulk([
+                    update_asset_start_dates_bulk_via_backend([
                         {"isin": clean_isin, "price_start_date": db_date_str}
                     ])
 

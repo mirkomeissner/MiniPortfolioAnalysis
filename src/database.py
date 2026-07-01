@@ -4,6 +4,7 @@ import datetime
 from datetime import datetime as dt_class
 
 from src.runtime_context import (
+    clear_context,
     configure_from_env,
     configure_streamlit_context,
     get_current_access_token,
@@ -27,6 +28,10 @@ def initialize_runtime_from_env(strict: bool = True) -> bool:
 
 def set_request_context(access_token=None, user_id=None) -> None:
     set_context(access_token=access_token, user_id=user_id)
+
+
+def clear_request_context() -> None:
+    clear_context()
 
 
 def _report_error(message: str, error: Exception) -> None:
@@ -527,6 +532,29 @@ def get_all_transactions():
                "ref_transaction_type!fk_ref_type(label), asset_static_data!fk_transaction_isin(name)")
     try:
         response = supabase.schema("public").table("transactions").select(columns).eq("user_id", user_id).execute()
+        return response.data
+    except Exception as e:
+        _report_error("Error", e)
+        return []
+
+
+def get_all_transactions_for_user(user_id):
+    if not user_id:
+        return []
+    supabase = _get_client()
+    columns = (
+        "user_id, id, account_code, isin, date, transaction_type_code, quantity, settle_amount, "
+        "settle_currency, settle_fxrate, amount_eur, accounts!fk_accounts(description), "
+        "ref_transaction_type!fk_ref_type(label), asset_static_data!fk_transaction_isin(name)"
+    )
+    try:
+        response = (
+            supabase.schema("public")
+            .table("transactions")
+            .select(columns)
+            .eq("user_id", user_id)
+            .execute()
+        )
         return response.data
     except Exception as e:
         _report_error("Error", e)

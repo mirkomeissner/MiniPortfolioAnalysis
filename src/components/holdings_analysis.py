@@ -5,13 +5,30 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from src.database import (
-    get_all_assets_with_labels,
-    get_daily_holdings,
-    get_ref_metadata,
-    get_user_holdings_min_date,
-)
-from src.utils import apply_advanced_filters
+from src.utils import apply_advanced_filters, fetch_holdings_date_range, fetch_holdings_df, fetch_holdings_summary
+
+
+def get_last_selectable_holdings_date(today: datetime.date | None = None) -> datetime.date:
+    reference_today = today or datetime.date.today()
+    return reference_today - datetime.timedelta(days=1)
+
+
+def resolve_selected_holdings_date(
+    session_value,
+    first_date: datetime.date,
+    last_date: datetime.date,
+) -> datetime.date:
+    if not isinstance(session_value, datetime.date):
+        return last_date
+    if session_value < first_date or session_value > last_date:
+        return last_date
+    return session_value
+
+
+def get_user_holdings_min_date(user_id: str | None = None):
+    if not user_id:
+        return None
+    return fetch_holdings_date_range(user_id).get("first_date")
 
 
 def _build_asset_class_pie_html(grouped_values: pd.Series, color_by_label: dict | None = None) -> str:
@@ -97,8 +114,13 @@ def render_holdings_view():
     """Render holdings screen controls."""
     st.title("Holdings")
 
-    first_date = get_user_holdings_min_date()
-    last_date = datetime.date.today() - datetime.timedelta(days=1)
+    user_id = st.session_state.get("user_id")
+    if not user_id:
+        st.error("No valid User-ID found. Please log in again.")
+        st.stop()
+
+    first_date = get_user_holdings_min_date(user_id)
+    last_date = get_last_selectable_holdings_date(datetime.date.today())
 
     if first_date is None:
         st.info("No holdings are available yet.")
@@ -112,9 +134,8 @@ def render_holdings_view():
         return
 
     default_date = st.session_state.get("holdings_selected_date")
-    if not isinstance(default_date, datetime.date) or default_date < first_date or default_date > last_date:
-        default_date = last_date
-        st.session_state["holdings_selected_date"] = default_date
+    default_date = resolve_selected_holdings_date(default_date, first_date, last_date)
+    st.session_state["holdings_selected_date"] = default_date
 
     selected_date = st.date_input(
         "Holdings Date",
@@ -128,105 +149,9 @@ def render_holdings_view():
         f"Select a date between {first_date.isoformat()} and {last_date.isoformat()}."
     )
 
-    user_id = st.session_state.get("user_id")
-    if not user_id:
-        st.error("No valid User-ID found. Please log in again.")
-        st.stop()
-
-    raw_holdings = get_daily_holdings(user_id=user_id, holding_date=selected_date)
-    if not raw_holdings:
+    merged_df = fetch_holdings_df(user_id=user_id, selected_date=selected_date)
+    if merged_df.empty:
         return
-
-    holdings_df = pd.DataFrame(raw_holdings)
-    relevant_isins = sorted({str(value).strip() for value in holdings_df.get("isin", pd.Series(dtype=str)).dropna().tolist() if str(value).strip()})
-    asset_rows = get_all_assets_with_labels(relevant_isins)
-    asset_df = pd.DataFrame(asset_rows)
-
-    if not asset_df.empty:
-        asset_df = asset_df[
-            [
-                column
-                for column in [
-                    "ISIN",
-                    "Name",
-                    "Ticker",
-                    "Risk Currency",
-                    "Type",
-                    "Asset Class",
-                    "Region",
-                    "Sector",
-                    "Industry",
-                    "Country",
-                ]
-                if column in asset_df.columns
-            ]
-        ].rename(
-            columns={
-                "Name": "Asset Name",
-                "Ticker": "Asset Ticker",
-                "Risk Currency": "Asset Risk Currency",
-                "Type": "Asset Type",
-                "Region": "Asset Region",
-                "Sector": "Asset Sector",
-                "Industry": "Asset Industry",
-                "Country": "Asset Country",
-            }
-        )
-
-    merged_df = holdings_df.merge(asset_df, left_on="isin", right_on="ISIN", how="left") if not asset_df.empty else holdings_df.copy()
-    if "ISIN" in merged_df.columns:
-        merged_df = merged_df.drop(columns=["ISIN"])
-
-    # Streamlit's dataframe renderer requires unique column names.
-    merged_df = merged_df.loc[:, ~merged_df.columns.duplicated()].copy()
-
-    merged_df = merged_df.rename(
-        columns={
-            "user_id": "User ID",
-            "account_code": "Account Code",
-            "holding_date": "Holding Date",
-            "isin": "ISIN",
-            "quantity": "Quantity",
-            "price_currency": "Price Currency",
-            "price": "Price",
-            "valuation_in_price_currency": "Valuation (Price Curr)",
-            "exchange_rate_to_eur": "FX to EUR",
-            "valuation_in_eur": "Valuation (EUR)",
-        }
-    )
-
-    preferred_order = [
-        "User ID",
-        "Account Code",
-        "Holding Date",
-        "ISIN",
-        "Quantity",
-        "Price Currency",
-        "Price",
-        "Valuation (Price Curr)",
-        "FX to EUR",
-        "Valuation (EUR)",
-    ]
-    preferred_order.extend([
-        "Asset Name",
-        "Asset Ticker",
-        "Asset Risk Currency",
-        "Asset Type",
-        "Asset Class",
-        "Asset Region",
-        "Asset Sector",
-        "Asset Industry",
-        "Asset Country",
-    ])
-
-    existing_cols = [column for column in preferred_order if column in merged_df.columns]
-    merged_df = merged_df[existing_cols]
-
-    if "Holding Date" in merged_df.columns:
-        merged_df["Holding Date"] = pd.to_datetime(merged_df["Holding Date"])
-
-    if "Holding Date" in merged_df.columns:
-        merged_df = merged_df.sort_values(by=["Holding Date", "Valuation (EUR)"], ascending=[False, False])
 
     filtered_df = apply_advanced_filters(merged_df, session_prefix="holdings_list")
 
@@ -252,48 +177,21 @@ def render_holdings_view():
         key="holdings_pie_dimension",
     )
 
-    chart_df = filtered_df.copy()
-    if pie_dimension in chart_df.columns:
-        chart_df[pie_dimension] = chart_df[pie_dimension].fillna("Unknown").replace("", "Unknown")
-    else:
-        chart_df[pie_dimension] = "Unknown"
-
-    if "Valuation (EUR)" in chart_df.columns:
-        chart_values = pd.to_numeric(chart_df["Valuation (EUR)"], errors="coerce").fillna(0)
-    else:
-        chart_values = pd.Series([0] * len(chart_df), index=chart_df.index)
-
-    chart_data = (
-        pd.DataFrame({pie_dimension: chart_df[pie_dimension], "Valuation (EUR)": chart_values})
-        .groupby(pie_dimension, as_index=True)["Valuation (EUR)"]
-        .sum()
-        .sort_values(ascending=False)
+    summary = fetch_holdings_summary(
+        user_id=user_id,
+        selected_date=selected_date,
+        pie_dimension=pie_dimension,
     )
-
-    ref_table_map = {
-        "Asset Class": "ref_asset_class",
-        "Asset Type": "ref_instrument_type",
-        "Asset Region": "ref_region",
-        "Asset Sector": "ref_sector",
-    }
-    ref_table = ref_table_map.get(pie_dimension)
-    ref_meta = get_ref_metadata(ref_table) if ref_table else []
-
+    chart_items = summary.get("items", [])
+    chart_data = pd.Series(
+        {item["label"]: item["valuation_eur"] for item in chart_items},
+        dtype=float,
+    )
     color_by_label = {
-        item.get("label"): item.get("color_hex")
-        for item in ref_meta
-        if item.get("label") and item.get("color_hex")
+        item["label"]: item.get("color_hex")
+        for item in chart_items
+        if item.get("color_hex")
     }
-    order_by_label = {
-        item.get("label"): item.get("display_order")
-        for item in ref_meta
-        if item.get("label")
-    }
-
-    if not chart_data.empty:
-        chart_data = chart_data.sort_index(
-            key=lambda idx: idx.map(lambda label: order_by_label.get(label, 9999))
-        )
 
     st.subheader(f"Allocation by {pie_dimension}")
     if chart_data.empty or float(chart_data.sum()) <= 0:

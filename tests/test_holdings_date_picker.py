@@ -3,6 +3,8 @@ import os
 import sys
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
+
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
@@ -83,7 +85,10 @@ def test_render_holdings_view_renders_date_picker_with_expected_bounds():
         "src.components.holdings_analysis.st.caption"
     ), patch("src.components.holdings_analysis.st.write"), patch(
         "src.components.holdings_analysis.st.info"
-    ) as info_mock, patch("src.components.holdings_analysis.st.date_input", return_value=expected_last_date) as date_input_mock:
+    ) as info_mock, patch("src.components.holdings_analysis.st.date_input", return_value=expected_last_date) as date_input_mock, patch(
+        "src.components.holdings_analysis.fetch_holdings_df",
+        return_value=pd.DataFrame(),
+    ):
         render_holdings_view()
 
     info_mock.assert_not_called()

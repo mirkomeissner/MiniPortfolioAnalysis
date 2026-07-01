@@ -1,10 +1,9 @@
 import streamlit as st
-import pandas as pd
-from src.database import (
-    get_all_accounts,
-    save_account,
-    update_account,
-    delete_account
+from src.utils import (
+    create_account_via_backend,
+    delete_account_via_backend,
+    fetch_accounts_df,
+    update_account_via_backend,
 )
 
 
@@ -35,18 +34,13 @@ def render_list_view():
         st.rerun()
     
     # Load accounts data
-    accounts = get_all_accounts(user_id)
-    
-    if not accounts:
+    accounts_df = fetch_accounts_df(user_id)
+
+    if accounts_df.empty:
         st.info("No accounts found. Click 'New Account' to create one.")
         return
-    
-    # Convert to DataFrame for display
-    df = pd.DataFrame(accounts)
-    df = df.rename(columns={
-        "account_code": "Account Code",
-        "description": "Description"
-    })
+
+    df = accounts_df.copy()
     
     st.info(f"Displaying {len(df)} account(s).")
     
@@ -88,8 +82,8 @@ def render_account_form():
     # Load existing account data if editing
     existing_account = None
     if is_edit:
-        accounts = get_all_accounts(user_id)
-        existing_account = next((a for a in accounts if a["account_code"] == edit_account_code), None)
+        accounts = fetch_accounts_df(user_id).to_dict("records")
+        existing_account = next((a for a in accounts if a["Account Code"] == edit_account_code), None)
     
     # Form fields
     with st.form("account_form", clear_on_submit=False):
@@ -97,10 +91,10 @@ def render_account_form():
         if is_edit:
             st.text_input(
                 "Account Code",
-                value=existing_account["account_code"] if existing_account else "",
+                value=existing_account["Account Code"] if existing_account else "",
                 disabled=True
             )
-            account_code = existing_account["account_code"] if existing_account else ""
+            account_code = existing_account["Account Code"] if existing_account else ""
         else:
             account_code = st.text_input(
                 "Account Code",
@@ -111,7 +105,7 @@ def render_account_form():
         # Description field
         description = st.text_area(
             "Description",
-            value=existing_account["description"] if (existing_account and existing_account.get("description")) else "",
+            value=existing_account["Description"] if (existing_account and existing_account.get("Description")) else "",
             help="E.g., 'Interactive Brokers - Main Account'"
         )
         
@@ -134,11 +128,11 @@ def render_account_form():
                 try:
                     if is_edit:
                         # Update existing account
-                        update_account(user_id, account_code, description.strip())
+                        update_account_via_backend(user_id, account_code, description.strip())
                         st.success("✅ Account updated successfully!")
                     else:
                         # Create new account
-                        save_account(user_id, account_code.strip(), description.strip())
+                        create_account_via_backend(user_id, account_code.strip(), description.strip())
                         st.success("✅ Account created successfully!")
                     
                     # Reset and go back to list
@@ -161,7 +155,7 @@ def render_account_form():
             
             if col_confirm1.button("Yes, Delete", use_container_width=True, type="secondary"):
                 try:
-                    delete_account(user_id, account_code)
+                    delete_account_via_backend(user_id, account_code)
                     st.success("✅ Account deleted successfully!")
                     st.session_state["view"] = "list"
                     st.session_state["edit_account_code"] = None

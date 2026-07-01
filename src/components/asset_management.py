@@ -1,24 +1,32 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from src.database import (
-    get_all_assets_with_labels, 
-    update_asset_static_data, 
-    get_ref_options,
-    save_asset_static_data,
-    search_exchange_tickers
-)
 from src.utils import (
+    create_asset_via_backend,
     extract_code, 
+    update_asset_via_backend,
     get_option_index, 
     get_option_index_by_label,
     get_selectbox_options_and_index,
     ensure_reference_data, 
     apply_advanced_filters,
+    fetch_assets_df,
+    search_exchange_tickers_via_backend,
     yfinance_search_component,
     my_yf,
     my_tiingo
 )
+
+
+def _is_missing_value(value) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str) and value.strip().lower() == "nan":
+        return True
+    try:
+        return bool(pd.isna(value))
+    except Exception:
+        return False
 
 def asset_form_component(mode="new", asset=None, version=0):
     """
@@ -158,7 +166,7 @@ def asset_form_component(mode="new", asset=None, version=0):
             else:
                 with st.spinner("Searching for matching tickers..."):
                     try:
-                        results = search_exchange_tickers(isin=isin, name=name)
+                        results = search_exchange_tickers_via_backend(isin=isin, name=name)
                     except Exception as e:
                         st.error(f"Error searching ticker master data: {e}")
                         results = []
@@ -201,14 +209,14 @@ def asset_form_component(mode="new", asset=None, version=0):
                         "created_by": st.session_state.get('user_id'),
                         "updated_by": None
                     })
-                    save_asset_static_data(payload)
+                    create_asset_via_backend(payload)
                     st.success(f"✅ {ticker} saved successfully!")
                 else:
                     payload.update({
                         "updated_at": datetime.now().isoformat(),
                         "updated_by": st.session_state.get("user_id")
                     })
-                    update_asset_static_data(isin, payload)
+                    update_asset_via_backend(isin, payload)
                     st.success("Asset updated successfully!")
                 
                 st.cache_data.clear()
@@ -366,12 +374,12 @@ def render_list_view():
         st.rerun()
 
     # 2. Data Loading & Filtering
-    data = get_all_assets_with_labels()
-    if not data:
+    data_df = fetch_assets_df()
+    if data_df.empty:
         st.info("No records found.")
         return
 
-    df = pd.DataFrame(data)
+    df = data_df.copy()
 
     # Filtering logic (remains the same)
     def closed_on_logic(df_in, widget_col, index, prefix):
@@ -456,7 +464,7 @@ def render_edit_view():
             st.rerun()
 
     # 2. Daten laden (wie gehabt)
-    all_data = get_all_assets_with_labels()
+    all_data = fetch_assets_df().to_dict("records")
     asset = next((item for item in all_data if item["ISIN"] == isin), None)
 
     if not asset:
@@ -464,12 +472,13 @@ def render_edit_view():
         return
 
     closed_val = asset.get("Closed On")
+    asset_is_open = _is_missing_value(closed_val)
 
     # 3. Status-Button in die zweite Spalte platzieren
     with col_status:
-        if closed_val is None:
+        if asset_is_open:
             if st.button("🔒 Close Asset", help="Set the closing date to today"):
-                update_asset_static_data(isin, {
+                update_asset_via_backend(isin, {
                     "closed_on": datetime.now().date().isoformat(),
                     "updated_at": datetime.now().isoformat(),
                     "updated_by": st.session_state.get("user_id")
@@ -480,7 +489,7 @@ def render_edit_view():
                 st.rerun()
         else:
             if st.button("🔓 Reopen Asset", help="Clear the closing date"):
-                update_asset_static_data(isin, {
+                update_asset_via_backend(isin, {
                     "closed_on": None,
                     "updated_at": datetime.now().isoformat(),
                     "updated_by": st.session_state.get("user_id")
@@ -491,7 +500,7 @@ def render_edit_view():
                 st.rerun()
 
     # Den Warntext (falls geschlossen) kannst du darunter platzieren
-    if closed_val:
+    if not asset_is_open:
         st.warning(f"This asset was closed on {closed_val}")
 
     selected_row, edited_df = yfinance_search_component(search_input=isin, session_key_prefix="reload")

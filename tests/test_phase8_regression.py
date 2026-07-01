@@ -357,12 +357,13 @@ class TestConsolidatedHelpers:
             assert result is None
         
         # Missing API key should return error with provider name extracted
-        result = validate_provider_request(
-            ticker="AAPL.US",
-            asset_start=date(2023, 1, 1),
-            request_start=date(2023, 1, 1),
-            api_key_env_var="EODHD_API_KEY"  # Changed to real provider
-        )
+        with patch.dict(os.environ, {"EODHD_API_KEY": "", "APP_ENV": "main"}, clear=False):
+            result = validate_provider_request(
+                ticker="AAPL.US",
+                asset_start=date(2023, 1, 1),
+                request_start=date(2023, 1, 1),
+                api_key_env_var="EODHD_API_KEY"
+            )
         assert result is not None
         assert "error" in result
         assert "missing_eodhd_api_key" in result["error"]

@@ -1,12 +1,6 @@
 import streamlit as st
 import pandas as pd
-from src.database import (
-    get_account_ref_options, 
-    get_asset_ref_options, 
-    get_ref_options,  
-    get_country_region_map,
-    get_transaction_type_logic
-)
+from src.utils.backend_api_client import fetch_reference_data_bundle
 
 
 
@@ -70,23 +64,18 @@ def ensure_reference_data():
     
     if 'ref_data_loaded' not in st.session_state and user_id:
         with st.spinner("Loading reference data..."):
-            # 1. Allgemeine Stammdaten (aus dem 'shared' Schema)
-            # Diese sind für alle User gleich
-            st.session_state['opt_asset'] = get_ref_options("ref_asset_class")
-            st.session_state['opt_gics'] = get_ref_options("ref_sector")
-            st.session_state['opt_region'] = get_ref_options("ref_region")
-            st.session_state['opt_type'] = get_ref_options("ref_instrument_type")
-            st.session_state['opt_source'] = get_ref_options("ref_price_source")
-            st.session_state['opt_trans_types'] = get_ref_options("ref_transaction_type")
-            
-            # 2. Spezifische Stammdaten
-            # WICHTIG: Hier nutzen wir jetzt die user_id (UUID) statt user_name
-            st.session_state['opt_accounts'] = get_account_ref_options(user_id)
-            st.session_state['opt_assets'] = get_asset_ref_options()
-            
-            # 3. Hilfs-Maps
-            st.session_state['db_region_map'] = get_country_region_map()
-            st.session_state['type_logic_map'] = get_transaction_type_logic()
+            bundle = fetch_reference_data_bundle(user_id)
+
+            st.session_state['opt_asset'] = bundle.get('opt_asset', [])
+            st.session_state['opt_gics'] = bundle.get('opt_gics', [])
+            st.session_state['opt_region'] = bundle.get('opt_region', [])
+            st.session_state['opt_type'] = bundle.get('opt_type', [])
+            st.session_state['opt_source'] = bundle.get('opt_source', [])
+            st.session_state['opt_trans_types'] = bundle.get('opt_trans_types', [])
+            st.session_state['opt_accounts'] = bundle.get('opt_accounts', [])
+            st.session_state['opt_assets'] = bundle.get('opt_assets', [])
+            st.session_state['db_region_map'] = bundle.get('db_region_map', {})
+            st.session_state['type_logic_map'] = bundle.get('type_logic_map', {})
             
             # Flag setzen
             st.session_state['ref_data_loaded'] = True
